@@ -73,13 +73,13 @@ Use this when you have one app, one library, or one Mac/iOS app repo:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/my-app \
   --slack-webhook skip
 ```
 
 This creates labels on `my-org/my-app`, writes `ALFRED_LUCIUS_REPOS=my-app`
-and similar variables into `~/.alfredrc`, deploys the starter fleet, and runs
+and similar variables into `~/.alfredrc`, deploys the full fleet, and runs
 doctor.
 
 ## Multi-Repo Product Workspace
@@ -89,15 +89,16 @@ Use this when one product spans backend, frontend, mobile, packages, or infra:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/api,my-org/web,my-org/mobile \
   --slack-webhook skip
 ```
 
-The starter fleet receives the same selected repo list. That is the right
-default for a small solo-builder workspace because Drake can plan across all
-repos, Lucius can pick labelled implementation work from any selected repo, and
-Ra's al Ghul can review PRs across the same selected repos.
+The full fleet receives the same selected repo list. That is the right default
+for a small solo-builder workspace because Drake and Batman can plan across all
+repos, Lucius and Nightwing can pick labelled implementation work from any
+selected repo, Bane can run QA, and Ra's al Ghul can review PRs across the same
+selected repos.
 
 If you need different repo lists per agent, run the interactive wizard or edit
 the generated variables in `~/.alfredrc`:
@@ -135,7 +136,7 @@ First setup:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/api,my-org/web,my-org/mobile \
   --slack-webhook skip
 ```
@@ -153,7 +154,7 @@ there and allow repo-operating agents to pick issues or PRs from it.
 
 ## Batman For Multi-Repo Planning
 
-Batman is included in Alfred and acts as the architect agent for cross-repo
+Batman is included in the full fleet and acts as the architect agent for cross-repo
 work. It has two public paths:
 
 - `BATMAN_PARENT_REPO` parent issues run the plan, approval, child-issue filing,
@@ -166,17 +167,17 @@ Batman owns the feature shape above the repo-local work. It plans the rollout,
 files scoped child issues when the gate allows it, and keeps the implementation
 queue clear for Lucius and the rest of the fleet.
 
-Enable it when your workspace has cross-repo feature work:
+The full-fleet setup configures it from the start:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents drake,lucius,rasalghul,agent-cleanup,batman \
+  --agents all \
   --repos my-org/api,my-org/web,my-org/mobile \
   --slack-webhook skip
 ```
 
-Or enable it after an existing starter setup:
+Then arm the runner gate when you are ready for parent-plan work:
 
 ```sh
 alfred enable batman

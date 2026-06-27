@@ -1,11 +1,14 @@
 # Install tiers
 
-Alfred installs in three tiers. Only the first is required. The other two are optional surfaces that talk to the core over inspectable seams.
+Alfred has three install tiers. The desktop path is recommended for most users
+because it can guide setup, inspect an existing runtime, start the local server,
+and keep repair actions visible. The core tier still runs fully headless for
+servers and automation.
 
 | Tier | What it is | Required? | Needs a desktop? |
 |---|---|---|---|
 | `core` | Fleet, Alfred CLI, host scheduler, `alfred serve` JSON API | Yes | No (headless, Linux-friendly) |
-| `client` | Alfred Desktop (`clients/desktop`) | No | Yes |
+| `client` | Alfred Desktop (`clients/desktop`) | Recommended | Yes |
 | `slack` | Planning listener + issue bridge | No | No |
 
 For the architecture behind these tiers, see [`ARCHITECTURE.md`](ARCHITECTURE.md). For the from-zero walkthrough of `core`, see [`../INSTALL.md`](../INSTALL.md). This page is the tier map; it does not replace the install walkthrough.
@@ -47,9 +50,15 @@ when you want the dashboard or Alfred Desktop.
 
 ## `client`: the desktop app
 
-Alfred Desktop is an optional Tauri app under `clients/desktop`. It is a thin local control surface and installer, not a second Alfred runtime. Slack remains the collaboration surface; the client is for local trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet.
+Alfred Desktop is a Tauri app under `clients/desktop`. It is a thin local
+control surface and installer, not a second Alfred runtime. It is the default
+human onboarding path for a normal Mac/Linux setup: detect an existing
+installation, start or connect to `alfred serve`, verify GitHub and engine auth,
+select repositories, configure the full fleet, choose a roster theme, and run
+doctor/dry-run checks without asking the user to hand-edit config files. Slack
+remains the collaboration surface once the fleet is running.
 
-It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. You can run Alfred entirely without it.
+It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. Headless installs can run Alfred entirely without it.
 
 There are two ways to install it. Pick the signed release for a normal setup; build from source only when you are working on the client itself.
 
@@ -104,7 +113,7 @@ Trusted users can create and refine planning drafts. Only `ALFRED_OPERATOR_SLACK
 
 ## Picking your tiers
 
+- **Most local users:** `core` + `client`. Let Alfred Desktop guide setup, start `alfred serve`, and drive repair from the app.
 - **Headless Linux fleet, no UI:** `core` only. Run the CLI and scheduler; skip `serve`, the client, and Slack, or wire just an incoming webhook for one-way posts.
-- **Mac user who wants Alfred Desktop:** `core` + `client`. Install the `serve` extra, run `alfred serve`, and drive the fleet from the desktop app.
 - **Team that plans in Slack:** `core` + `slack`. Run the listener, keep the bridge off until you trust the flow, then arm it with an allowlist.
 - **Everything:** all three. The client and Slack surfaces both sit on top of the same `core` and never bypass its gates.

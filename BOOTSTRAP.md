@@ -130,15 +130,15 @@ interactive choices:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos your-org/your-repo \
   --slack-webhook skip
 ```
 
-This configures Drake, Lucius, Ra's al Ghul, and agent-cleanup; seeds starter
-prompts into `~/.alfred/prompts/`; and creates the GitHub labels the runners
-expect. Add Slack later by re-running the wizard or setting
-`SLACK_WEBHOOK_URL` in `~/.alfredrc`.
+This configures the full engineering fleet, seeds prompts into
+`~/.alfred/prompts/`, and creates the GitHub labels the runners expect. Add
+Slack later by re-running the wizard or setting `SLACK_WEBHOOK_URL` in
+`~/.alfredrc`.
 
 The repo owner must match `GH_ORG`; the runtime stores bare repo names and
 builds `GH_ORG/repo` during agent firings.

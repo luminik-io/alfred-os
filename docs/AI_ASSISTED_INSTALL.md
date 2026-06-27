@@ -8,17 +8,17 @@ boundaries. Pick one setup lane first:
 
 | Lane | Use it when | Config shape |
 |---|---|---|
-| One repo | You have one app or one library. | `--agents starter --repos owner/repo` |
-| Multi-repo product | You have backend/frontend/mobile/packages. | `--agents starter --repos owner/api,owner/web,owner/mobile` |
+| One repo | You have one app or one library. | `--agents all --repos owner/repo` |
+| Multi-repo product | You have backend/frontend/mobile/packages. | `--agents all --repos owner/api,owner/web,owner/mobile` |
 | Specs-led workspace | You keep specs/roadmap separate from code repos. | Put specs under the workspace for context; assign implementers to code repos. |
-| Batman planning | You want cross-repo bundle plans. | Add `batman` and use the same multi-repo `--repos` list. |
+| Batman planning | You want cross-repo bundle plans. | Included in the full fleet; use the same multi-repo `--repos` list. |
 
 The safe first path is explicit:
 
 1. Run the dry-run example.
 2. Install prerequisites.
 3. Let the human complete interactive auth flows.
-4. Configure explicit repos with the starter fleet.
+4. Configure explicit repos with the full fleet.
 5. Run doctor and show the final state.
 
 Do not ask an assistant to guess your GitHub org, Slack webhook, AWS profile, or
@@ -69,10 +69,12 @@ Rules:
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
-- Use the starter fleet only: Drake, Lucius, Ra's al Ghul, and agent-cleanup.
-- Batman handling: add Batman if I set `ADD_BATMAN=true`; if `REPOS` has 2 or more
-  repos under the same `GH_ORG`, pause and ask before adding him; for a single-repo
-  fleet, leave him out (he plans multi-repo work, so there is nothing for him to do).
+- Use the full engineering fleet: Drake, Batman, Lucius, Ra's al Ghul, Bane,
+  Nightwing, Robin, Huntress, Gordon, automerge, cleanup, code-map refresh,
+  briefs, recaps, shipped summaries, and fleet doctor where available.
+- Keep Batman configured even for a one-repo install. It will only act when
+  cross-repo or parent-plan work exists, but users should not have to discover
+  and add the architect later.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.
@@ -122,8 +124,8 @@ Steps:
    claude --version || true
    echo "If Claude Code is not authenticated yet, run: claude"
 
-6. After GitHub and Claude Code auth are working, configure the starter fleet:
-   ./bin/alfred-init.py --non-interactive --agents starter --repos "$REPOS" --slack-webhook "$SLACK_WEBHOOK"
+6. After GitHub and Claude Code auth are working, configure the full fleet:
+   ./bin/alfred-init.py --non-interactive --agents all --repos "$REPOS" --slack-webhook "$SLACK_WEBHOOK"
 
 7. If SPECS_REPO is set, show me the specs checkout path and remind me to add it to `~/.alfred/prompts/drake.md` as planning context. Do not add it to `--repos` unless I ask.
 
@@ -192,29 +194,28 @@ For the first real install, prefer explicit repos:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos "$REPOS" \
   --slack-webhook skip
 ```
 
 That command:
 
-- seeds starter prompts into `~/.alfred/prompts/`
+- seeds fleet prompts into `~/.alfred/prompts/`
 - creates standard GitHub labels on the selected repo
 - writes `launchd/agents.conf`, the shared scheduler manifest
 - updates `~/.alfredrc`
-- deploys scheduler units for the selected starter fleet
+- deploys scheduler units for the selected fleet
 - runs doctor
 
 It does not create AWS profiles, create Slack apps, or configure every repo on
 the machine. `--repos` may be one repo or a comma-separated list. All selected
-repo-operating starter agents receive that same repo list, and `alfred-init.py`
+repo-operating agents receive that same repo list, and `alfred-init.py`
 creates the standard GitHub labels on every selected repo.
 
-Batman is packaged, but it is intentionally not part of the starter fleet. It
-coordinates `agent:large-feature` and `agent:bundle:<slug>` issues across repos,
-so enable it after the starter fleet is healthy on your selected repo scope and
-you have cross-repo issues ready for planning.
+Batman is part of the full fleet. It coordinates `agent:large-feature` and
+`agent:bundle:<slug>` issues across repos and remains bounded by its normal
+approval gates.
 
 ## Multi-Repo Setup
 
@@ -224,7 +225,7 @@ Use the same command with a comma-separated repo list:
 export REPOS="my-org/api,my-org/web,my-org/mobile"
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos "$REPOS" \
   --slack-webhook skip
 ```
@@ -256,10 +257,10 @@ keep the first scheduled write loop focused on code repos:
     specs/
 ```
 
-Use `--repos my-org/api,my-org/web,my-org/mobile` for the starter fleet. Then
+Use `--repos my-org/api,my-org/web,my-org/mobile` for the full fleet. Then
 edit prompts in `~/.alfred/prompts/` to point Drake and reviewers at the specs
 checkout for context. Only add the specs repo to `--repos` if you want the
-starter agents to create labels and potentially operate on specs issues too.
+fleet to create labels and potentially operate on specs issues too.
 
 ## Batman Planning
 
@@ -276,18 +277,19 @@ Batman owns the feature shape above the repo-local work. It plans the rollout
 and files scoped child issues for the normal fleet queue when the gate allows
 it.
 
-To enable Batman during setup:
+For an explicit multi-repo setup:
 
 ```sh
 export REPOS="my-org/api,my-org/web,my-org/mobile"
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents drake,lucius,rasalghul,agent-cleanup,batman \
+  --agents all \
   --repos "$REPOS" \
   --slack-webhook skip
 ```
 
-Or add it later:
+Batman is configured by that full-fleet install. It remains protected by the
+runner gate until you arm it:
 
 ```sh
 alfred enable batman
@@ -308,7 +310,7 @@ bash bin/doctor.sh
 
 Expected:
 
-- `alfred agents` lists Drake, Lucius, Ra's al Ghul, and agent-cleanup.
+- `alfred agents` lists the full engineering fleet, including gated agents.
 - `alfred auth status` shows Claude Code account routing and Codex status if
   Codex is installed.
 - `doctor.sh` reports the configured agents as pass, or names the exact missing
@@ -319,7 +321,7 @@ Expected:
 - **Assigning every repo on the machine.** Use an explicit `--repos` list.
 - **Putting specs into the write loop by accident.** Clone specs for context;
   only pass it in `--repos` when you want agents operating there.
-- **Skipping prompt setup.** Current `alfred-init.py` copies starter prompts;
+- **Skipping prompt setup.** Current `alfred-init.py` copies prompt templates;
   do not manually copy old prompt snippets unless you are customizing them.
 - **Treating Slack as required.** It is optional. Use `--slack-webhook skip`.
 - **Confusing assistant auth with Alfred engine auth.** The assistant can
@@ -329,7 +331,7 @@ Expected:
 
 ## Adding Slack, AWS, or More Repos Later
 
-Start small. Once the starter fleet passes doctor on your first repo set:
+Start with the smallest honest repo set. Once the full fleet passes doctor:
 
 - Add Slack: [`SLACK_SETUP.md`](SLACK_SETUP.md)
 - Add AWS IAM-per-agent: [`AWS_SETUP.md`](AWS_SETUP.md)

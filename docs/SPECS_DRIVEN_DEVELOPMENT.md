@@ -139,12 +139,12 @@ my-app/
   src/
 ```
 
-Install the starter fleet against that repo:
+Install the full fleet against that repo:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/my-app \
   --slack-webhook skip
 ```
@@ -170,7 +170,7 @@ Use code repos in the first write path:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/api,my-org/web,my-org/mobile \
   --slack-webhook skip
 ```

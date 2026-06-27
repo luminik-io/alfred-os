@@ -188,7 +188,7 @@ The planning-assistant refinement is LLM-backed only when `ALFRED_PLANNING_ASSIS
 
 ## Desktop app
 
-Alfred Desktop (`clients/desktop`) is a Tauri app and the optional `client` tier. It is a thin local control surface, not a second runtime: it reads the fleet's own state over the `alfred serve` JSON API and runs a narrow set of safe local actions through a native command allowlist. It opens no public port and keeps `$ALFRED_HOME` as the source of truth.
+Alfred Desktop (`clients/desktop`) is a Tauri app and the recommended `client` tier. It is a thin local onboarding and control surface, not a second runtime: it reads the fleet's own state over the `alfred serve` JSON API and runs a narrow set of safe local actions through a native command allowlist. It opens no public port and keeps `$ALFRED_HOME` as the source of truth.
 
 Code: `clients/desktop/src/` (React UI, `api.ts`, `types.ts`), `clients/desktop/src-tauri/` (Tauri shell + native command allowlist), `lib/server/` (`alfred serve`).
 

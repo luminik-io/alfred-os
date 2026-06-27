@@ -31,7 +31,7 @@ Set `WORKSPACE_ROOT=~/code`. Repo-operating agents look under
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/my-app \
   --slack-webhook skip
 ```
@@ -43,14 +43,15 @@ Use this for one app, one library, or one Mac/iOS app repo.
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/api,my-org/web,my-org/mobile \
   --slack-webhook skip
 ```
 
-The starter fleet receives the selected repo list. Drake can plan across the
-selected repos, Lucius can pick labelled issues in any selected repo, and Ra's al Ghul
-can review PRs across the same repo set.
+The full fleet receives the selected repo list. Drake and Batman can plan
+across the selected repos, Lucius and Nightwing can pick labelled issues in any
+selected repo, Bane can run QA, and Ra's al Ghul can review PRs across the same
+repo set.
 
 ## Specs-Led
 
@@ -76,7 +77,7 @@ only when you want Alfred to create labels there or pick issues and PRs from it.
 
 ## Batman
 
-Batman is included as the architect agent for cross-repo work. It has two
+Batman is included in the full fleet as the architect agent for cross-repo work. It has two
 public paths:
 
 - `BATMAN_PARENT_REPO` parent issues can go through plan, approval, child-issue
@@ -89,12 +90,15 @@ Batman owns the feature shape above the repo-local work. It plans the rollout
 and files scoped child issues for the normal fleet queue when the gate allows
 it.
 
-Enable it with:
+Configure it with the rest of the fleet:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents drake,lucius,rasalghul,agent-cleanup,batman \
+  --agents all \
   --repos my-org/api,my-org/web,my-org/mobile \
   --slack-webhook skip
 ```
+
+Then arm the runner gate with `alfred enable batman` when parent-plan work is
+ready.

@@ -7,16 +7,16 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
 
 <MarketingLayout
   title="Install Alfred | Existing setup or fresh machine"
-  description="Use the fast path if GitHub CLI, Claude Code, a package manager, and Python are already ready. Use the guided path for a fresh machine."
+  description="Install Alfred Desktop for the guided path, or use the terminal path for a headless host. Both paths configure the full local engineering fleet."
   path="/install/"
 >
   <Hero
     eyebrow="INSTALL"
-    headline="Install Alfred for your current setup."
-    sub="Fast path for an already-provisioned dev machine. Guided path for a fresh laptop, Mac mini, Linux server, or dedicated agent box."
+    headline="Install the full Alfred fleet."
+    sub="Use Alfred Desktop for the guided setup, or use the terminal path for a headless Mac or Linux host. Either way, the default is the full engineering roster: planner, builders, reviewers, test coverage, review-fix, cleanup, reports, and cross-repo architecture."
     headlineSize="lg"
-    primaryCta={{ label: "Use existing setup", href: "/getting-started/install/" }}
-    secondaryCta={{ label: "Set up a fresh machine", href: "/getting-started/ai-assisted-install/" }}
+    primaryCta={{ label: "Download Desktop", href: "/download/" }}
+    secondaryCta={{ label: "Terminal install", href: "/getting-started/install/" }}
   />
 
   <section class="m-section">
@@ -24,30 +24,30 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
       <SectionHeader
         eyebrow="PICK YOUR STARTING POINT"
         title="Choose the path that matches your machine."
-        lede="The fast path assumes your developer tools are already authenticated. The guided path walks through prerequisites, auth, and the first Alfred run."
+        lede="The desktop path is the default for most users because it can inspect an existing setup, start the local server, guide auth, and keep setup repairable. The terminal path is still there for headless hosts and people who want every command in front of them."
       />
       <div class="paths">
-        <a class="m-card m-card--hover paths__card" href="/getting-started/install/">
-          <span class="m-eyebrow">PATH A &middot; ~30 MIN</span>
-          <h3 class="m-h3">Use an existing dev setup.</h3>
+        <a class="m-card m-card--hover paths__card" href="/download/">
+          <span class="m-eyebrow">PATH A &middot; RECOMMENDED</span>
+          <h3 class="m-h3">Use Alfred Desktop.</h3>
           <ul class="paths__list">
-            <li>GitHub CLI is already authenticated</li>
-            <li>Claude Code first run is complete</li>
-            <li>Homebrew on macOS or apt on Linux</li>
-            <li>Python 3.11+ on PATH</li>
+            <li>Detects an existing Alfred runtime and repo checkout</li>
+            <li>Guides GitHub, Claude Code, Codex, and local server checks</li>
+            <li>Configures the full fleet without hand-editing prompts</li>
+            <li>Lets you pick a roster theme or custom agent names</li>
           </ul>
-          <span class="m-link" style="align-self:start;">Open the fast install →</span>
+          <span class="m-link" style="align-self:start;">Download the app -></span>
         </a>
-        <a class="m-card m-card--hover paths__card" href="/getting-started/ai-assisted-install/">
-          <span class="m-eyebrow">PATH B &middot; ~60 TO 120 MIN</span>
-          <h3 class="m-h3">Set up a fresh machine.</h3>
+        <a class="m-card m-card--hover paths__card" href="/getting-started/install/">
+          <span class="m-eyebrow">PATH B &middot; HEADLESS</span>
+          <h3 class="m-h3">Run the terminal install.</h3>
           <ul class="paths__list">
-            <li>Fresh laptop or dedicated box</li>
-            <li>No GitHub auth, no CLIs installed</li>
-            <li>Guided prompt for Claude Code</li>
-            <li>Every repo and secret is confirmed explicitly</li>
+            <li>Best for Linux servers and scripted setup</li>
+            <li>Installs dependencies and writes the local runtime</li>
+            <li>Can be driven by Claude Code or Codex with the assisted guide</li>
+            <li>Ends with doctor, dry-run, and scheduler checks</li>
           </ul>
-          <span class="m-link" style="align-self:start;">Open the guided install →</span>
+          <span class="m-link" style="align-self:start;">Open terminal guide -></span>
         </a>
       </div>
     </div>
@@ -67,7 +67,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
           "ok    gh auth                  luminik-io",
           "ok    claude code              authed",
           "ok    codex                    authed (optional)",
-          "ok    launchd                  21 agents loaded",
+          "ok    launchd                  full fleet loaded",
           "ok    spend cap                $20/day fleet",
           "",
           "$ alfred dry-run lucius",
@@ -85,14 +85,16 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT YOU END UP WITH"
-        title="One repo, four agents, scheduled on your machine."
-        lede="The default setup gives you four agents to start: Drake, Lucius, Ra's al Ghul, and a cleanup agent. Lucius checks for implementation work every 20 minutes; the other agents follow their own cadences. Add Batman, Bane, and Nightwing when you are ready for them."
+        title="A full engineering team scheduled on your machine."
+        lede="The default setup enables the whole local engineering loop. Drake plans, Batman coordinates cross-repo work, Lucius builds, Ra's al Ghul reviews, Bane adds tests, Nightwing handles high-priority review feedback, and the reliability/reporting agents keep the system inspectable."
       />
       <ol class="checks">
         <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Drake</strong> reads your plans and files small, clear tasks.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Batman</strong> coordinates approved cross-repo rollouts.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Lucius</strong> picks up those tasks and opens pull requests.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--warn">●</span><strong>Ra's al Ghul</strong> reviews pull requests and runs your tests.</li>
-        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Cleanup</strong> tidies up leftover repo copies and branches.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Bane</strong> adds focused coverage where changes need tests.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Nightwing</strong> fixes high-priority review comments on Alfred PRs.</li>
       </ol>
     </div>
   </section>

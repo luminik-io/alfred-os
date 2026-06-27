@@ -62,12 +62,12 @@ npm run tauri dev
 The desktop app reads the same `$ALFRED_HOME` state and GitHub records as the
 CLI. You can keep using Alfred entirely from the terminal when you prefer.
 
-Starter fleet for one repo or an explicit comma-separated repo list:
+Full fleet for one repo or an explicit comma-separated repo list:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos your-org/api,your-org/web \
   --slack-webhook skip
 ```
@@ -76,11 +76,11 @@ This is the zero-guess path for a solo builder or an AI coding tool setting up
 one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has completed, and
 `claude` has completed first-run auth. The repo owner must match `GH_ORG`; the
 runtime agents store the bare repo name in `~/.alfredrc` and build
-`GH_ORG/repo` at firing time. The command enables Drake, Lucius, Ra's al Ghul,
-and agent-cleanup; assigns the selected repo to each repo-operating agent;
-skips Slack safely; seeds prompt templates into `~/.alfred/prompts/`; creates
-standard GitHub labels on the selected repos; writes `launchd/agents.conf`, the
-shared scheduler manifest; updates `~/.alfredrc`; runs deploy; and runs doctor.
+`GH_ORG/repo` at firing time. The command enables the full engineering fleet,
+assigns the selected repo to each repo-operating agent, skips Slack safely,
+seeds prompt templates into `~/.alfred/prompts/`, creates standard GitHub labels
+on the selected repos, writes `launchd/agents.conf`, the shared scheduler
+manifest, updates `~/.alfredrc`, runs deploy, and runs doctor.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
@@ -94,7 +94,7 @@ give it explicit values and guardrails. Use the copy-paste prompt in
 The important rules:
 
 - start with one explicit repo, or one explicit comma-separated repo list
-- use the starter fleet
+- use the full fleet
 - keep Slack skipped unless you paste a webhook
 - do not create AWS profiles during first install
 - pause for browser auth flows
@@ -141,9 +141,8 @@ ALFRED_NONINTERACTIVE=1 \
 
 Per-stage skips: `--skip-brew`, `--skip-npm`.
 
-For `alfred-init.py`, `--agents starter` means Drake, Lucius, Ra's al Ghul, and
-agent-cleanup. Use `--agents all` only when you want every scheduled agent.
-Use `--repos owner/repo` for one repo, or
+For `alfred-init.py`, `--agents all` is the default full engineering roster.
+Use `--agents starter` only for a small lab setup. Use `--repos owner/repo` for one repo, or
 `--repos owner/api,owner/web,owner/mobile` for multi-repo. `owner` must match
 `GH_ORG`.
 

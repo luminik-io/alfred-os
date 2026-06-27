@@ -24,7 +24,7 @@ expect 30 minutes from `git clone` to a green `doctor.sh`:
 - Python 3.11+ available (the runtime uses `tomllib`).
 
 In that case the actual work is small: clone the repo, run
-`./bin/alfred-init.py --non-interactive --agents starter --repos my-org/my-app
+`./bin/alfred-init.py --non-interactive --agents all --repos my-org/my-app
 --slack-webhook skip`, run `bash deploy.sh`, run `bash bin/doctor.sh`.
 
 ## If you are setting up a fresh machine

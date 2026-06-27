@@ -8,9 +8,9 @@ For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTR
 
 **Desktop app, no terminal.** Download the signed Alfred app for macOS or Linux from [alfred.luminik.io/download](https://alfred.luminik.io/download/), open it, and follow the guided Setup tab. It connects GitHub and Claude, helps you pick repos and agents, and starts the local runtime for you, with no terminal commands. This is the simplest path on a single machine.
 
-**Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime only; the desktop app is a separate, optional download, so a command-line install never adds a desktop client you did not ask for. You can still download the app later and point it at the same runtime.
+**Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime only; the desktop app is a recommended local onboarding and control surface that can connect to the same runtime later.
 
-Both paths install the `core` tier: the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The optional desktop `client` and Slack `slack` tiers layer on top of it; see [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
+Both paths install the `core` tier: the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The desktop `client` tier is recommended for local setup and day-two operations; Slack `slack` layers on top for team collaboration. See [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
 
 ## TL;DR
 
@@ -43,13 +43,13 @@ commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
 `alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
 want to work from `main`, edit the framework, or install on Linux.
 
-Starter fleet for one repo or an explicit comma-separated repo list, suitable
+Full fleet for one repo or an explicit comma-separated repo list, suitable
 for an AI coding tool to run end to end:
 
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos your-org/api,your-org/web \
   --slack-webhook skip
 ```
@@ -175,27 +175,26 @@ Run the wizard to choose agents, repos, codenames, Slack settings, and schedules
 ./bin/alfred-init.py
 ```
 
-Pressing Enter at the agent-selection step chooses the recommended starter
-fleet: Drake, Lucius, Ra's al Ghul, and agent-cleanup. Use `all` only when you
-want the full engineering roster. If multiple repos are visible, pick the repo
-numbers explicitly; the wizard no longer silently assigns every repo to every
-agent.
+Pressing Enter at the agent-selection step chooses the full engineering roster.
+Use `starter` only when you deliberately want a small lab setup. If multiple
+repos are visible, pick the repo numbers explicitly; the wizard no longer
+silently assigns every repo to every agent.
 
 `alfred-init.py` now does the boring setup work for you:
 
 - Writes `launchd/agents.conf`, the shared scheduler manifest, and updates
   `~/.alfredrc`.
-- Copies starter prompts from `prompts/` into `~/.alfred/prompts/<codename>.md`
+- Copies prompt templates from `prompts/` into `~/.alfred/prompts/<codename>.md`
   without overwriting your edits.
 - Creates the standard GitHub labels on the selected repos, including
   `agent:implement`, `agent:authored`, lifecycle labels, bug-triage labels, and
   Batman's `agent:large-feature` label.
 - Runs `bash deploy.sh`, then `bash bin/doctor.sh`.
 
-Batman is included in the catalog as the opt-in architect for cross-repo work.
-The default mode posts a bundle plan and stops. `BATMAN_AUTO_EXECUTE=approval-gate`
-files child issues only after configured approval; `BATMAN_AUTO_EXECUTE=1`
-files them immediately for teams that want that level of automation.
+Batman is included in the full fleet as the architect for cross-repo work. The
+default mode posts a bundle plan and stops. `BATMAN_AUTO_EXECUTE=approval-gate`
+files child issues only after configured approval; `BATMAN_AUTO_EXECUTE=1` files
+them immediately for teams that want that level of automation.
 
 **When do I need Batman?**
 
@@ -206,9 +205,8 @@ files them immediately for teams that want that level of automation.
 | 5+ repos with mostly-independent work | Yes for cross-repo features. Batman no-ops on firings that find nothing cross-cutting, so the cost is the firing itself. |
 | Strict approval gates required before any cross-repo work lands | Yes. Batman's `BATMAN_AUTO_EXECUTE=approval-gate` is the cleanest checkpoint pattern Alfred ships. |
 
-Enable Batman during `alfred-init` if any of the above match, or add it later
-with `alfred enable batman`. Adding it later is a no-cost change; it stays
-disabled at the runner gate until you arm it.
+Batman is present in the full-fleet config from the start and stays protected by
+the runner gate until you arm it with `alfred enable batman`.
 
 ### 7. Framework-only deploy + verify
 
@@ -273,7 +271,7 @@ Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/al
 ## Where to go next
 
 - [`BOOTSTRAP.md`](BOOTSTRAP.md): AWS IAM-per-agent, Slack, prompt sync, troubleshooting.
-- [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md): the three install tiers (`core`, optional `client`, optional `slack`). The CLI and fleet are fully standalone; this walkthrough installs `core`.
+- [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md): the three install tiers (`core`, recommended `client`, optional `slack`). The CLI and fleet are fully standalone; this walkthrough installs `core`.
 - [`docs/AI_ASSISTED_INSTALL.md`](docs/AI_ASSISTED_INSTALL.md): assistant-driven setup with Claude Code, Codex, or another local coding assistant.
 - [`docs/WORKSPACE_PATTERNS.md`](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md): Slack app + webhook + (optional) bot token.

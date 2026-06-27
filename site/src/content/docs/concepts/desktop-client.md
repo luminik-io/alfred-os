@@ -1,12 +1,14 @@
 ---
 title: Alfred Desktop
-description: The Tauri Mac/Linux app over alfred serve, with native installers and safe local actions.
+description: The recommended Tauri Mac/Linux app over alfred serve, with native onboarding, installers, and safe local actions.
 ---
 
 Alfred Desktop (`clients/desktop`) is a native Mac/Linux control surface for a
-local install. It is the optional `client` tier of the
-[layered install](/concepts/layered-install/): the core fleet and CLI run fully
-standalone without it.
+local install. It is the recommended `client` tier of the
+[layered install](/concepts/layered-install/): the core fleet and CLI still run
+fully standalone without it, but Setup gives local users the cleanest path
+through install detection, auth, repos, full-fleet setup, roster naming, and
+doctor checks.
 
 Slack stays Alfred's collaboration surface. The desktop app is for local trust
 and repair: what needs attention, which plans are waiting, why a run failed,
@@ -51,7 +53,7 @@ flowchart TB
 | Ask | Plain-language planning intake backed by the same readiness engine as Slack. |
 | Work | Kanban board, saved plans, Slack follow-ups, local draft actions, and issue queue controls. |
 | Agents | Roster, activity feed, latest-run inspector, memory learning queue, and safe per-agent controls. |
-| Setup | Start or reconnect to the local runtime and run fleet/auth/agent/memory/Slack checks in-app. |
+| Setup | Detect or install the local runtime, configure the full fleet, choose roster naming, and run fleet/auth/agent/memory/Slack checks in-app. |
 
 ## Boundary
 

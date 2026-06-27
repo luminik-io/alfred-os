@@ -114,8 +114,9 @@ in depth.
 - **Slack post**: One outbound message Alfred sends to a configured Slack
   channel via webhook or bot token, at info, warn, or alert severity.
   See also: [Slack setup](SLACK_SETUP.md).
-- **starter fleet**: The recommended first roster (Drake, Lucius, Ra's al
-  Ghul, agent-cleanup) the installer enables when you pass `--agents starter`.
+- **starter fleet**: An explicit small lab roster (Drake, Lucius, Ra's al Ghul,
+  agent-cleanup) you can request with `--agents starter`. The default install
+  uses the full engineering fleet.
   See also: [Install](../INSTALL.md).
 - **state machine**: The label transitions on an issue
   (`agent:implement` → `agent:in-flight` → `agent:pr-open` → `agent:done`)

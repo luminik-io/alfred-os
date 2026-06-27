@@ -1,9 +1,12 @@
 ---
 title: Layered install
-description: The core fleet runs standalone and headless. Alfred Desktop and the Slack agent are optional surfaces on top.
+description: Alfred Desktop is the recommended onboarding path. The core fleet still runs standalone and headless when you need a server install.
 ---
 
-Alfred installs in three tiers. Only the first is required. Alfred Desktop and the Slack agent are optional surfaces that talk to the core through local APIs and state files.
+Alfred has three install tiers. The desktop path is recommended for most users
+because it can guide setup, inspect an existing runtime, start the local server,
+and keep repair actions visible. The core tier still runs fully headless for
+servers and automation.
 
 ```mermaid
 flowchart TB
@@ -14,7 +17,7 @@ flowchart TB
         serve["alfred serve<br/>localhost JSON API (127.0.0.1)"]
     end
 
-    subgraph client["client (optional)"]
+    subgraph client["client (recommended)"]
         desktop["Alfred Desktop<br/>clients/desktop"]
     end
 
@@ -58,9 +61,9 @@ It binds to `127.0.0.1` by default. Binding to `0.0.0.0` is allowed but discoura
 
 ## client: the desktop app
 
-Alfred Desktop (Tauri, under `clients/desktop`) is a thin local control surface, not a second runtime. It is for trust and repair: what needs attention now, which plans are waiting, why a run failed, which memory candidates are ready, and which safe action repairs the fleet. Inbox shows the decision queue, Ask holds planning intake, Work manages the queue and shipped board, Agents handles roster/activity/memory, and Setup handles repair checks.
+Alfred Desktop (Tauri, under `clients/desktop`) is a thin local control surface, not a second runtime. It is the recommended human onboarding path for a normal Mac/Linux setup: detect an existing installation, start or connect to `alfred serve`, verify GitHub and engine auth, select repositories, configure the full fleet, choose a roster theme, and run doctor/dry-run checks without asking the user to hand-edit config files. Inbox shows the decision queue, Ask holds planning intake, Work manages the queue and shipped board, Agents handles roster/activity/memory, and Setup handles repair checks.
 
-The client talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port and keeps `$ALFRED_HOME` as the source of truth. You can run Alfred entirely without it.
+The client talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port and keeps `$ALFRED_HOME` as the source of truth. Headless installs can run Alfred entirely without it.
 
 ```sh
 alfred serve --port 7010 --no-browser   # or let Setup start it
@@ -84,8 +87,8 @@ The optional Slack tier is the planning listener plus the issue bridge:
 
 | You want | Install |
 |---|---|
+| Most local users | `core` + `client` |
 | A headless Linux fleet, no UI | `core` only |
-| A Mac with Alfred Desktop | `core` + `client` |
 | Plan-in-Slack workflow | `core` + `slack` (bridge off until you trust it) |
 | Everything | all three |
 

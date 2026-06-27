@@ -30,7 +30,7 @@ Override paths:
     ALFRED_DOCTOR=1               print [ALFRED-INIT-DOCTOR-OK] and exit
     --non-interactive             same as the env var
     --config <path>               read answers from JSON (skip prompts)
-    --agents <comma>              starter, all, or comma-separated codenames
+    --agents <comma>              all/default, starter, or comma-separated codenames
     --repos <comma>               repo selection for non-interactive setup
     --slack-webhook <url|skip>    skip the Slack prompt
 
@@ -520,32 +520,41 @@ def discover_agents(bin_dir: Path) -> list[str]:
 
 
 def starter_roles(available: list[str]) -> list[str]:
-    """Return the recommended cold-start fleet from the discovered runners."""
+    """Return the explicit small starter fleet from the discovered runners."""
     starter = [role for role in STARTER_ROLES if role in available]
     return starter or list(available[:1])
+
+
+def recommended_roles(available: list[str]) -> list[str]:
+    """Return the default full fleet from the discovered runners."""
+    return list(available)
 
 
 def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
     """Resolve --agents into role keys while preserving catalog order.
 
     Accepted values:
-      - starter / recommended
-      - all
+      - all / recommended / default
+      - starter (explicit minimal setup)
       - comma-separated codenames, role keys, or script stems
     """
     value = (raw or "").strip()
     if not value:
-        return starter_roles(available)
+        return recommended_roles(available)
     lowered = value.lower()
-    if lowered in {"starter", "recommended", "default"}:
+    if lowered == "starter":
         return starter_roles(available)
+    if lowered in {"recommended", "default"}:
+        return recommended_roles(available)
     if lowered == "all":
-        return list(available)
+        return recommended_roles(available)
 
     requested = {tok.strip().lower() for tok in value.split(",") if tok.strip()}
     if "all" in requested:
-        return list(available)
-    starter_tokens = {"starter", "recommended", "default"}
+        return recommended_roles(available)
+    if requested & {"recommended", "default"}:
+        return recommended_roles(available)
+    starter_tokens = {"starter"}
     starter_requested = bool(requested & starter_tokens)
     matched: list[str] = starter_roles(available) if starter_requested else []
     for role in available:
@@ -559,6 +568,7 @@ def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
         requested
         - {token for role in matched for token in (role.lower(), AGENT_CATALOG[role][0].lower())}
         - starter_tokens
+        - {"recommended", "default"}
     )
     if unknown:
         warn(f"Ignoring unknown --agents value(s): {', '.join(sorted(unknown))}")
@@ -1090,45 +1100,26 @@ def step_5_pick_agents(
         ok(f"Enabled {len(state.enabled_roles)} agents from --agents.")
         return
     print()
-    print("  Available agents (Enter = recommended starter fleet):")
-    print("    [starter]  shipped fleet defaults")
-    print(
-        "    (opt-in)   shipped but disabled by default; needs `alfred enable <codename>` to fire"
-    )
+    print("  Available agents (Enter = full fleet):")
+    print("    [full]     enabled by the default full-fleet setup")
+    print("    [starter]  explicit small setup for lab installs only")
+    print("    (gated)    selected by full fleet, but still protected by a runner gate")
     starter = set(starter_roles(available))
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
-        marker = "[starter]" if role in starter else "         "
-        suffix = " (opt-in)" if role in OPT_IN_ROLES else ""
+        marker = "[starter]" if role in starter else "[full]   "
+        suffix = " (gated)" if role in OPT_IN_ROLES else ""
         print(f"    {marker} {codename:<20s}{suffix:<10s} {desc}")
     print()
     if non_interactive:
-        state.enabled_roles = starter_roles(available)
-        ok(f"Enabled recommended starter fleet ({len(state.enabled_roles)} agents).")
+        state.enabled_roles = recommended_roles(available)
+        ok(f"Enabled full fleet ({len(state.enabled_roles)} agents).")
         return
-    raw = ask("Choose agents: Enter for starter, 'all', or comma-separated codenames", "")
-    state.enabled_roles = roles_from_agents_arg(raw or "starter", available)
+    raw = ask("Choose agents: Enter for full fleet, 'starter', or comma-separated codenames", "")
+    state.enabled_roles = roles_from_agents_arg(raw or "all", available)
     if not state.enabled_roles:
-        warn("Nothing matched. Using the recommended starter fleet.")
-        state.enabled_roles = starter_roles(available)
-    # Multi-repo fleets benefit from Batman (cross-repo `agent:large-feature`
-    # architect with a Slack approval gate). If the operator landed on a 2+-repo
-    # org and didn't pick Batman, surface it once as a yes/no question rather
-    # than letting the agent stay hidden behind the docs (issue #104).
-    if (
-        "cross_repo_coordinator" not in state.enabled_roles
-        and "cross_repo_coordinator" in available
-        and len(state.repos) >= 2
-    ):
-        print()
-        note(
-            f"Your org has {len(state.repos)} visible repos. Batman is the cross-repo "
-            "architect (single `agent:large-feature` issue fans out into coordinated PRs "
-            "across repos, gated by a Slack approval reaction)."
-        )
-        if ask_yes_no("Add Batman to this fleet?", default=False):
-            state.enabled_roles.append("cross_repo_coordinator")
-            ok("Batman added. Remember: `alfred enable batman` after install to arm it.")
+        warn("Nothing matched. Using the full fleet.")
+        state.enabled_roles = recommended_roles(available)
     ok(f"{len(state.enabled_roles)} agents enabled.")
 
 
