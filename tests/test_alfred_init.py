@@ -310,6 +310,40 @@ def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
     assert "ALFRED_BATMAN_REPOS" not in out
 
 
+def test_env_assignments_wires_repo_scoped_utility_agents(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=(
+            "feature_dev",
+            "automerge",
+            "morning_brief",
+            "shipped_summary_daily",
+            "shipped_summary_weekly",
+            "agent_cleanup",
+            "code_map_refresh",
+        ),
+        repos={
+            "automerge": ["acme/api", "acme/web"],
+            "morning_brief": ["acme/api", "acme/web"],
+            "shipped_summary_daily": ["acme/api", "acme/web"],
+            "shipped_summary_weekly": ["acme/api", "acme/web"],
+            "agent_cleanup": ["acme/api", "acme/web"],
+            "code_map_refresh": ["acme/api", "acme/web"],
+        },
+    )
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTOMERGE_REPOS"] == "api,web"
+    assert out["ALFRED_MORNING_BRIEF_REPOS"] == "api,web"
+    assert out["ALFRED_MORNING_BRIEF_AGENTS"] == "lucius,automerge,agent-cleanup,code-map-refresh"
+    assert out["ALFRED_SHIPPED_SUMMARY_REPOS"] == "api,web"
+    assert out["ALFRED_CLAIM_SWEEP_REPOS"] == "api,web"
+    assert out["ALFRED_CODE_MAP_REPOS"] == "api,web"
+    assert "ALFRED_CODE_MAP_REFRESH_REPOS" not in out
+
+
 def test_env_assignments_slack_env(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, slack_url="https://hooks.slack.com/services/X/Y/Z")
     state.slack_storage = "env"

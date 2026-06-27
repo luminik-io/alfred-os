@@ -169,6 +169,21 @@ CONFIG_GATED_ROLE_ENVS = {
     "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),
     "ops_morning": ("ALFRED_GORDON_ECS_CLUSTER",),
 }
+ROLE_REPO_ENV_KEYS = {
+    "agent_cleanup": ("ALFRED_CLAIM_SWEEP_REPOS",),
+    "automerge": ("ALFRED_AUTOMERGE_REPOS",),
+    "code_map_refresh": ("ALFRED_CODE_MAP_REPOS",),
+    "morning_brief": ("ALFRED_MORNING_BRIEF_REPOS",),
+    "shipped_summary_daily": ("ALFRED_SHIPPED_SUMMARY_REPOS",),
+    "shipped_summary_weekly": ("ALFRED_SHIPPED_SUMMARY_REPOS",),
+}
+MORNING_BRIEF_EXCLUDED_ROLES = {
+    "morning_brief",
+    "fleet_recap_morning",
+    "fleet_recap_evening",
+    "shipped_summary_daily",
+    "shipped_summary_weekly",
+}
 
 # The only strings that count as an explicit opt-in for a privacy-sensitive
 # consent flag. Anything else (including "false", "0", "no", "", or any other
@@ -617,6 +632,20 @@ def selected_repo_union(state: WizardState) -> list[str]:
     return out
 
 
+def role_uses_repos(role: str) -> bool:
+    """True when setup should collect repos for a role."""
+    return AGENT_CATALOG[role][2] or role in ROLE_REPO_ENV_KEYS
+
+
+def morning_brief_agents(state: WizardState) -> list[str]:
+    """Default codenames included in the scheduled morning brief."""
+    return [
+        state.codename_for(role)
+        for role in state.enabled_roles
+        if role not in MORNING_BRIEF_EXCLUDED_ROLES
+    ]
+
+
 def seed_prompt_templates(state: WizardState) -> list[Path]:
     """Copy starter prompt templates into ALFRED_HOME for enabled agents.
 
@@ -761,8 +790,15 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             if role == "cross_repo_coordinator":
                 out["BATMAN_SCAN_REPOS"] = ",".join(runtime_repos)
                 out["BATMAN_ROLLOUT_ORDER"] = ",".join(runtime_repos)
+            elif role in ROLE_REPO_ENV_KEYS:
+                for env_key in ROLE_REPO_ENV_KEYS[role]:
+                    out[env_key] = ",".join(runtime_repos)
             else:
                 out[f"ALFRED_{default_slug}_REPOS"] = ",".join(runtime_repos)
+        if role == "morning_brief":
+            agents = morning_brief_agents(state)
+            if agents:
+                out["ALFRED_MORNING_BRIEF_AGENTS"] = ",".join(agents)
         for k, v in state.role_to_extras.get(role, {}).items():
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
@@ -1195,7 +1231,7 @@ def step_7_repos(
     state: WizardState, *, repos_arg: str | None = None, non_interactive: bool
 ) -> None:
     step("Per-agent repos")
-    repo_roles = [r for r in state.enabled_roles if AGENT_CATALOG[r][2]]
+    repo_roles = [r for r in state.enabled_roles if role_uses_repos(r)]
     if not repo_roles:
         ok("No repo-operating agents enabled; skipping.")
         return
