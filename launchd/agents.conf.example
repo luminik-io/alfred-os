@@ -73,8 +73,9 @@
 # when a firing already hit the disk floor and fires --emergency. To reclaim
 # that regenerable host build output proactively on the daily pass, set
 # ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 in ~/.alfredrc (equivalent to passing
-# --scheduled). Normal age gates and retention floors stay unchanged. An
-# explicit second cleanup row (e.g. a midday reclaim) is optional:
+# --scheduled). The normal age gates and retention floors for the other
+# cleanup categories stay unchanged; the dev-cache reclaim itself is wholesale.
+# An explicit second cleanup row (e.g. a midday reclaim) is optional:
 #   my.fleet.cleanup	agent-cleanup.py	cron:3:00	no		Daily cleanup + reclaim
 #   my.fleet.cleanup-noon	agent-cleanup.py	cron:13:00	no	my.fleet.cleanup	Midday disk reclaim
 
