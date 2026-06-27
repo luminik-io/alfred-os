@@ -564,3 +564,38 @@ def test_ams_reset_limit_caps_total_attempts(monkeypatch, capsys) -> None:
     assert payload["deleted"] == 2
     assert payload["attempted"] == 2
     assert payload["limit"] == 2
+
+
+def test_ams_reset_repeated_pages_do_not_consume_limit(monkeypatch, capsys) -> None:
+    """Repeated already-attempted ids should stall, not burn the limit."""
+    mod = _load_alfred_brain()
+
+    class FakeRedisProvider:
+        namespace = "alfred"
+        base_url = "http://memory.local"
+
+        def __init__(self) -> None:
+            self.list_limits: list[int] = []
+            self.deleted: list[str] = []
+
+        def list_lessons(self, *, limit: int):
+            self.list_limits.append(limit)
+            return [SimpleNamespace(id="m0"), SimpleNamespace(id="m1")]
+
+        def forget_lesson(self, lesson_id: str) -> bool:
+            self.deleted.append(lesson_id)
+            return True
+
+    provider = FakeRedisProvider()
+    monkeypatch.setattr(mod, "_build_redis_provider", lambda: provider)
+
+    rc = mod.cmd_ams_reset(argparse.Namespace(yes=True, limit=3, json=True))
+
+    assert rc == 1
+    assert provider.list_limits == [3, 1]
+    assert provider.deleted == ["m0", "m1"]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["deleted"] == 2
+    assert payload["attempted"] == 2
+    assert payload["limit"] == 3
+    assert payload["stalled"] is True

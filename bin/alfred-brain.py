@@ -743,7 +743,9 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
     total_limit = max(0, int(args.limit))
     deleted = 0
     attempted = 0
+    seen: set[str] = set()
     failed: set[str] = set()
+    stalled = False
     passes = 0
     # Safety ceiling far above any real namespace, so an AMS that keeps
     # returning the same undeletable page can never spin forever.
@@ -760,13 +762,17 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
             )
             return 1
         # Only act on lessons we have not already failed to delete; when a page
-        # has nothing new, the namespace is empty or only undeletable lessons
-        # remain, so stop.
+        # has nothing new, the namespace is empty or AMS returned only IDs this
+        # run already attempted. The latter is a stale-page stall, not success.
         remaining = total_limit - attempted
-        pending = [lesson for lesson in lessons if lesson.id not in failed][:remaining]
+        pending = [
+            lesson for lesson in lessons if lesson.id not in failed and lesson.id not in seen
+        ][:remaining]
         if not pending:
+            stalled = bool(lessons)
             break
         for lesson in pending:
+            seen.add(lesson.id)
             attempted += 1
             if provider.forget_lesson(lesson.id):
                 deleted += 1
@@ -781,6 +787,7 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
         "limit": total_limit,
         "failed": failed_ids,
         "passes": passes,
+        "stalled": stalled,
     }
     if args.json:
         print(json.dumps(payload, indent=2))
@@ -791,7 +798,12 @@ def cmd_ams_reset(args: argparse.Namespace) -> int:
         )
         if failed_ids:
             print(f"  failed to delete: {', '.join(failed_ids)}", file=sys.stderr)
-    return 1 if failed else 0
+        if stalled:
+            print(
+                "  stopped: AMS returned only lessons this reset already attempted",
+                file=sys.stderr,
+            )
+    return 1 if failed or stalled else 0
 
 
 def cmd_forget(args: argparse.Namespace) -> int:
