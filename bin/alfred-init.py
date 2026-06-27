@@ -203,6 +203,7 @@ MORNING_BRIEF_EXCLUDED_ROLES = {
     "shipped_summary_daily",
     "shipped_summary_weekly",
 }
+MEMORY_AUTO_PROMOTE_CONTROL_ENVS = ("ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_KILL")
 
 # The only strings that count as an explicit opt-in for a privacy-sensitive
 # consent flag. Anything else (including "false", "0", "no", "", or any other
@@ -858,6 +859,8 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
             out[f"ALFRED_{default_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
+    if "memory_auto_promote" in state.enabled_roles:
+        out.update(memory_auto_promote_control_assignments(state))
     # Anonymous proof-telemetry is opt-out. New installs use Alfred's hosted
     # collector by default; a "no" answer writes ALFRED_TELEMETRY_ENABLED=0 so
     # the opt-out is explicit.
@@ -871,6 +874,17 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
     elif not state.telemetry_enabled:
         out["ALFRED_TELEMETRY_ENABLED"] = "0"
     return out
+
+
+def memory_auto_promote_control_assignments(state: WizardState) -> dict[str, str]:
+    """Preserve persisted stop controls for scheduled memory auto-promotion."""
+    values: dict[str, str] = {}
+    for source in (state.alfred_home / ".env", state.alfredrc):
+        with contextlib.suppress(OSError):
+            for key, value in read_alfredrc(source).items():
+                if key in MEMORY_AUTO_PROMOTE_CONTROL_ENVS and value.strip():
+                    values[key] = value.strip()
+    return values
 
 
 # ---------------------------------------------------------------------------

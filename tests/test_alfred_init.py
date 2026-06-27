@@ -534,6 +534,37 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
     assert out["ALFRED_HUNTRESS_AWS_PROFILE"] == "acme-cron"
 
 
+def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_AUTO_PROMOTE=0",
+                "ALFRED_AUTO_PROMOTE_KILL=1",
+                "",
+            ]
+        )
+    )
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+
+
+def test_env_assignments_use_alfredrc_stop_control_over_runtime_env(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE=0\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+
+
 # ---------------------------------------------------------------------------
 # telemetry endpoint / opt-out behavior
 # ---------------------------------------------------------------------------
