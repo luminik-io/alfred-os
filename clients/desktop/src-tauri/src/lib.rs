@@ -435,7 +435,9 @@ fn load_config_file(
         if !is_valid_env_key(key) {
             continue;
         }
-        let clean = decode_config_value(value.trim(), home).trim().to_string();
+        let clean = decode_config_value(strip_inline_comment(value.trim()), home)
+            .trim()
+            .to_string();
         if overrides_with_stop_control(key, &clean) {
             env.insert(key.to_string(), clean);
             continue;
@@ -462,6 +464,39 @@ fn is_valid_env_key(key: &str) -> bool {
     }
     key.chars()
         .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn strip_inline_comment(value: &str) -> &str {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (index, ch) in value.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && quote != Some('\'') {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        if ch == '\'' || ch == '"' {
+            quote = Some(ch);
+            continue;
+        }
+        let previous_is_space = value[..index]
+            .chars()
+            .next_back()
+            .map_or(true, |previous| previous.is_whitespace());
+        if ch == '#' && previous_is_space {
+            return value[..index].trim_end();
+        }
+    }
+    value
 }
 
 fn preserves_stop_control(key: &str, value: &str) -> bool {
@@ -2159,7 +2194,7 @@ mod tests {
         std::fs::write(
             home.join(".alfredrc"),
             format!(
-                "ALFRED_HOME='{}'\nALFRED_BIN='{}'\nGH_BIN=/stale/bin/gh\n",
+                "ALFRED_HOME='{}'\nALFRED_BIN='{}'\nGH_BIN=/stale/bin/gh # stale\n",
                 stale_runtime.to_string_lossy(),
                 stale_bin.to_string_lossy()
             ),
@@ -2194,6 +2229,63 @@ mod tests {
         restore_var("ALFRED_BIN", prev_alfred_bin);
         restore_var("GH_BIN", prev_gh);
         restore_var("ALFRED_GH_BIN", prev_alfred_gh);
+    }
+
+    #[test]
+    fn config_parser_preserves_quoted_hashes_when_stripping_comments() {
+        assert_eq!(
+            strip_inline_comment("\"value # literal\" # comment"),
+            "\"value # literal\""
+        );
+        assert_eq!(
+            strip_inline_comment("'value # literal' # comment"),
+            "'value # literal'"
+        );
+        assert_eq!(
+            decode_config_value(strip_inline_comment("\"value # literal\" # comment"), None),
+            "value # literal"
+        );
+        assert_eq!(
+            decode_config_value(strip_inline_comment("'value # literal' # comment"), None),
+            "value # literal"
+        );
+        assert_eq!(
+            decode_config_value(strip_inline_comment("prefix#literal # comment"), None),
+            "prefix#literal"
+        );
+    }
+
+    #[test]
+    fn native_subprocess_env_strips_inline_comments_before_stop_controls() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
+        let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
+
+        let root = temp_root("alfred-stop-control-comments");
+        let home = root.join("home");
+        fs::create_dir_all(&home).expect("create temp home");
+        std::fs::write(
+            home.join(".alfredrc"),
+            "ALFRED_AUTO_PROMOTE=0 # opted out\nALFRED_AUTO_PROMOTE_KILL=1 # halt now\n",
+        )
+        .expect("write temp alfredrc");
+
+        std::env::set_var("HOME", &home);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE_KILL");
+
+        let env = merged_alfred_env();
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"1".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
+        restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
     }
 
     #[test]
