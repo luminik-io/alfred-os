@@ -453,15 +453,24 @@ class RedisAgentMemoryProvider:
         }
         response = self._request("POST", "/v1/long-term-memory/search", payload)
         # user_id=None so post-parse filtering does not narrow the page back to
-        # one user: a reset enumerates the whole namespace.
-        return _parse_search_response(
-            response,
-            codename=None,
-            repo=None,
-            namespace=self.namespace,
-            user_id=None,
-            required_topics=None,
-        )
+        # one user: a reset enumerates the whole namespace. Namespace matching is
+        # strict here because the caller deletes every returned id; semantic AMS
+        # search can relax filters when strict matches are empty.
+        out: list[Lesson] = []
+        for entry in _response_entries(response):
+            if not _entry_scope_matches_explicit(entry, "namespace", self.namespace):
+                continue
+            lesson = _entry_to_lesson(
+                entry,
+                codename=None,
+                repo=None,
+                namespace=self.namespace,
+                user_id=None,
+                required_topics=[],
+            )
+            if lesson is not None:
+                out.append(lesson)
+        return out
 
     def forget_lesson(self, lesson_id: str) -> bool:
         """Remove one lesson from Redis AMS by its deterministic memory id.
@@ -518,7 +527,9 @@ class RedisAgentMemoryProvider:
                 except _AmsHttpError as exc:
                     if not _is_transient_status(exc.status):
                         # FATAL (auth / bad request): surface immediately. A fatal
-                        # fault does not feed the transient breaker streak.
+                        # response proves the endpoint answered, so it resets the
+                        # transient breaker streak before surfacing to the caller.
+                        self._breaker.record_success()
                         raise
                     if attempt >= retries:
                         # Count ONE breaker failure per logical request, only once
@@ -760,6 +771,28 @@ def _record_scope_matches(
         raw = metadata.get(key)
     if raw is None:
         return True
+    return str(raw).strip() == expected
+
+
+def _entry_scope_matches_explicit(entry: Any, key: str, expected: str | None) -> bool:
+    """Strict scope check for destructive operations.
+
+    Normal recall accepts legacy records that predate explicit namespace/user
+    metadata. Destructive commands need a stronger bar: if a record does not
+    explicitly say it belongs to the scope, Alfred must not delete it.
+    """
+    if not expected or not isinstance(entry, dict):
+        return bool(expected is None)
+    record = entry.get("memory") or entry.get("record") or entry
+    if not isinstance(record, dict):
+        return False
+    raw_metadata = record.get("metadata")
+    metadata: Mapping[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    raw = record.get(key)
+    if raw is None:
+        raw = metadata.get(key)
+    if raw is None:
+        return False
     return str(raw).strip() == expected
 
 

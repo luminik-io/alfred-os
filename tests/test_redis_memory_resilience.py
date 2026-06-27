@@ -323,9 +323,42 @@ def test_half_open_fatal_response_releases_trial() -> None:
         prov._request("GET", "/v1/health", None)
     assert fatal.value.status == 401
     assert prov._breaker._trial_in_flight is False
+    assert prov._breaker.opened_at is None
 
     result = prov._request("GET", "/v1/health", None)
     assert result == {"ok": True}
+    assert prov._breaker.opened_at is None
+
+
+def test_fatal_response_resets_transient_streak() -> None:
+    """A fatal 4xx must break the consecutive transient-failure streak."""
+    outcomes = iter(
+        [
+            _AmsHttpError(503, "down"),
+            _AmsHttpError(401, "unauthorized"),
+            _AmsHttpError(503, "down again"),
+        ]
+    )
+
+    def transport(method, url, payload, headers, timeout):
+        raise next(outcomes)
+
+    prov = _provider(transport, max_retries=0, breaker_threshold=2)
+    with pytest.raises(_AmsHttpError) as first:
+        prov._request("GET", "/v1/health", None)
+    assert first.value.status == 503
+    assert prov._breaker.consecutive == 1
+
+    with pytest.raises(_AmsHttpError) as fatal:
+        prov._request("GET", "/v1/health", None)
+    assert fatal.value.status == 401
+    assert prov._breaker.consecutive == 0
+    assert prov._breaker.opened_at is None
+
+    with pytest.raises(_AmsHttpError) as second:
+        prov._request("GET", "/v1/health", None)
+    assert second.value.status == 503
+    assert prov._breaker.consecutive == 1
     assert prov._breaker.opened_at is None
 
 
@@ -427,8 +460,18 @@ def test_list_lessons_and_forget_lesson() -> None:
             seen_payloads.append(payload)
             return {
                 "memories": [
-                    {"id": "m1", "text": "lesson one", "topics": ["alfred"]},
-                    {"id": "m2", "text": "lesson two", "topics": ["alfred"]},
+                    {
+                        "id": "m1",
+                        "text": "lesson one",
+                        "topics": ["alfred"],
+                        "namespace": "alfred",
+                    },
+                    {
+                        "id": "m2",
+                        "text": "lesson two",
+                        "topics": ["alfred"],
+                        "namespace": "alfred",
+                    },
                 ]
             }
         if method == "DELETE":
@@ -444,6 +487,31 @@ def test_list_lessons_and_forget_lesson() -> None:
         assert prov.forget_lesson(lesson.id) is True
     assert len(deleted) == 2
     assert all("memory_ids=" in url for url in deleted)
+
+
+def test_list_lessons_requires_explicit_namespace_for_reset() -> None:
+    """Destructive reset must not delete relaxed or unscoped search results."""
+
+    def transport(method, url, payload, headers, timeout):
+        assert payload["namespace"] == {"eq": "alfred"}
+        return {
+            "memories": [
+                {"id": "m1", "text": "in scope", "namespace": "alfred"},
+                {"id": "m2", "text": "wrong scope", "namespace": "other"},
+                {"id": "m3", "text": "legacy unscoped"},
+                {
+                    "memory": {
+                        "id": "m4",
+                        "text": "metadata scope",
+                        "metadata": {"namespace": "alfred"},
+                    }
+                },
+            ]
+        }
+
+    prov = _provider(transport)
+    lessons = prov.list_lessons(limit=50)
+    assert [lesson.id for lesson in lessons] == ["m1", "m4"]
 
 
 def test_forget_lesson_swallows_transport_error() -> None:
