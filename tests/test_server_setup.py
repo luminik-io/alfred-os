@@ -134,7 +134,7 @@ def test_install_inventory_does_not_mix_stale_agents_conf_from_default_home(
     assert inventory["scheduled_runs"] == 0
 
 
-def test_bootstrap_status_uses_launcher_home_for_repo_selection(
+def test_bootstrap_status_does_not_treat_queue_only_scope_as_ready(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -166,9 +166,50 @@ def test_bootstrap_status_uses_launcher_home_for_repo_selection(
 
     status = setup_mod.bootstrap_status()
 
+    assert setup_mod.selected_repos() == ["acme/api"]
+    assert status["repos"]["selected"] == []
+    assert status["repos"]["count"] == 0
+    assert status["install"]["selected_repos_env_present"] is True
+    by_key = {item["key"]: item for item in status["install"]["items"]}
+    assert by_key["repos"]["ok"] is False
+    assert "Queue-only repo scope found" in by_key["repos"]["detail"]
+    assert status["ready"] is False
+
+
+def test_bootstrap_status_uses_launcher_home_for_board_repo_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_SHIPPED_REPOS=Acme/API\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda: [{"name": "codex", "installed": True, "path": "/bin/codex"}],
+    )
+    monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+    status = setup_mod.bootstrap_status()
+
     assert status["repos"]["selected"] == ["acme/api"]
     assert status["repos"]["count"] == 1
-    assert status["install"]["selected_repos_env_present"] is True
     by_key = {item["key"]: item for item in status["install"]["items"]}
     assert by_key["repos"]["ok"] is True
     assert status["ready"] is True

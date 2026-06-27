@@ -45,6 +45,7 @@ QUEUE_REPOS_ENV = "ALFRED_QUEUE_REPOS"
 SHIPPED_REPOS_ENV = "ALFRED_SHIPPED_REPOS"
 BRIDGE_REPOS_ENV = "ALFRED_BRIDGE_REPOS"
 _REPO_ENV_KEYS = (QUEUE_REPOS_ENV, SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
+_BOARD_REPO_ENV_KEYS = (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -214,6 +215,18 @@ def selected_repos(env: dict[str, str] | None = None) -> list[str]:
     return sorted(_allowed_queue_repos())
 
 
+def setup_board_repos(env: dict[str, str] | None = None) -> list[str]:
+    """Repos that make the setup board usable.
+
+    Queue-only scope is enough for hold/queue/done mutations, but the Home board
+    scans ``ALFRED_SHIPPED_REPOS`` / ``ALFRED_BRIDGE_REPOS``. Setup readiness
+    must therefore key off the board-visible repo knobs, not the broader queue
+    allowlist.
+    """
+    resolved = env or _setup_launcher_env()
+    return sorted(_repos_from_env(resolved, _BOARD_REPO_ENV_KEYS))
+
+
 # --------------------------------------------------------------------------- #
 # .env writer
 # --------------------------------------------------------------------------- #
@@ -237,9 +250,12 @@ def _format_repo_value(repos: list[str]) -> str:
     return ",".join(repos)
 
 
-def _repos_from_env(env: dict[str, str]) -> set[str]:
+def _repos_from_env(
+    env: dict[str, str],
+    keys: tuple[str, ...] = _REPO_ENV_KEYS,
+) -> set[str]:
     repos: set[str] = set()
-    for key in _REPO_ENV_KEYS:
+    for key in keys:
         raw = _code_memory_config(env, key)
         repos.update(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
     return repos
@@ -1053,7 +1069,8 @@ def bootstrap_status() -> dict[str, Any]:
     """
     gh = gh_auth_status()
     engines = engine_clis()
-    repos = selected_repos()
+    launcher_env = _setup_launcher_env()
+    repos = setup_board_repos(launcher_env)
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status()
     capability_plane = capability_status(code_memory)
@@ -1090,8 +1107,9 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
     token_path = home / "state" / "server-token"
     conf_path = _install_agents_conf_path(home)
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
-    selected = repos if repos is not None else selected_repos()
+    selected = repos if repos is not None else setup_board_repos(launcher_env)
     selected_env_present = any(_has_config_value(launcher_env, key) for key in _REPO_ENV_KEYS)
+    board_env_present = any(_has_config_value(launcher_env, key) for key in _BOARD_REPO_ENV_KEYS)
     slack_configured = any(_has_config_value(launcher_env, key) for key in _SLACK_CONFIG_KEYS)
     memory_overridden = any(_has_config_value(launcher_env, key) for key in _MEMORY_CONFIG_KEYS)
     memory_detail = (
@@ -1132,9 +1150,13 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
             "Repository scope",
             bool(selected),
             (
-                f"{len(selected)} selected repos in {', '.join(_REPO_ENV_KEYS)}"
+                f"{len(selected)} board-visible repos in {', '.join(_BOARD_REPO_ENV_KEYS)}"
                 if selected
-                else "No repositories selected yet"
+                else (
+                    "Queue-only repo scope found; save repositories to wire the board."
+                    if selected_env_present and not board_env_present
+                    else "No repositories selected yet"
+                )
             ),
             env_path if selected_env_present else None,
         ),
