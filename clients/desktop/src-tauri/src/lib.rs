@@ -391,7 +391,7 @@ fn merged_alfred_env() -> HashMap<String, String> {
     let mut env: HashMap<String, String> = std::env::vars().collect();
     let home = home_dir();
     if let Some(home) = home.as_deref() {
-        load_config_file(&mut env, &home.join(".alfredrc"), false, Some(home));
+        load_config_file(&mut env, &home.join(".alfredrc"), true, Some(home));
     }
 
     let runtime_home = env
@@ -2134,6 +2134,66 @@ mod tests {
         restore_var("HOME", prev_home);
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("ALFRED_BIN", prev_alfred_bin);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_explicit_overrides_over_alfredrc() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfred_bin = std::env::var("ALFRED_BIN").ok();
+        let prev_gh = std::env::var("GH_BIN").ok();
+        let prev_alfred_gh = std::env::var("ALFRED_GH_BIN").ok();
+
+        let root = temp_root("alfred-explicit-env-overrides");
+        let home = root.join("home");
+        let stale_runtime = root.join("stale-runtime");
+        let explicit_runtime = root.join("explicit-runtime");
+        let stale_bin = root.join("stale").join("alfred");
+        let explicit_bin = root.join("explicit").join("alfred");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&stale_runtime).expect("create stale runtime");
+        fs::create_dir_all(&explicit_runtime).expect("create explicit runtime");
+        touch(&stale_bin);
+        touch(&explicit_bin);
+        std::fs::write(
+            home.join(".alfredrc"),
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_BIN='{}'\nGH_BIN=/stale/bin/gh\n",
+                stale_runtime.to_string_lossy(),
+                stale_bin.to_string_lossy()
+            ),
+        )
+        .expect("write temp alfredrc");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &explicit_runtime);
+        std::env::set_var("ALFRED_BIN", &explicit_bin);
+        std::env::set_var("GH_BIN", "/explicit/bin/gh");
+        std::env::remove_var("ALFRED_GH_BIN");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_HOME"),
+            Some(&explicit_runtime.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_BIN"),
+            Some(&explicit_bin.to_string_lossy().to_string())
+        );
+        assert_eq!(env.get("GH_BIN"), Some(&"/explicit/bin/gh".to_string()));
+        assert_eq!(
+            resolve_program("alfred"),
+            explicit_bin.to_string_lossy().into_owned()
+        );
+        assert_eq!(resolve_gh_bin(), "/explicit/bin/gh");
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_BIN", prev_alfred_bin);
+        restore_var("GH_BIN", prev_gh);
+        restore_var("ALFRED_GH_BIN", prev_alfred_gh);
     }
 
     #[test]
