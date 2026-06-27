@@ -571,6 +571,22 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
         path.chmod(0o600)
 
 
+def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[str, str]) -> int:
+    """Mirror emergency memory stop controls into the rc scheduled jobs source."""
+    launch_rc = Path.home() / ".alfredrc"
+    if launch_rc == state.alfredrc:
+        return 0
+    controls = {
+        key: value
+        for key, value in env_kvs.items()
+        if key in MEMORY_AUTO_PROMOTE_CONTROL_ENVS and value.strip()
+    }
+    if not controls:
+        return 0
+    upsert_alfredrc(launch_rc, controls)
+    return len(controls)
+
+
 # ---------------------------------------------------------------------------
 # Agent discovery - scan bin/*.py for known role runners.
 # ---------------------------------------------------------------------------
@@ -1505,6 +1521,9 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     env_kvs = env_assignments_for(state)
     upsert_alfredrc(state.alfredrc, env_kvs)
     ok(f"updated {state.alfredrc} with {len(env_kvs)} keys")
+    mirrored = mirror_memory_stop_controls_to_launch_rc(state, env_kvs)
+    if mirrored:
+        ok(f"mirrored {mirrored} memory stop-control key(s) into {Path.home() / '.alfredrc'}")
     created_prompts = seed_prompt_templates(state)
     if created_prompts:
         ok(

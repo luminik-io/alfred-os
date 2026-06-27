@@ -912,6 +912,48 @@ def test_upsert_alfredrc_quotes_shell_metacharacters(tmp_path, init_mod):
     assert not marker.exists()
 
 
+def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
+    monkeypatch, tmp_path, init_mod
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfredrc = tmp_path / "custom.alfredrc"
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {
+            "ALFRED_AUTO_PROMOTE": "0",
+            "ALFRED_AUTO_PROMOTE_KILL": "1",
+            "GH_ORG": "acme",
+        },
+    )
+
+    launch_rc = home / ".alfredrc"
+    assert mirrored == 2
+    parsed = init_mod.read_alfredrc(launch_rc)
+    assert parsed["ALFRED_AUTO_PROMOTE"] == "0"
+    assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert "GH_ORG" not in parsed
+
+
+def test_mirror_memory_stop_controls_skips_default_alfredrc(monkeypatch, tmp_path, init_mod):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfredrc = home / ".alfredrc"
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {"ALFRED_AUTO_PROMOTE": "0"},
+    )
+
+    assert mirrored == 0
+    assert not (home / ".alfredrc").exists()
+
+
 # ---------------------------------------------------------------------------
 # _resolve_repo_selection
 # ---------------------------------------------------------------------------
