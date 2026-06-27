@@ -178,6 +178,11 @@ class _BreakerState:
             if self.consecutive >= self.threshold and self.opened_at is None:
                 self.opened_at = self.clock()
 
+    def clear_trial(self) -> None:
+        """Release a granted half-open trial without changing breaker counters."""
+        with self._lock:
+            self._trial_in_flight = False
+
 
 @dataclass
 class RedisAgentMemoryProvider:
@@ -504,35 +509,39 @@ class RedisAgentMemoryProvider:
         # fresh cooldown. A closed breaker uses the full retry budget.
         retries = 0 if decision == "half_open" else self.max_retries
         attempt = 0
-        while True:
-            try:
-                result = self._call_transport(method, url, payload, headers)
-            except _AmsHttpError as exc:
-                if not _is_transient_status(exc.status):
-                    # FATAL (auth / bad request): surface immediately. A fatal
-                    # fault does not feed the transient breaker streak.
-                    raise
-                if attempt >= retries:
-                    # Count ONE breaker failure per logical request, only once
-                    # the retry budget is spent, so a single flaky call cannot
-                    # trip the breaker by itself across its retries.
-                    self._breaker.record_failure()
-                    raise
-                delay = compute_backoff_delay(attempt + 1)
-                _LOG.debug(
-                    "memory.redis: transient %s on %s %s, retry %d/%d in %.2fs",
-                    exc.status,
-                    method,
-                    path,
-                    attempt + 1,
-                    self.max_retries,
-                    delay,
-                )
-                self.sleep(delay)
-                attempt += 1
-                continue
-            self._breaker.record_success()
-            return result
+        try:
+            while True:
+                try:
+                    result = self._call_transport(method, url, payload, headers)
+                except _AmsHttpError as exc:
+                    if not _is_transient_status(exc.status):
+                        # FATAL (auth / bad request): surface immediately. A fatal
+                        # fault does not feed the transient breaker streak.
+                        raise
+                    if attempt >= retries:
+                        # Count ONE breaker failure per logical request, only once
+                        # the retry budget is spent, so a single flaky call cannot
+                        # trip the breaker by itself across its retries.
+                        self._breaker.record_failure()
+                        raise
+                    delay = compute_backoff_delay(attempt + 1)
+                    _LOG.debug(
+                        "memory.redis: transient %s on %s %s, retry %d/%d in %.2fs",
+                        exc.status,
+                        method,
+                        path,
+                        attempt + 1,
+                        self.max_retries,
+                        delay,
+                    )
+                    self.sleep(delay)
+                    attempt += 1
+                    continue
+                self._breaker.record_success()
+                return result
+        finally:
+            if decision == "half_open":
+                self._breaker.clear_trial()
 
     def _call_transport(
         self,

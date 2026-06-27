@@ -273,6 +273,47 @@ def test_half_open_trial_makes_a_single_attempt() -> None:
     assert calls["n"] - before == 1
 
 
+def test_half_open_fatal_response_releases_trial() -> None:
+    """A fatal response during a half-open trial must not leave the trial stuck.
+
+    Fatal 4xx statuses still surface immediately and do not count as transient
+    breaker failures. The half-open slot still has to be released, or every
+    later call stays fail-fast until the provider is recreated.
+    """
+    clock = _FakeClock()
+    outcomes = iter(
+        [
+            _AmsHttpError(503, "down"),
+            _AmsHttpError(401, "unauthorized"),
+            {"ok": True},
+        ]
+    )
+
+    def transport(method, url, payload, headers, timeout):
+        outcome = next(outcomes)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    prov = _provider(
+        transport, max_retries=0, breaker_threshold=1, breaker_cooldown_s=10.0, clock=clock
+    )
+    with pytest.raises(_AmsHttpError) as transient:
+        prov._request("GET", "/v1/health", None)
+    assert transient.value.status == 503
+    assert prov._breaker.opened_at is not None
+
+    clock.advance(11.0)
+    with pytest.raises(_AmsHttpError) as fatal:
+        prov._request("GET", "/v1/health", None)
+    assert fatal.value.status == 401
+    assert prov._breaker._trial_in_flight is False
+
+    result = prov._request("GET", "/v1/health", None)
+    assert result == {"ok": True}
+    assert prov._breaker.opened_at is None
+
+
 def test_breaker_allow_grants_a_single_half_open_trial_atomically() -> None:
     """allow() returns the decision (closed/half_open/open) in one locked step,
     and hands out exactly one half-open trial so the retry budget cannot widen
