@@ -686,17 +686,17 @@ def write_opt_in_gate(state: WizardState) -> list[str]:
 
 
 def _configured_env_values(state: WizardState) -> dict[str, str]:
-    """Return env values known during config rendering.
+    """Return env values scheduled agents will actually receive.
 
-    Values already in ``~/.alfredrc`` or the parent process count, as do env
-    vars the wizard is about to write from ``role_to_extras``. The helper is
-    intentionally small: schedule gating only needs to know whether a required
-    setting is present, not validate the target service.
+    ``agent-launch`` reads ``~/.alfredrc`` and ``$ALFRED_HOME/.env`` at firing
+    time. Transient values in the installer shell do not count unless this
+    wizard is also about to write them through ``role_to_extras``.
     """
     values: dict[str, str] = {}
     with contextlib.suppress(OSError):
         values.update(read_alfredrc(state.alfredrc))
-    values.update(os.environ)
+    with contextlib.suppress(OSError):
+        values.update(read_alfredrc(state.alfred_home / ".env"))
     values.update(env_assignments_for(state))
     return values
 
@@ -752,7 +752,8 @@ def render_agents_conf(state: WizardState) -> str:
         if blockers:
             lines.append(
                 "# gated until configured: "
-                f"{codename} needs {', '.join(blockers)} in ~/.alfredrc or --config role_extras"
+                f"{codename} needs {', '.join(blockers)} in ~/.alfredrc, "
+                "$ALFRED_HOME/.env, or --config role_extras"
             )
             lines.append(f"#{row}")
         else:
