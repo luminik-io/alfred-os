@@ -26,6 +26,7 @@ constant you need, do not subclass anything here.
 from __future__ import annotations
 
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from pathlib import Path
 # Operator home + workspace
 # --------------------------------------------------------------------------
 HOME: Path = Path(os.path.expanduser("~"))
+_ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 """Public runtime root. State, worktrees, transcripts, lib, bin live here."""
@@ -194,6 +196,62 @@ def config_value(key: str, default: str = "") -> str:
     except OSError:
         pass
     return default
+
+
+def launcher_env() -> dict[str, str]:
+    """Return the env shape scheduler-spawned agents see through ``agent-launch``.
+
+    The shell launcher loads ``~/.alfredrc`` first, resolves ``ALFRED_HOME``,
+    then loads ``$ALFRED_HOME/.env`` in no-clobber mode. Keep this helper in
+    lockstep with that order so server-side setup/status surfaces report the
+    same config the scheduled fleet will enforce after a restart.
+    """
+
+    home = Path(os.path.expanduser("~"))
+    env = dict(os.environ)
+    load_env_file(home / ".alfredrc", env)
+    if not env.get("ALFRED_HOME", "").strip():
+        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    load_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env, no_clobber=True)
+    if not env.get("WORKSPACE_ROOT", "").strip():
+        env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
+    return env
+
+
+def launcher_config_value(key: str, default: str = "") -> str:
+    """Resolve one config key using ``agent-launch`` precedence."""
+
+    return launcher_env().get(key, "").strip() or default
+
+
+def load_env_file(path: Path, env: dict[str, str], *, no_clobber: bool = False) -> None:
+    """Load a dotenv/shell-rc file into ``env`` with ``agent-launch`` semantics."""
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            continue
+        key, _, raw_value = line.partition("=")
+        key = key.strip()
+        if not _ENV_KEY_RE.match(key):
+            continue
+        if no_clobber and key in env:
+            continue
+        value = raw_value.strip()
+        single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"
+        decoded = decode_env_value(value)
+        if not single_quoted:
+            home = str(Path(os.path.expanduser("~")))
+            decoded = decoded.replace("${HOME}", home).replace("$HOME", home)
+        env[key] = decoded
 
 
 # --------------------------------------------------------------------------
