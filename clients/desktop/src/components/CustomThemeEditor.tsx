@@ -46,6 +46,7 @@ export function CustomThemeEditor({
   const [names, setNames] = useState<Record<string, string>>(value.names);
   const [roles, setRoles] = useState<Record<string, string>>(value.roles);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Re-seed the draft whenever the editor (re)opens with the persisted maps, so
   // a cancelled edit never leaks into the next open.
@@ -53,6 +54,7 @@ export function CustomThemeEditor({
     if (open) {
       setNames({ ...value.names });
       setRoles({ ...value.roles });
+      setSaveError(null);
     }
   }, [open, value.names, value.roles]);
 
@@ -78,9 +80,20 @@ export function CustomThemeEditor({
 
   const handleSave = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
-      await onSave({ names: clean(names), roles: clean(roles) });
+      const saved = await onSave({ names: clean(names), roles: clean(roles) });
+      if (saved === false) {
+        setSaveError("Could not save custom names. Keep this dialog open and retry.");
+        return;
+      }
       onOpenChange(false);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error && err.message
+          ? err.message
+          : "Could not save custom names. Keep this dialog open and retry.",
+      );
     } finally {
       setSaving(false);
     }
@@ -155,6 +168,11 @@ export function CustomThemeEditor({
             ))}
           </div>
         </ScrollArea>
+        {saveError ? (
+          <p className="inline-notice inline-notice--error" role="alert">
+            {saveError}
+          </p>
+        ) : null}
         <DialogFooter className="custom-theme-editor__footer gap-2 sm:justify-between">
           <Button type="button" variant="ghost" size="sm" onClick={reset}>
             Reset all

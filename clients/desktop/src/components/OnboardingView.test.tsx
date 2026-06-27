@@ -724,6 +724,32 @@ describe("OnboardingView seven-step takeover", () => {
     );
   });
 
+  it("requires the Fleet save before forward rail navigation", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => false);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await user.click(within(stepper).getByRole("button", { name: /^slack$/i }));
+
+    await waitFor(() =>
+      expect(onRosterThemeChange).toHaveBeenCalledWith(DEFAULT_ROSTER_THEME),
+    );
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /fleet/i,
+    );
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /4 of 7/i,
+    );
+    expect(screen.getByText(/save the fleet naming choice before continuing/i)).toBeInTheDocument();
+  });
+
   it("does not mark fleet naming complete while a roster save error is visible", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
@@ -865,6 +891,25 @@ describe("OnboardingView seven-step takeover", () => {
     const dialog = screen.getByRole("dialog", { name: /customize the roster/i });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/batman name/i)).toBeInTheDocument();
+  });
+
+  it("keeps the custom fleet naming editor open when saving fails", async () => {
+    const onCustomNamesChange = vi.fn(async () => false);
+    renderOnboarding({ rosterTheme: "custom", onCustomNamesChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    await user.click(screen.getByRole("button", { name: /edit custom names/i }));
+    const dialog = screen.getByRole("dialog", { name: /customize the roster/i });
+    await user.type(within(dialog).getByLabelText(/batman name/i), "Bruce Wayne");
+    await user.click(within(dialog).getByRole("button", { name: /save cast/i }));
+
+    await waitFor(() => expect(onCustomNamesChange).toHaveBeenCalled());
+    const stillOpen = screen.getByRole("dialog", { name: /customize the roster/i });
+    expect(stillOpen).toBeInTheDocument();
+    expect(within(stillOpen).getByRole("alert")).toHaveTextContent(
+      /could not save custom names/i,
+    );
   });
 
   it("treats Slack as optional and skippable, advancing to the first request", async () => {

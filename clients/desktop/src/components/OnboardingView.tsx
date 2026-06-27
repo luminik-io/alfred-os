@@ -617,29 +617,47 @@ export function OnboardingView({
     [rosterSaveError],
   );
 
-  const advance = useCallback(async () => {
-    if (stepKey === "fleet") {
-      if (fleetSavePending) return;
-      if (!canMutate) {
-        setFleetTouched(true);
-      } else if (rosterSaveError || !fleetTouched) {
-        const saved = await saveFleetChoice(() => onRosterThemeChange(rosterTheme));
-        if (!saved) return;
-      }
+  const ensureFleetChoiceSaved = useCallback(async (): Promise<boolean> => {
+    if (fleetSavePending) return false;
+    if (!canMutate) {
+      setFleetTouched(true);
+      return true;
     }
-    if (nextKey) goToStep(nextKey);
+    if (rosterSaveError || !fleetTouched) {
+      return saveFleetChoice(() => onRosterThemeChange(rosterTheme));
+    }
+    return true;
   }, [
+    canMutate,
     fleetSavePending,
     fleetTouched,
-    canMutate,
-    goToStep,
-    nextKey,
     onRosterThemeChange,
     rosterSaveError,
     rosterTheme,
     saveFleetChoice,
-    stepKey,
   ]);
+
+  const advance = useCallback(async () => {
+    if (stepKey === "fleet") {
+      const saved = await ensureFleetChoiceSaved();
+      if (!saved) return;
+    }
+    if (nextKey) goToStep(nextKey);
+  }, [ensureFleetChoiceSaved, goToStep, nextKey, stepKey]);
+
+  const selectStep = useCallback(
+    (key: OnboardingStepKey) => {
+      void (async () => {
+        const targetIndex = ONBOARDING_STEP_ORDER.indexOf(key);
+        if (stepKey === "fleet" && targetIndex > currentIndex) {
+          const saved = await ensureFleetChoiceSaved();
+          if (!saved) return;
+        }
+        goToStep(key, { manual: true });
+      })();
+    },
+    [currentIndex, ensureFleetChoiceSaved, goToStep, stepKey],
+  );
 
   const handleRosterThemeChange = useCallback(
     (next: RosterThemeId) => {
@@ -653,7 +671,7 @@ export function OnboardingView({
 
   const handleCustomNamesChange = useCallback(
     async (next: CustomRosterNames) => {
-      await saveFleetChoice(
+      return saveFleetChoice(
         () => onCustomNamesChange(next),
         "Save the custom fleet names before continuing.",
       );
@@ -741,7 +759,7 @@ export function OnboardingView({
         <Stepper
           steps={stepperItems}
           activeKey={stepKey}
-          onSelect={(key) => goToStep(key, { manual: true })}
+          onSelect={selectStep}
         />
 
         {statusError ? (
