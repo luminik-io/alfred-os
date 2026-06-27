@@ -661,22 +661,34 @@ export function OnboardingView({
 
   const handleRosterThemeChange = useCallback(
     (next: RosterThemeId) => {
+      if (!canMutate) {
+        setFleetTouched(true);
+        return;
+      }
       void saveFleetChoice(
         () => onRosterThemeChange(next),
         "Save the fleet naming theme before continuing.",
       );
     },
-    [onRosterThemeChange, saveFleetChoice],
+    [canMutate, onRosterThemeChange, saveFleetChoice],
   );
 
   const handleCustomNamesChange = useCallback(
     async (next: CustomRosterNames) => {
+      if (!canMutate) {
+        setFleetTouched(true);
+        setNotice({
+          tone: "error",
+          message: "Open Alfred in the desktop app to save custom fleet names.",
+        });
+        return false;
+      }
       return saveFleetChoice(
         () => onCustomNamesChange(next),
         "Save the custom fleet names before continuing.",
       );
     },
-    [onCustomNamesChange, saveFleetChoice],
+    [canMutate, onCustomNamesChange, saveFleetChoice],
   );
 
   const skipStep = useCallback(
@@ -861,7 +873,7 @@ export function OnboardingView({
                 value={rosterTheme}
                 customNames={customNames}
                 saveError={rosterSaveError}
-                disabled={fleetSavePending}
+                disabled={fleetSavePending || !canMutate}
                 onChange={handleRosterThemeChange}
                 onSaveCustom={handleCustomNamesChange}
               />

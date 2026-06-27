@@ -850,6 +850,25 @@ describe("OnboardingView seven-step takeover", () => {
     );
   });
 
+  it("keeps browser preview Fleet theme controls read-only", async () => {
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => true);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    const transformers = screen.getByLabelText(/transformers/i);
+    expect(transformers).toBeDisabled();
+    await user.click(transformers);
+
+    expect(onRosterThemeChange).not.toHaveBeenCalled();
+  });
+
   it("does not latch a non-default local roster after server hydration returns default", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
