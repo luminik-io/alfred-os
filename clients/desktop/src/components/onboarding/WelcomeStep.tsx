@@ -10,7 +10,7 @@ import { Button } from "../ui";
  * subscriptions you already pay for), and offers one primary door for the guided
  * path plus a quiet shortcut for a developer who already has a server running.
  *
- * It deliberately does not repeat the shell header ("Let's connect Alfred, six
+ * It deliberately does not repeat the shell header ("Let's connect Alfred, seven
  * short steps") or carry a StepFrame title above it: the journey framing is said
  * once in the shell, and the value is said once here.
  */

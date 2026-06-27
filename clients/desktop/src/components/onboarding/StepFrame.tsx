@@ -5,8 +5,8 @@ import { Badge } from "../ui";
 
 /**
  * The header every onboarding step renders above its body. Keeps the icon,
- * title, blurb, and optional accent label consistent across the six steps so the
- * takeover reads as one journey, not six different screens.
+ * title, blurb, and optional accent label consistent across the steps so the
+ * takeover reads as one journey, not a pile of different screens.
  *
  * The frame itself is chromeless now: the glass shell is owned by OnboardingView
  * so the whole stepper is one floating surface over the ambient base, and each

@@ -8,15 +8,18 @@ import {
   Settings2,
   Sparkles,
   TerminalSquare,
+  UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
+import type { CustomRosterNames, RosterThemeId } from "../lib/agentThemes";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
 import type { NativeCommandResult, SetupStatus } from "../types";
 import { EngineStep } from "./onboarding/EngineStep";
+import { FleetStep } from "./onboarding/FleetStep";
 import { FirstRequestStep } from "./onboarding/FirstRequestStep";
 import { GitHubStep } from "./onboarding/GitHubStep";
 import { ReposStep } from "./onboarding/ReposStep";
@@ -36,7 +39,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * The first-run onboarding takeover (DESIGN_SPEC section 7), built as a clean
- * stepper. A six-step journey a non-technical user (Maya) completes without a
+ * stepper. A seven-step journey a non-technical user (Maya) completes without a
  * terminal, ending on a populated Home via a real first request or a
  * clearly-labelled demo:
  *
@@ -44,8 +47,9 @@ import { cn } from "@/lib/utils";
  *   1 Tools          detect Claude / Codex (no API keys)
  *   2 GitHub         reuse the gh sign-in (auto-advance when signed in)
  *   3 Repositories   pick by name + description (private badge)
- *   4 Slack          optional approvals, clearly skippable
- *   5 First request  a real Request, or a labelled sample
+ *   4 Fleet          full-fleet naming theme or custom names
+ *   5 Slack          optional approvals, clearly skippable
+ *   6 First request  a real Request, or a labelled sample
  *
  * The journey lives inside a single glass shell that floats over the ambient
  * base. A persistent, minimal numbered Stepper sits at the top (current / done /
@@ -118,6 +122,14 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
     icon: Plug,
     optional: false,
   },
+  fleet: {
+    key: "fleet",
+    title: "Name your fleet",
+    railTitle: "Fleet",
+    blurb: "Choose the default cast or give the agents your own names.",
+    icon: UsersRound,
+    optional: false,
+  },
   slack: {
     key: "slack",
     title: "Connect Slack",
@@ -149,6 +161,11 @@ export function OnboardingView({
   onOpenConnection,
   onSwitch,
   onRefreshBoard,
+  rosterTheme,
+  customNames,
+  rosterSaveError,
+  onRosterThemeChange,
+  onCustomNamesChange,
 }: {
   baseUrl: string;
   loading: boolean;
@@ -165,6 +182,11 @@ export function OnboardingView({
   /** Navigate to another primary surface (e.g. Inbox, Ask) after an action. */
   onSwitch?: (tab: TabKey) => void;
   onRefreshBoard?: (options?: { demo?: boolean }) => Promise<void> | void;
+  rosterTheme: RosterThemeId;
+  customNames: CustomRosterNames;
+  rosterSaveError: string | null;
+  onRosterThemeChange: (next: RosterThemeId) => void;
+  onCustomNamesChange: (next: CustomRosterNames) => void | Promise<void>;
 }) {
   // The mutating steps need the per-launch token the native bridge attaches; the
   // browser preview cannot, so it shows a read-only note. The read steps work
@@ -453,6 +475,8 @@ export function OnboardingView({
           return githubConnected;
         case "repos":
           return reposSelected;
+        case "fleet":
+          return true;
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -588,7 +612,7 @@ export function OnboardingView({
             <p className="alfred-onboarding-shell__eyebrow">First run</p>
             <h1 className="alfred-onboarding-shell__title">Let's connect Alfred</h1>
             <p className="alfred-onboarding-shell__lede">
-              Six short steps, about two minutes. You will not need a terminal.
+              Seven short steps, about two minutes. You will not need a terminal.
             </p>
           </div>
           <Button
@@ -698,6 +722,18 @@ export function OnboardingView({
                 onSkip={() => skipStep("slack")}
                 onApproverAdded={() => setSlackTouched(true)}
                 setNotice={setNotice}
+              />
+            </StepFrame>
+          ) : null}
+
+          {stepKey === "fleet" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+              <FleetStep
+                value={rosterTheme}
+                customNames={customNames}
+                saveError={rosterSaveError}
+                onChange={onRosterThemeChange}
+                onSaveCustom={onCustomNamesChange}
               />
             </StepFrame>
           ) : null}

@@ -347,6 +347,11 @@ function App() {
               }}
               onSwitch={goTo}
               onRefreshBoard={(options) => refreshShipped(baseUrl, options)}
+              rosterTheme={rosterTheme}
+              customNames={customNames}
+              rosterSaveError={rosterSaveError}
+              onRosterThemeChange={setRosterTheme}
+              onCustomNamesChange={setCustomNames}
             />
           )}
         </section>
