@@ -193,21 +193,37 @@ export function OnboardingView({
   // suppressed for these so revisiting a satisfied step to read it never yanks
   // the user forward; only the natural forward flow auto-advances on detection.
   const manualSteps = useRef<Set<OnboardingStepKey>>(new Set());
+  const statusRequestSeq = useRef(0);
+  const baseUrlRef = useRef(baseUrl);
+
+  useEffect(() => {
+    baseUrlRef.current = baseUrl;
+  }, [baseUrl]);
 
   const refreshStatus = useCallback(async () => {
     if (!connected) {
+      statusRequestSeq.current += 1;
       setStatus(null);
+      setStatusLoading(false);
       return;
     }
+    const requestId = ++statusRequestSeq.current;
+    const requestBaseUrl = baseUrl;
     setStatusLoading(true);
     try {
       const next = await loadSetupStatus(baseUrl);
-      setStatus(next);
-      setStatusError(null);
+      if (statusRequestSeq.current === requestId && baseUrlRef.current === requestBaseUrl) {
+        setStatus(next);
+        setStatusError(null);
+      }
     } catch (err) {
-      setStatusError(errorDetail(err) || "Could not read setup status.");
+      if (statusRequestSeq.current === requestId && baseUrlRef.current === requestBaseUrl) {
+        setStatusError(errorDetail(err) || "Could not read setup status.");
+      }
     } finally {
-      setStatusLoading(false);
+      if (statusRequestSeq.current === requestId && baseUrlRef.current === requestBaseUrl) {
+        setStatusLoading(false);
+      }
     }
   }, [baseUrl, connected]);
 
@@ -251,7 +267,9 @@ export function OnboardingView({
       const poll = await pollGithubAuthStatus(
         async () => {
           const next = await loadSetupStatus(baseUrl);
-          setStatus(next);
+          if (baseUrlRef.current === baseUrl) {
+            setStatus(next);
+          }
           return next;
         },
         {
@@ -261,7 +279,9 @@ export function OnboardingView({
       );
 
       if (poll.status) {
-        setStatus(poll.status);
+        if (baseUrlRef.current === baseUrl) {
+          setStatus(poll.status);
+        }
       }
       if (poll.state === "success") {
         setGithubAuthFlow({

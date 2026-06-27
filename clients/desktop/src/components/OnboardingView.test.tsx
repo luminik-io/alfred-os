@@ -160,6 +160,16 @@ function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingV
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 // The rail buttons are the reliable way to reach a given step from any state.
 async function gotoStep(user: ReturnType<typeof userEvent.setup>, railName: RegExp) {
   await user.click(await screen.findByRole("button", { name: railName }));
@@ -214,6 +224,44 @@ describe("OnboardingView six-step takeover", () => {
     expect(screen.getByText(/3 enabled scheduled runs in agents\.conf/i)).toBeInTheDocument();
     expect(screen.getByText(/optional\. not configured yet/i)).toBeInTheDocument();
     expect(screen.getByText(/ready to use/i)).toBeInTheDocument();
+  });
+
+  it("ignores stale welcome inventory reads after the server URL changes", async () => {
+    const oldRequest = deferred<SetupStatus>();
+    const newRequest = deferred<SetupStatus>();
+    vi.spyOn(api, "loadSetupStatus")
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockReturnValueOnce(newRequest.promise);
+
+    const view = renderOnboarding({ baseUrl: "http://127.0.0.1:7010" });
+    view.rerender(
+      <OnboardingView
+        baseUrl="http://127.0.0.1:7011"
+        loading={false}
+        connected
+        canRun
+        nativeBusy={null}
+        nativeResult={null}
+        onConnectServer={vi.fn()}
+        onStartRuntime={vi.fn()}
+        onRunLocalAction={vi.fn(async () => null)}
+        onOpenConnection={vi.fn()}
+        onSwitch={vi.fn()}
+        onRefreshBoard={vi.fn(async () => undefined)}
+      />,
+    );
+
+    newRequest.resolve(
+      makeStatus({ install: makeInstall({ alfred_home: "/tmp/new-alfred-home" }) }),
+    );
+    expect(await screen.findByText("/tmp/new-alfred-home")).toBeInTheDocument();
+
+    oldRequest.resolve(
+      makeStatus({ install: makeInstall({ alfred_home: "/tmp/old-alfred-home" }) }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/old-alfred-home")).not.toBeInTheDocument();
+    });
   });
 
   it("welcome 'Get started' moves to the tools step", async () => {
