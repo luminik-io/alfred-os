@@ -161,6 +161,24 @@ def test_kill_switch_overrides_arm(brain: FleetBrain) -> None:
     assert _status(brain, c.id) == "candidate"
 
 
+def test_inline_commented_stop_controls_fail_closed(brain: FleetBrain) -> None:
+    c1 = _candidate(brain, "a strong durable lesson", confidence=0.99)
+    killed = brain.auto_promote_candidates(
+        env={"ALFRED_AUTO_PROMOTE_KILL": "1 # halt"},
+        judge=lambda _p: _verdict(0.97),
+    )
+    assert killed["enabled"] is False
+    assert _status(brain, c1.id) == "candidate"
+
+    c2 = _candidate(brain, "another strong durable lesson", confidence=0.99)
+    opted_out = brain.auto_promote_candidates(
+        env={"ALFRED_AUTO_PROMOTE": "0 # operator opt-out"},
+        judge=lambda _p: _verdict(0.97),
+    )
+    assert opted_out["enabled"] is False
+    assert _status(brain, c2.id) == "candidate"
+
+
 # --- structural gate (judge disabled) --------------------------------------
 
 

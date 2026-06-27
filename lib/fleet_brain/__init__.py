@@ -199,21 +199,31 @@ class MemoryPromotionError(RuntimeError):
 def _env_flag_on(name: str, env: Mapping[str, str] | None = None) -> bool:
     """True only for an explicit truthy token (1/true/yes/on)."""
     src = env if env is not None else os.environ
-    return str(src.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+    return _env_token(src.get(name, "")) in {"1", "true", "yes", "on"}
 
 
 def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
     """Default to ON, but fail closed for any unrecognized nonblank value."""
     src = env if env is not None else os.environ
     raw = src.get(name)
-    if raw is None or not str(raw).strip():
+    value = _env_token(raw)
+    if raw is None or not value:
         return True
-    value = str(raw).strip().lower()
     if value in {"1", "true", "yes", "on", "enabled"}:
         return True
     if value in {"0", "false", "no", "off", "disabled"}:
         return False
     return False
+
+
+def _env_token(raw: object) -> str:
+    """Normalize env flag values, accepting shell-style trailing comments."""
+    value = str(raw).strip()
+    for index, ch in enumerate(value):
+        if ch == "#" and (index == 0 or value[index - 1].isspace()):
+            value = value[:index].rstrip()
+            break
+    return value.strip().lower()
 
 
 def _env_float(name: str, default: float, env: Mapping[str, str] | None = None) -> float:
