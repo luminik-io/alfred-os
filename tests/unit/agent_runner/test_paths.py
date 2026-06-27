@@ -58,9 +58,7 @@ def test_binary_defaults_respect_env(fresh_agent_runner, monkeypatch):
     assert agent_runner.CODEX_BIN == "/opt/codex/bin/codex"
 
 
-def test_launcher_env_matches_agent_launch_tilde_home(
-    fresh_agent_runner, monkeypatch, tmp_path
-):
+def test_launcher_env_matches_agent_launch_tilde_home(fresh_agent_runner, monkeypatch, tmp_path):
     """The bash launcher does not expand a literal ``~`` read from rc files."""
     import agent_runner.paths as paths_mod
 
