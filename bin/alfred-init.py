@@ -174,8 +174,8 @@ ROLE_REPO_ENV_KEYS = {
     "automerge": ("ALFRED_AUTOMERGE_REPOS",),
     "code_map_refresh": ("ALFRED_CODE_MAP_REPOS",),
     "morning_brief": ("ALFRED_MORNING_BRIEF_REPOS",),
-    "shipped_summary_daily": ("ALFRED_SHIPPED_SUMMARY_REPOS",),
-    "shipped_summary_weekly": ("ALFRED_SHIPPED_SUMMARY_REPOS",),
+    "shipped_summary_daily": ("ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",),
+    "shipped_summary_weekly": ("ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",),
 }
 MORNING_BRIEF_EXCLUDED_ROLES = {
     "morning_brief",

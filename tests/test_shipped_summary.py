@@ -33,6 +33,17 @@ def test_configured_repos_from_env(monkeypatch, tmp_path):
     assert mod.configured_repos() == ["backend", "myorg/frontend", "mobile"]
 
 
+def test_configured_repos_prefers_period_specific_env(monkeypatch, tmp_path):
+    mod = load_module(monkeypatch, tmp_path)
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_REPOS", "shared")
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_DAILY_REPOS", "daily-api,daily-web")
+    monkeypatch.setenv("ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS", "weekly-app")
+
+    assert mod.configured_repos("daily") == ["daily-api", "daily-web"]
+    assert mod.configured_repos("weekly") == ["weekly-app"]
+    assert mod.configured_repos() == ["shared"]
+
+
 def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_path):
     mod = load_module(monkeypatch, tmp_path)
     conf = tmp_path / "agents.conf"

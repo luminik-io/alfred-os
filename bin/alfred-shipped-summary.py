@@ -6,9 +6,10 @@ Usage:
     alfred-shipped-summary.py --period weekly --slack
     alfred-shipped-summary.py --since 2026-05-01 --until 2026-05-08 --json
 
-Scheduled fleets normally set ALFRED_SHIPPED_SUMMARY_REPOS to a comma-separated
-repo list. Bare repo names are resolved through GH_ORG; full owner/repo slugs
-work without GH_ORG.
+Scheduled fleets normally set ALFRED_SHIPPED_SUMMARY_DAILY_REPOS and
+ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS to comma-separated repo lists. The legacy
+ALFRED_SHIPPED_SUMMARY_REPOS remains a shared fallback. Bare repo names are
+resolved through GH_ORG; full owner/repo slugs work without GH_ORG.
 
 Counts are scoped to Alfred-driven work only: a merged PR or issue is counted
 only if it carries one of Alfred's provenance labels (``agent:authored`` and
@@ -119,7 +120,12 @@ def resolve_period(args: argparse.Namespace) -> Period:
     return Period(label=str(now.date()), start=start, end=now)
 
 
-def configured_repos() -> list[str]:
+def configured_repos(period: str | None = None) -> list[str]:
+    if period in {"daily", "weekly"}:
+        period_key = f"ALFRED_SHIPPED_SUMMARY_{period.upper()}_REPOS"
+        raw = os.environ.get(period_key, "").strip()
+        if raw:
+            return [part.strip() for part in raw.split(",") if part.strip()]
     raw = os.environ.get("ALFRED_SHIPPED_SUMMARY_REPOS", "")
     return [part.strip() for part in raw.split(",") if part.strip()]
 
@@ -569,7 +575,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     period = resolve_period(args)
-    repos = args.repo or configured_repos()
+    repos = args.repo or configured_repos(args.period)
     data = collect(period, repos, fetch_files=not args.no_file_scan)
 
     if args.json:

@@ -56,7 +56,9 @@ engine choices under `$ALFRED_HOME/state/engines/<codename>`.
 
 | Var | Used by | Default |
 |---|---|---|
-| `ALFRED_SHIPPED_SUMMARY_REPOS` | `alfred shipped` / `alfred-shipped-summary.py` watched repo list | (none) |
+| `ALFRED_SHIPPED_SUMMARY_DAILY_REPOS` | daily `alfred shipped` / `alfred-shipped-summary.py` watched repo list | `ALFRED_SHIPPED_SUMMARY_REPOS` |
+| `ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS` | weekly `alfred shipped` / `alfred-shipped-summary.py` watched repo list | `ALFRED_SHIPPED_SUMMARY_REPOS` |
+| `ALFRED_SHIPPED_SUMMARY_REPOS` | shared fallback watched repo list for manual or legacy config | (none) |
 | `ALFRED_SHIPPED_SUMMARY_QUERY_LIMIT` | per-window GitHub query limit | `1000` |
 
 ## Batman planning

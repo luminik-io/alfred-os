@@ -182,7 +182,8 @@ and issue-claim overrides. `telemetry` controls anonymous usage totals:
 can stay installed; without an endpoint, or after opt-out, it exits cleanly and
 sends nothing.
 `shipped` reports merged PRs, issues, LOC, and
-model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
+model/config changes across the period-specific shipped-summary repo env, the
+shared `ALFRED_SHIPPED_SUMMARY_REPOS` fallback, or explicit `--repo`
 values.
 
 `dry-run` is the scheduler-free trust check. It resolves any codename and prints

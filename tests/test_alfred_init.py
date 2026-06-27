@@ -398,7 +398,7 @@ def test_env_assignments_wires_repo_scoped_utility_agents(init_mod, tmp_path):
             "automerge": ["acme/api", "acme/web"],
             "morning_brief": ["acme/api", "acme/web"],
             "shipped_summary_daily": ["acme/api", "acme/web"],
-            "shipped_summary_weekly": ["acme/api", "acme/web"],
+            "shipped_summary_weekly": ["acme/mobile"],
             "agent_cleanup": ["acme/api", "acme/web"],
             "code_map_refresh": ["acme/api", "acme/web"],
         },
@@ -409,7 +409,9 @@ def test_env_assignments_wires_repo_scoped_utility_agents(init_mod, tmp_path):
     assert out["ALFRED_AUTOMERGE_REPOS"] == "api,web"
     assert out["ALFRED_MORNING_BRIEF_REPOS"] == "api,web"
     assert out["ALFRED_MORNING_BRIEF_AGENTS"] == "lucius,automerge,agent-cleanup,code-map-refresh"
-    assert out["ALFRED_SHIPPED_SUMMARY_REPOS"] == "api,web"
+    assert out["ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"] == "api,web"
+    assert out["ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"] == "mobile"
+    assert "ALFRED_SHIPPED_SUMMARY_REPOS" not in out
     assert out["ALFRED_CLAIM_SWEEP_REPOS"] == "api,web"
     assert out["ALFRED_CODE_MAP_REPOS"] == "api,web"
     assert "ALFRED_CODE_MAP_REFRESH_REPOS" not in out
