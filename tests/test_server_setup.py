@@ -103,6 +103,37 @@ def test_install_inventory_uses_launcher_home_for_agents_conf(
     assert inventory["scheduled_runs"] == 1
 
 
+def test_install_inventory_does_not_mix_stale_agents_conf_from_default_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    stale_home = tmp_path / ".alfred"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_QUEUE_REPOS=acme/api\n", encoding="utf-8")
+
+    stale_conf = stale_home / "launchd" / "agents.conf"
+    stale_conf.parent.mkdir(parents=True)
+    stale_conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tStale install\n",
+        encoding="utf-8",
+    )
+
+    inventory = setup_mod.install_inventory(repos=["acme/api"])
+
+    assert inventory["alfred_home"] == str(home)
+    assert inventory["agents_conf_path"] is None
+    assert inventory["agents_conf_present"] is False
+    assert inventory["scheduled_runs"] == 0
+
+
 def test_bootstrap_status_uses_launcher_home_for_repo_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
