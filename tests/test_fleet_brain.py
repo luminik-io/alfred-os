@@ -31,13 +31,64 @@ import pytest
 _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "lib"))
 
-from fleet_brain import FileTouch, FleetBrain, Lesson, SQLiteStore  # noqa: E402
+from fleet_brain import (  # noqa: E402
+    FileTouch,
+    FleetBrain,
+    Lesson,
+    MemoryPromotionError,
+    SQLiteStore,
+    new_id,
+)
 from fleet_brain.schema import (  # noqa: E402
     SCHEMA_VERSION,
     _add_column_if_missing,
     applied_version,
     ensure_schema,
 )
+
+
+class _FakeAMS:
+    """Stub Redis AMS provider: records the lesson writes/forgets a promotion
+    makes so a test can assert the promoted lesson went to AMS, not the local
+    store. ``reflect`` returns a real :class:`Lesson` keyed by the deterministic
+    ``memory_id`` so callers can record ``promoted_lesson_id``."""
+
+    name = "redis"
+
+    def __init__(self) -> None:
+        self.reflected: list[dict] = []
+        self.forgotten: list[str] = []
+
+    def reflect(
+        self,
+        *,
+        codename: str,
+        repo: str,
+        body: str,
+        tags=None,  # type: ignore[no-untyped-def]
+        severity="info",  # type: ignore[no-untyped-def]
+        firing_id=None,  # type: ignore[no-untyped-def]
+        created_at=None,  # type: ignore[no-untyped-def]
+        memory_id=None,  # type: ignore[no-untyped-def]
+    ) -> Lesson:
+        self.reflected.append(
+            {"memory_id": memory_id, "codename": codename, "repo": repo, "body": body}
+        )
+        return Lesson(
+            id=memory_id or new_id(),
+            codename=codename,
+            repo=repo,
+            body=body.strip(),
+            tags=sorted({t.strip() for t in (tags or []) if t.strip()}),
+            created_at=created_at or datetime.now(UTC),
+            firing_id=firing_id,
+            severity=severity,
+        )
+
+    def forget_lesson(self, lesson_id: str) -> bool:
+        self.forgotten.append(lesson_id)
+        return True
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -364,7 +415,7 @@ def test_file_touch_validates_inputs(brain: FleetBrain) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_memory_candidate_promote_and_reject(brain: FleetBrain) -> None:
+def test_memory_candidate_promote_writes_to_ams_and_reject(brain: FleetBrain) -> None:
     candidate = brain.propose_memory(
         codename="lucius",
         repo="org/api",
@@ -379,10 +430,20 @@ def test_memory_candidate_promote_and_reject(brain: FleetBrain) -> None:
     assert candidate.tags == ["tests"]
     assert candidate.status == "candidate"
 
+    ams = _FakeAMS()
     assert brain.recall(codename="lucius", repo="org/api") == []
-    lesson = brain.promote_memory_candidate(candidate.id, reviewer="alice", review_note="true")
+    lesson = brain.promote_memory_candidate(
+        candidate.id, reviewer="alice", review_note="true", lesson_writer=ams
+    )
     assert lesson.body == "Use the API fixture factory."
     assert lesson.severity == "warning"
+
+    # The promoted lesson is written to Redis AMS, NOT the local store: the
+    # local recall stack must stay empty for this lesson.
+    assert len(ams.reflected) == 1
+    assert ams.reflected[0]["memory_id"] == f"lesson:memory_candidate:{candidate.id}"
+    assert ams.reflected[0]["body"] == "Use the API fixture factory."
+    assert brain.recall(codename="lucius", repo="org/api") == []
 
     promoted = brain.list_memory_candidates(status="validated")[0]
     assert promoted.promoted_lesson_id == lesson.id
@@ -394,13 +455,137 @@ def test_memory_candidate_promote_and_reject(brain: FleetBrain) -> None:
     assert out.review_note == "too vague"
 
 
+def test_promote_leaves_candidate_pending_when_ams_write_raises(brain: FleetBrain) -> None:
+    candidate = brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Use the API fixture factory.",
+        confidence=0.7,
+    )
+
+    class _BrokenAMS:
+        def reflect(self, **_kwargs: object) -> Lesson:
+            raise RuntimeError("AMS unreachable")
+
+    with pytest.raises(MemoryPromotionError):
+        brain.promote_memory_candidate(candidate.id, lesson_writer=_BrokenAMS())
+
+    # No silent loss, no local fallback: the candidate stays pending and is
+    # re-promotable, and nothing entered the local recall stack.
+    still = brain.store.get_memory_candidate(candidate.id)
+    assert still is not None
+    assert still.status == "candidate"
+    assert still.promoted_lesson_id is None
+    assert brain.recall(codename="lucius", repo="org/api") == []
+
+
+def test_revert_auto_promotions_forgets_lessons_and_reopens(brain: FleetBrain) -> None:
+    candidate = brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Use the API fixture factory.",
+        confidence=0.7,
+    )
+    ams = _FakeAMS()
+    brain.promote_memory_candidate(
+        candidate.id, reviewer="auto", review_note="auto-promoted", lesson_writer=ams
+    )
+    assert brain.list_memory_candidates(status="validated")[0].id == candidate.id
+
+    reverted = brain.revert_auto_promotions(lesson_forgetter=ams)
+    assert reverted == [candidate.id]
+    assert ams.forgotten == [f"lesson:memory_candidate:{candidate.id}"]
+
+    reopened = brain.store.get_memory_candidate(candidate.id)
+    assert reopened is not None
+    assert reopened.status == "candidate"
+    assert reopened.promoted_lesson_id is None
+
+
+def test_promote_provider_construction_failure_is_memory_promotion_error(
+    brain: FleetBrain, monkeypatch
+) -> None:
+    # A bad AMS env that breaks provider construction (before reflect) must
+    # surface as a retryable MemoryPromotionError, not a raw exception, so the
+    # candidate stays pending and an auto-promote batch counts an ams_write_error.
+    candidate = brain.propose_memory(codename="lucius", repo="org/api", body="x", confidence=0.7)
+
+    def _broken_provider() -> object:
+        raise RuntimeError("ALFRED_REDIS_MEMORY_URL is malformed")
+
+    monkeypatch.setattr(brain, "_lesson_provider", _broken_provider)
+    with pytest.raises(MemoryPromotionError):
+        brain.promote_memory_candidate(candidate.id)
+    still = brain.store.get_memory_candidate(candidate.id)
+    assert still is not None and still.status == "candidate"
+
+
+def test_revert_leaves_candidate_validated_when_forget_fails(brain: FleetBrain) -> None:
+    # When the AMS forget fails, the candidate must NOT be reopened: that would
+    # claim a revert while the lesson is still live in AMS recall.
+    candidate = brain.propose_memory(
+        codename="lucius", repo="org/api", body="Use the fixture factory.", confidence=0.7
+    )
+    ams = _FakeAMS()
+    brain.promote_memory_candidate(
+        candidate.id, reviewer="auto", review_note="auto-promoted", lesson_writer=ams
+    )
+
+    class _ForgetFails:
+        name = "redis"
+
+        def forget_lesson(self, _lesson_id: str) -> bool:
+            return False
+
+    reverted = brain.revert_auto_promotions(lesson_forgetter=_ForgetFails())
+    assert reverted == []
+    # Still validated, lesson id intact (not a false revert).
+    still = brain.store.get_memory_candidate(candidate.id)
+    assert still is not None and still.status == "validated"
+    assert still.promoted_lesson_id is not None
+
+
+def test_list_memory_candidates_paginates_by_offset(brain: FleetBrain) -> None:
+    # Offset paging lets revert_auto_promotions enumerate ALL validated rows, not
+    # just the newest page, so older auto-promotions are never hidden behind a
+    # page full of human-reviewed or undeletable rows.
+    made = {
+        brain.propose_memory(
+            codename="lucius", repo="org/api", body=f"lesson {i}", confidence=0.7
+        ).id
+        for i in range(5)
+    }
+    p1 = brain.list_memory_candidates(status="candidate", limit=2, offset=0)
+    p2 = brain.list_memory_candidates(status="candidate", limit=2, offset=2)
+    p3 = brain.list_memory_candidates(status="candidate", limit=2, offset=4)
+    assert {c.id for c in p1}.isdisjoint({c.id for c in p2})  # no overlap across pages
+    assert {c.id for c in p1 + p2 + p3} == made  # every candidate surfaced exactly once
+
+
+def test_revert_skips_human_promotions(brain: FleetBrain) -> None:
+    candidate = brain.propose_memory(
+        codename="lucius",
+        repo="org/api",
+        body="Use the API fixture factory.",
+        confidence=0.7,
+    )
+    ams = _FakeAMS()
+    # A human (non-auto) promotion must NOT be reverted by the auto-revert lever.
+    brain.promote_memory_candidate(
+        candidate.id, reviewer="alice", review_note="manual", lesson_writer=ams
+    )
+    assert brain.revert_auto_promotions(lesson_forgetter=ams) == []
+    assert ams.forgotten == []
+    assert brain.store.get_memory_candidate(candidate.id).status == "validated"  # type: ignore[union-attr]
+
+
 def test_memory_candidate_validates_inputs(brain: FleetBrain) -> None:
     with pytest.raises(ValueError):
         brain.propose_memory(codename="", repo="org/api", body="x")
     with pytest.raises(ValueError):
         brain.propose_memory(codename="lucius", repo="org/api", body="x", confidence=2)
     with pytest.raises(ValueError):
-        brain.promote_memory_candidate("missing")
+        brain.promote_memory_candidate("missing", lesson_writer=_FakeAMS())
 
 
 # ---------------------------------------------------------------------------

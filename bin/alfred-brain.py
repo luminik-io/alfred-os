@@ -86,7 +86,11 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
-from fleet_brain import FleetBrain, default_db_path  # noqa: E402
+from fleet_brain import (  # noqa: E402
+    FleetBrain,
+    MemoryPromotionError,
+    default_db_path,
+)
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 
@@ -237,6 +241,16 @@ def cmd_promote(args: argparse.Namespace) -> int:
         )
     except ValueError as exc:
         print(f"alfred-brain: {exc}", file=sys.stderr)
+        return 1
+    except MemoryPromotionError:
+        # The promoted lesson is written to Redis AMS first; an unreachable AMS
+        # leaves the candidate pending (no silent loss). Tell the operator to
+        # retry once AMS is reachable.
+        print(
+            f"alfred-brain: could not write lesson for {args.id} to Redis AMS; "
+            "candidate left pending, retry once AMS is reachable",
+            file=sys.stderr,
+        )
         return 1
     if args.json:
         print(
