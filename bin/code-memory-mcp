@@ -30,13 +30,11 @@
 
 set -uo pipefail
 
-# --- pinned upstream release (override via env) -----------------------------
+# --- pinned upstream release ------------------------------------------------
 # The pinned version and the per-platform sha256 digests below MUST move
 # together: every digest is the published checksums.txt value for this exact
 # tag (DeusData/codebase-memory-mcp). Bumping the version without refreshing the
 # digests fails closed (mismatch -> no install), which is the safe direction.
-CODE_MEMORY_VERSION="${ALFRED_CODE_MEMORY_VERSION:-v0.8.1}"
-CODE_MEMORY_REPO="${ALFRED_CODE_MEMORY_REPO:-DeusData/codebase-memory-mcp}"
 CODE_MEMORY_BIN_NAME="codebase-memory-mcp"
 
 # Pinned sha256 of each release tarball, copied verbatim from the upstream
@@ -93,6 +91,11 @@ ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
 load_env_file "$ALFRED_HOME/.env"
 ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
 
+CODE_MEMORY_VERSION="${ALFRED_CODE_MEMORY_VERSION:-v0.8.1}"
+CODE_MEMORY_REPO="${ALFRED_CODE_MEMORY_REPO:-DeusData/codebase-memory-mcp}"
+CODE_MEMORY_FETCH_TIMEOUT_S="${ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S:-120}"
+CODE_MEMORY_CONNECT_TIMEOUT_S="${ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S:-10}"
+
 CACHE_BIN="$ALFRED_HOME/bin/$CODE_MEMORY_BIN_NAME"
 INDEX_DIR="${ALFRED_CODE_MEMORY_INDEX_DIR:-$ALFRED_HOME/state/code-memory}"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
@@ -104,7 +107,9 @@ else
 fi
 
 autofetch_enabled() {
-  case "${ALFRED_CODE_MEMORY_AUTOFETCH:-1}" in
+  local value
+  value="$(printf '%s' "${ALFRED_CODE_MEMORY_AUTOFETCH:-1}" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
     0|false|no|off|"") return 1 ;;
     *) return 0 ;;
   esac
@@ -147,8 +152,8 @@ verify_checksum() {
   [ -n "$expected" ] || { log "no pinned sha256 for this platform; refusing unverified binary"; return 1; }
   [ -f "$file" ] || { log "checksum target missing: $file"; return 1; }
   actual="$(sha256_of "$file")" || { log "no sha256 tool (need sha256sum or shasum)"; return 1; }
-  expected="$(printf '%s' "$expected" | tr 'A-Z' 'a-z')"
-  actual="$(printf '%s' "$actual" | tr 'A-Z' 'a-z')"
+  expected="$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')"
+  actual="$(printf '%s' "$actual" | tr '[:upper:]' '[:lower:]')"
   if [ "$actual" != "$expected" ]; then
     log "checksum MISMATCH for $(basename "$file"): expected $expected got $actual"
     return 1
@@ -173,7 +178,10 @@ fetch_binary() {
   tmpdir="$(mktemp -d)" || return 1
   tarball="$tmpdir/$asset"
   log "fetching ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION} (${tag})"
-  if ! curl -fsSL "$url" -o "$tarball"; then
+  if ! curl -fsSL \
+    --connect-timeout "$CODE_MEMORY_CONNECT_TIMEOUT_S" \
+    --max-time "$CODE_MEMORY_FETCH_TIMEOUT_S" \
+    "$url" -o "$tarball"; then
     log "download failed: $url"
     rm -rf "$tmpdir"
     return 1

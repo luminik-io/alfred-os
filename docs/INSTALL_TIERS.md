@@ -72,7 +72,7 @@ npm install
 npm run tauri dev
 ```
 
-Inbox opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Agents defaults to a cinematic roster with a list toggle. Setup can start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, and dry-run an agent through a narrow allowlist. Agents controls handle pause, resume, and run-once actions through the same native boundary. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
+Inbox opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Agents defaults to a cinematic roster with a list toggle. Setup can start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, inspect code-memory readiness, and dry-run an agent through a narrow allowlist. Agents controls handle pause, resume, and run-once actions through the same native boundary. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
 
 ## `slack`: the planning surface
 

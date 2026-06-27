@@ -5,6 +5,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::{io::Read, process::Child};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 use reqwest::{Method, Url};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
@@ -69,11 +72,12 @@ async fn run_alfred_action(
     target: Option<String>,
     cadence: Option<String>,
 ) -> Result<NativeCommandResult, String> {
-    if action.trim() == "github_auth_login" {
+    let action_name = action.trim();
+    if action_name == "github_auth_login" {
         return start_github_auth_login().await;
     }
 
-    if action.trim() == "brain_doctor" {
+    if action_name == "brain_doctor" {
         let primary = run_native_command(
             "alfred".to_string(),
             vec![
@@ -97,8 +101,10 @@ async fn run_alfred_action(
         .await;
     }
 
-    let (program, args) =
-        build_alfred_action(action.trim(), target.as_deref(), cadence.as_deref())?;
+    let (program, args) = build_alfred_action(action_name, target.as_deref(), cadence.as_deref())?;
+    if action_name == "code_memory_status" {
+        return run_native_command_with_timeout(program, args, code_memory_doctor_timeout()).await;
+    }
     run_native_command(program, args).await
 }
 
@@ -270,6 +276,107 @@ fn read_server_token() -> Option<String> {
     } else {
         Some(token.to_string())
     }
+}
+
+fn code_memory_doctor_timeout() -> Duration {
+    let fetch_budget = code_memory_launcher_u64(
+        "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S",
+        CODE_MEMORY_FETCH_TIMEOUT_DEFAULT_S,
+    );
+    Duration::from_secs(fetch_budget.saturating_add(CODE_MEMORY_DOCTOR_TIMEOUT_MARGIN_S))
+}
+
+fn code_memory_launcher_u64(key: &str, default: u64) -> u64 {
+    code_memory_launcher_config_value(key)
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(default)
+}
+
+fn code_memory_launcher_config_value(key: &str) -> Option<String> {
+    let home = home_dir();
+    let mut alfred_home = std::env::var("ALFRED_HOME")
+        .ok()
+        .and_then(non_empty_config_value)
+        .map(PathBuf::from)
+        .or_else(|| home.as_ref().map(|path| path.join(".alfred")));
+    let mut value = std::env::var(key).ok().and_then(non_empty_config_value);
+
+    if let Some(home) = home.as_ref() {
+        load_launcher_env_value(&home.join(".alfredrc"), key, &mut value, &mut alfred_home);
+    }
+    if alfred_home.is_none() {
+        alfred_home = home.as_ref().map(|path| path.join(".alfred"));
+    }
+    if let Some(path) = alfred_home.clone() {
+        load_launcher_env_value(&path.join(".env"), key, &mut value, &mut alfred_home);
+    }
+
+    value
+}
+
+fn load_launcher_env_value(
+    path: &Path,
+    wanted_key: &str,
+    wanted_value: &mut Option<String>,
+    alfred_home: &mut Option<PathBuf>,
+) {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return;
+    };
+    for line in raw.lines() {
+        let mut trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("export ") {
+            trimmed = rest.trim();
+        }
+        let Some((name, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let name = name.trim();
+        if !is_launcher_env_key(name) {
+            continue;
+        }
+        let Some(clean) = non_empty_config_value(value.trim().trim_matches('"').trim_matches('\''))
+        else {
+            continue;
+        };
+        let clean = expand_home_tokens(&clean);
+        if name == wanted_key {
+            *wanted_value = Some(clean.clone());
+        }
+        if name == "ALFRED_HOME" {
+            *alfred_home = Some(PathBuf::from(clean));
+        }
+    }
+}
+
+fn is_launcher_env_key(value: &str) -> bool {
+    let mut chars = value.chars();
+    match chars.next() {
+        Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => {}
+        _ => return false,
+    }
+    chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn non_empty_config_value(value: impl AsRef<str>) -> Option<String> {
+    let trimmed = value.as_ref().trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn expand_home_tokens(value: &str) -> String {
+    let Some(home) = home_dir() else {
+        return value.to_string();
+    };
+    let home = home.to_string_lossy();
+    value.replace("${HOME}", &home).replace("$HOME", &home)
 }
 
 fn config_value(key: &str) -> Option<String> {
@@ -479,6 +586,8 @@ const GITHUB_DEVICE_URL: &str = "https://github.com/login/device";
 const GITHUB_AUTH_CAPTURE_MS: u64 = 4_000;
 const GITHUB_AUTH_POLL_INTERVAL_MS: u64 = 2_000;
 const GITHUB_AUTH_TIMEOUT_MS: u64 = 120_000;
+const CODE_MEMORY_FETCH_TIMEOUT_DEFAULT_S: u64 = 120;
+const CODE_MEMORY_DOCTOR_TIMEOUT_MARGIN_S: u64 = 30;
 
 fn resolve_gh_bin() -> String {
     if let Some(configured) = config_value("ALFRED_GH_BIN").or_else(|| config_value("GH_BIN")) {
@@ -811,6 +920,10 @@ fn build_alfred_action(
             vec!["auth".to_string(), "status".to_string()],
         )),
         "brain_doctor" => unreachable!("brain_doctor is handled with compatibility fallback"),
+        "code_memory_status" => Ok((
+            "alfred".to_string(),
+            vec!["code-memory".to_string(), "doctor".to_string()],
+        )),
         "redis_status" => Ok((
             "alfred".to_string(),
             vec![
@@ -845,20 +958,38 @@ async fn run_native_command(
     program: String,
     args: Vec<String>,
 ) -> Result<NativeCommandResult, String> {
+    run_native_command_with_timeout(program, args, Duration::from_secs(0)).await
+}
+
+async fn run_native_command_with_timeout(
+    program: String,
+    args: Vec<String>,
+    timeout: Duration,
+) -> Result<NativeCommandResult, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let preview = command_preview(&program, &args);
-        let resolved = resolve_program(&program);
-        let output = command_with_cli_path(&resolved)
-            .args(&args)
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|err| {
-                format!(
-                    "could not run {} (resolved to {resolved}): {err}",
-                    preview.join(" ")
-                )
-            })?;
-        Ok(NativeCommandResult {
+        run_native_command_blocking(program, args, timeout)
+    })
+    .await
+    .map_err(|err| format!("native action failed to complete: {err}"))?
+}
+
+fn run_native_command_blocking(
+    program: String,
+    args: Vec<String>,
+    timeout: Duration,
+) -> Result<NativeCommandResult, String> {
+    let preview = command_preview(&program, &args);
+    let resolved = resolve_program(&program);
+    let mut command = command_with_cli_path(&resolved);
+    command.args(&args).stdin(Stdio::null());
+    if timeout.is_zero() {
+        let output = command.output().map_err(|err| {
+            format!(
+                "could not run {} (resolved to {resolved}): {err}",
+                preview.join(" ")
+            )
+        })?;
+        return Ok(NativeCommandResult {
             command: preview,
             stdout: trim_output(&output.stdout),
             stderr: trim_output(&output.stderr),
@@ -867,10 +998,103 @@ async fn run_native_command(
             pid: None,
             message: None,
             github_auth: None,
-        })
-    })
-    .await
-    .map_err(|err| format!("native action failed to complete: {err}"))?
+        });
+    }
+
+    #[cfg(unix)]
+    {
+        command.process_group(0);
+    }
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| {
+            format!(
+                "could not run {} (resolved to {resolved}): {err}",
+                preview.join(" ")
+            )
+        })?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let (stdout, stderr) = read_child_output(&mut child);
+                return Ok(NativeCommandResult {
+                    command: preview,
+                    stdout: trim_output(&stdout),
+                    stderr: trim_output(&stderr),
+                    status: status.code(),
+                    success: status.success(),
+                    pid: None,
+                    message: None,
+                    github_auth: None,
+                });
+            }
+            Ok(None) if started.elapsed() >= timeout => {
+                terminate_child_tree(&mut child);
+                let (stdout, stderr) = read_child_output(&mut child);
+                let timeout_msg = format!("command timed out after {}", duration_label(timeout));
+                let stderr = if stderr.is_empty() {
+                    timeout_msg.clone().into_bytes()
+                } else {
+                    let mut combined = stderr;
+                    combined.extend_from_slice(b"\n");
+                    combined.extend_from_slice(timeout_msg.as_bytes());
+                    combined
+                };
+                return Ok(NativeCommandResult {
+                    command: preview,
+                    stdout: trim_output(&stdout),
+                    stderr: trim_output(&stderr),
+                    status: Some(124),
+                    success: false,
+                    pid: None,
+                    message: Some(timeout_msg),
+                    github_auth: None,
+                });
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(100)),
+            Err(err) => {
+                terminate_child_tree(&mut child);
+                return Err(format!("native action status check failed: {err}"));
+            }
+        }
+    }
+}
+
+fn duration_label(duration: Duration) -> String {
+    if duration.as_secs() > 0 {
+        format!("{}s", duration.as_secs())
+    } else {
+        format!("{}ms", duration.as_millis())
+    }
+}
+
+fn read_child_output(child: &mut Child) -> (Vec<u8>, Vec<u8>) {
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut stdout);
+    }
+    if let Some(mut pipe) = child.stderr.take() {
+        let _ = pipe.read_to_end(&mut stderr);
+    }
+    (stdout, stderr)
+}
+
+fn terminate_child_tree(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        let group = format!("-{}", child.id());
+        let _ = Command::new("/bin/kill").arg("-TERM").arg(&group).status();
+        thread::sleep(Duration::from_millis(200));
+        if matches!(child.try_wait(), Ok(None)) {
+            let _ = Command::new("/bin/kill").arg("-KILL").arg(&group).status();
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn resolve_program(requested: &str) -> String {
@@ -1576,6 +1800,13 @@ mod tests {
 
     #[test]
     fn memory_native_actions_build_fixed_commands() {
+        let (_, code_memory_args) = build_alfred_action("code_memory_status", None, None)
+            .expect("code-memory status has no target");
+        assert_eq!(
+            code_memory_args,
+            vec!["code-memory".to_string(), "doctor".to_string(),]
+        );
+
         let (_, redis_args) = build_alfred_action("redis_sync_preview", None, None)
             .expect("redis preview has no target");
         assert_eq!(
@@ -1599,6 +1830,113 @@ mod tests {
                 "--json".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn native_command_timeout_returns_bounded_failure() {
+        let result = run_native_command_blocking(
+            "/bin/sh".to_string(),
+            vec!["-c".to_string(), "sleep 2".to_string()],
+            Duration::from_millis(50),
+        )
+        .expect("timeout result should be captured");
+
+        assert!(!result.success);
+        assert_eq!(result.status, Some(124));
+        assert_eq!(
+            result.message.as_deref(),
+            Some("command timed out after 50ms")
+        );
+        assert!(result.stderr.contains("command timed out after 50ms"));
+    }
+
+    #[test]
+    fn code_memory_doctor_timeout_uses_default_fetch_budget() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_fetch = std::env::var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S").ok();
+
+        let root = temp_root("code-memory-timeout-default");
+        let home = root.join("home");
+        fs::create_dir_all(&home).expect("create temp home");
+
+        std::env::set_var("HOME", &home);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S");
+
+        assert_eq!(code_memory_doctor_timeout(), Duration::from_secs(150));
+
+        let _ = fs::remove_dir_all(root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", prev_fetch);
+    }
+
+    #[test]
+    fn code_memory_doctor_timeout_reads_alfredrc_fetch_budget() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_fetch = std::env::var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S").ok();
+
+        let root = temp_root("code-memory-timeout-rc");
+        let home = root.join("home");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::write(
+            home.join(".alfredrc"),
+            "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S='240'\n",
+        )
+        .expect("write rc");
+
+        std::env::set_var("HOME", &home);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S");
+
+        assert_eq!(code_memory_doctor_timeout(), Duration::from_secs(270));
+
+        let _ = fs::remove_dir_all(root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", prev_fetch);
+    }
+
+    #[test]
+    fn code_memory_doctor_timeout_env_file_overrides_alfredrc_budget() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_fetch = std::env::var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S").ok();
+
+        let root = temp_root("code-memory-timeout-env");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime home");
+        fs::write(
+            home.join(".alfredrc"),
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_CODE_MEMORY_FETCH_TIMEOUT_S=90\n",
+                runtime.to_string_lossy()
+            ),
+        )
+        .expect("write rc");
+        fs::write(
+            runtime.join(".env"),
+            "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S=300\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S");
+
+        assert_eq!(code_memory_doctor_timeout(), Duration::from_secs(330));
+
+        let _ = fs::remove_dir_all(root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S", prev_fetch);
     }
 
     #[test]

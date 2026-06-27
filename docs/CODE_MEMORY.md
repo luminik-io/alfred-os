@@ -71,9 +71,11 @@ All knobs are environment variables; set them in `~/.alfredrc` or
 | `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the code-memory MCP to firings. Set `0` to disable. |
 | `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`) | Comma-separated repo dir names under your workspace to index. |
 | `ALFRED_CODE_MEMORY_BIN` | (unset) | Explicit path to the `codebase-memory-mcp` binary. Skips PATH + autofetch. |
-| `ALFRED_CODE_MEMORY_VERSION` | pinned (`v0.4.0`) | Upstream release tag to fetch. |
+| `ALFRED_CODE_MEMORY_VERSION` | pinned (`v0.8.1`) | Upstream release tag to fetch. |
 | `ALFRED_CODE_MEMORY_REPO` | `DeusData/codebase-memory-mcp` | Upstream GitHub repo for release assets. |
 | `ALFRED_CODE_MEMORY_AUTOFETCH` | `1` (on) | Fetch the pinned binary on first use. Set `0` for a strict no-network install. |
+| `ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S` | `10` | Connect timeout for first-use release downloads. |
+| `ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S` | `120` | Overall timeout for first-use release downloads. |
 | `ALFRED_CODE_MEMORY_INDEX_DIR` | `$ALFRED_HOME/state/code-memory` | Where the on-disk code graph lives. |
 
 Binary resolution order (first hit wins):

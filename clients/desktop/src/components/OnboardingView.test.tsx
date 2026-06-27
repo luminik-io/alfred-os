@@ -19,6 +19,23 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
       { name: "codex", installed: false, path: null },
     ],
     engine_ready: true,
+    code_memory: {
+      enabled: true,
+      autofetch: true,
+      binary: {
+        resolved: false,
+        path: null,
+        source: "none",
+        configured: null,
+      },
+      version_pin: "v0.8.1",
+      repo: "DeusData/codebase-memory-mcp",
+      index_dir: "/tmp/.alfred/state/code-memory",
+      index_present: false,
+      repos: { configured: [], count: 0 },
+      detail:
+        "Code-memory binary is not installed yet; Alfred can fetch the pinned release on first explicit use.",
+    },
     repos: { selected: [], count: 0, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
     demo: { present: false },
     ready: false,
@@ -157,6 +174,39 @@ describe("OnboardingView six-step takeover", () => {
     await gotoStep(user, /^tools$/i);
     await user.click(screen.getByRole("button", { name: /check my tools/i }));
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "auth_status", refreshAfter: true });
+  });
+
+  it("surfaces code-memory readiness on the tools step", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+        code_memory: {
+          enabled: true,
+          autofetch: true,
+          binary: {
+            resolved: true,
+            path: "/opt/alfred/bin/codebase-memory-mcp",
+            source: "cache",
+            configured: null,
+          },
+          version_pin: "v0.8.1",
+          repo: "DeusData/codebase-memory-mcp",
+          index_dir: "/opt/alfred/state/code-memory",
+          index_present: true,
+          repos: { configured: ["api", "web"], count: 2 },
+          detail: "Code-memory binary and index are present.",
+        },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await gotoStep(user, /^tools$/i);
+
+    expect(await screen.findByText(/code memory/i)).toBeInTheDocument();
+    expect(screen.getByText(/code-memory binary and index are present/i)).toBeInTheDocument();
+    await user.click(screen.getByText(/advanced: code-memory probe/i));
+    expect(screen.getByText(/DeusData\/codebase-memory-mcp@v0.8.1/i)).toBeInTheDocument();
+    expect(screen.getByText(/api, web/i)).toBeInTheDocument();
   });
 
   it("shows an honest empty state when no engine is found", async () => {

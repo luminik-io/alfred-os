@@ -212,3 +212,33 @@ def test_brain_command_forwards_to_brain_cli(cli_module, monkeypatch: pytest.Mon
             "org/api",
         ]
     ]
+
+
+def test_code_memory_command_forwards_to_launcher(
+    cli_module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+
+    assert cli_module.main(["code-memory", "doctor"]) == 0
+    assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
+
+
+def test_code_memory_command_defaults_to_doctor(
+    cli_module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+
+    assert cli_module.main(["code-memory"]) == 0
+    assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
