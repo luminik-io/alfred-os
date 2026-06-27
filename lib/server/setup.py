@@ -259,25 +259,12 @@ def _write_env_file_values(path: Path, values: dict[str, str], *, export: bool =
 
 
 def _sync_repo_values_to_rc(values: dict[str, str]) -> None:
-    """Update repo keys in ``~/.alfredrc`` when that file already owns them."""
+    """Write repo keys into ``~/.alfredrc`` so saved setup scope wins on restart."""
 
     repo_values = {key: value for key, value in values.items() if key in _REPO_ENV_KEYS}
     if not repo_values:
         return
-    rc = _rc_path()
-    try:
-        lines = rc.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-    present = {
-        line.strip().partition("=")[0].strip().removeprefix("export ").strip()
-        for line in lines
-        if line.strip() and not line.strip().startswith("#") and "=" in line
-    }
-    updates = {key: value for key, value in repo_values.items() if key in present}
-    if not updates:
-        return
-    _write_env_file_values(rc, updates, export=True)
+    _write_env_file_values(_rc_path(), repo_values, export=True)
 
 
 def persist_selected_repos(repos: list[str]) -> dict[str, Any]:

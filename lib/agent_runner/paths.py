@@ -183,9 +183,9 @@ def config_value(key: str, default: str = "") -> str:
     val = os.environ.get(key, "").strip()
     if val:
         return val
-    home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
+    home = Path(os.environ.get("ALFRED_HOME") or "~/.alfred").expanduser()
     try:
-        with open(Path(home) / ".env", encoding="utf-8") as fh:
+        with open(home / ".env", encoding="utf-8") as fh:
             for raw_line in fh:
                 line = raw_line.strip()
                 if not line or line.startswith("#") or "=" not in line:
@@ -204,7 +204,9 @@ def launcher_env() -> dict[str, str]:
     The shell launcher loads ``~/.alfredrc`` first, resolves ``ALFRED_HOME``,
     then loads ``$ALFRED_HOME/.env`` in no-clobber mode. Keep this helper in
     lockstep with that order so server-side setup/status surfaces report the
-    same config the scheduled fleet will enforce after a restart.
+    same config the scheduled fleet will enforce after a restart. Normalize a
+    leading ``~`` in ``ALFRED_HOME`` before the ``.env`` read so common
+    shell-style rc values point at the operator home instead of the server cwd.
     """
 
     home = Path(os.path.expanduser("~"))
@@ -212,6 +214,8 @@ def launcher_env() -> dict[str, str]:
     load_env_file(home / ".alfredrc", env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    else:
+        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
     load_env_file(Path(env["ALFRED_HOME"]) / ".env", env, no_clobber=True)
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")

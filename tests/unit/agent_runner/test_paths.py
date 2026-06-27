@@ -58,8 +58,8 @@ def test_binary_defaults_respect_env(fresh_agent_runner, monkeypatch):
     assert agent_runner.CODEX_BIN == "/opt/codex/bin/codex"
 
 
-def test_launcher_env_matches_agent_launch_tilde_home(fresh_agent_runner, monkeypatch, tmp_path):
-    """The bash launcher does not expand a literal ``~`` read from rc files."""
+def test_launcher_env_expands_configured_tilde_home(fresh_agent_runner, monkeypatch, tmp_path):
+    """Setup/status readers expand common shell-style ``ALFRED_HOME=~/...`` values."""
     import agent_runner.paths as paths_mod
 
     monkeypatch.chdir(tmp_path)
@@ -74,8 +74,8 @@ def test_launcher_env_matches_agent_launch_tilde_home(fresh_agent_runner, monkey
 
     env = paths_mod.launcher_env()
 
-    assert env["ALFRED_HOME"] == "~/runtime"
-    assert "ALFRED_QUEUE_REPOS" not in env
+    assert env["ALFRED_HOME"] == str(tmp_path / "runtime")
+    assert env["ALFRED_QUEUE_REPOS"] == "org/expanded"
 
 
 def test_today_str_uses_utc_not_local_time(fresh_agent_runner, monkeypatch):

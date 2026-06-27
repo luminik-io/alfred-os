@@ -244,4 +244,35 @@ def test_persist_selected_repos_writes_launcher_home_and_rc_override(
 
     rc_text = rc.read_text(encoding="utf-8")
     assert "export ALFRED_QUEUE_REPOS=acme/web" in rc_text
+    assert "export ALFRED_SHIPPED_REPOS=acme/web" in rc_text
+    assert "export ALFRED_BRIDGE_REPOS=acme/web" in rc_text
     assert setup_mod.selected_repos() == ["acme/web"]
+
+
+def test_persist_selected_repos_writes_rc_override_for_stale_launch_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "old/repo")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "old/repo")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "old/repo")
+    home.mkdir(parents=True)
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+
+    rc_text = (tmp_path / ".alfredrc").read_text(encoding="utf-8")
+    assert "export ALFRED_QUEUE_REPOS=acme/web" in rc_text
+    assert "export ALFRED_SHIPPED_REPOS=acme/web" in rc_text
+    assert "export ALFRED_BRIDGE_REPOS=acme/web" in rc_text
+
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "old/repo")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "old/repo")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "old/repo")
+
+    launcher_env = setup_mod._setup_launcher_env()
+    assert launcher_env["ALFRED_QUEUE_REPOS"] == "acme/web"
+    assert launcher_env["ALFRED_SHIPPED_REPOS"] == "acme/web"
+    assert launcher_env["ALFRED_BRIDGE_REPOS"] == "acme/web"
