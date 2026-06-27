@@ -177,7 +177,7 @@ The full-fleet setup configures it from the start:
   --slack-webhook skip
 ```
 
-Then arm the runner gate when you are ready for parent-plan work:
+For parent-plan execution, set the runner gate explicitly and redeploy:
 
 ```sh
 alfred enable batman
