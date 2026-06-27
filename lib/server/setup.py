@@ -36,7 +36,6 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 # The watched-repo allowlist the rest of the fleet reads. The Set up surface
 # writes BOTH the queue allowlist (controls what an operator can arm/hold/close)
 # and the shipped allowlist (controls which repos the board scans), so the one
@@ -218,8 +217,9 @@ def selected_repos(env: dict[str, str] | None = None) -> list[str]:
 # --------------------------------------------------------------------------- #
 # .env writer
 # --------------------------------------------------------------------------- #
-def _env_path() -> Path:
-    return _alfred_home(dict(os.environ)) / ".env"
+def _env_path(env: dict[str, str] | None = None) -> Path:
+    resolved = env if env is not None else dict(os.environ)
+    return _alfred_home(resolved) / ".env"
 
 
 def _alfred_home(env: dict[str, str] | None = None) -> Path:
@@ -265,6 +265,11 @@ def write_env_values(values: dict[str, str]) -> Path:
             raise ValueError("env values may not contain newlines")
 
     path = _env_path()
+    _write_env_file_values(path, values)
+    return path
+
+
+def _write_env_file_values(path: Path, values: dict[str, str], *, export: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         existing = path.read_text(encoding="utf-8").splitlines()
@@ -276,13 +281,16 @@ def write_env_values(values: dict[str, str]) -> Path:
     for line in existing:
         stripped = line.strip()
         if stripped and not stripped.startswith("#") and "=" in stripped:
-            name = stripped.partition("=")[0].strip()
+            raw_name = stripped.partition("=")[0].strip()
+            name = raw_name.removeprefix("export ").strip()
             if name in remaining:
-                out_lines.append(f"{name}={remaining.pop(name)}")
+                prefix = "export " if export or raw_name.startswith("export ") else ""
+                out_lines.append(f"{prefix}{name}={remaining.pop(name)}")
                 continue
         out_lines.append(line)
     for name, value in remaining.items():
-        out_lines.append(f"{name}={value}")
+        prefix = "export " if export else ""
+        out_lines.append(f"{prefix}{name}={value}")
 
     body = "\n".join(out_lines).rstrip("\n") + "\n"
     tmp = path.with_name(f"{path.name}.tmp")
@@ -294,7 +302,6 @@ def write_env_values(values: dict[str, str]) -> Path:
     os.replace(tmp, path)
     with suppress(OSError):
         os.chmod(path, 0o600)
-    return path
 
 
 def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
@@ -1077,7 +1084,7 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
 
     from . import schedule as setup_schedule
 
-    launcher_env = _code_memory_launcher_env()
+    launcher_env = _runtime_config_env()
     home = _alfred_home(launcher_env)
     env_path = home / ".env"
     token_path = home / "state" / "server-token"
