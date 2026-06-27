@@ -181,7 +181,14 @@ def test_emergency_skip_env_preserves_dev_caches(tmp_path, monkeypatch):
     assert mod.dev_caches_cleared == 0
 
 
-def _patch_docker(monkeypatch, *, present, stdout):
+def _patch_docker(
+    monkeypatch,
+    *,
+    present,
+    stdout,
+    version_stdout="24.0.0\n",
+    version_returncode=0,
+):
     """Route docker prune calls to a fake while leaving real subprocess intact.
 
     The procedural cleanup body runs ``subprocess.run`` for git/worktree work
@@ -200,6 +207,13 @@ def _patch_docker(monkeypatch, *, present, stdout):
     def fake_run(cmd, *args, **kwargs):
         if isinstance(cmd, (list, tuple)) and cmd and str(cmd[0]).endswith("docker"):
             calls.append(list(cmd))
+            if len(cmd) > 1 and cmd[1] == "version":
+                return subprocess.CompletedProcess(
+                    cmd,
+                    version_returncode,
+                    stdout=version_stdout,
+                    stderr="",
+                )
             return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
         return real_run(cmd, *args, **kwargs)
 
@@ -287,24 +301,64 @@ def test_scheduled_env_reclaims_dev_caches_without_flag(tmp_path, monkeypatch):
 
 
 def test_scheduled_flag_reclaims_docker_without_emergency(tmp_path, monkeypatch):
-    """--scheduled runs the safe docker prunes, but ANONYMOUS volumes only.
+    """--scheduled runs safe Docker prunes, with anonymous-only volumes on 23+.
 
-    Unlike --emergency it must not pass --all to the volume prune, since that
-    also removes NAMED orphaned volumes which can hold local dev data.
+    Unlike --emergency it must not pass --all to volume prune, since that also
+    removes named orphaned volumes which can hold local dev data.
     """
     monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
     home = tmp_path / "home"
     calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
     mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
     assert mod.dock_n == 3
-    assert [c[1:] for c in calls] == [
+    assert [c[1:] for c in calls if "prune" in c] == [
         ["builder", "prune", "-f"],
         ["image", "prune", "-f"],
         ["volume", "prune", "-f"],
     ]
+    assert [c[1:] for c in calls if len(c) > 1 and c[1] == "version"] == [
+        ["version", "--format", "{{.Server.Version}}"]
+    ]
     for cmd in calls:
         assert "--all" not in cmd
         assert "container" not in cmd
+
+
+def test_scheduled_old_docker_skips_volume_prune(tmp_path, monkeypatch):
+    """Older Docker bare volume prune can delete named volumes, so skip it."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        version_stdout="20.10.24\n",
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
+
+
+def test_scheduled_unknown_docker_version_skips_volume_prune(tmp_path, monkeypatch):
+    """If the server version cannot be proven safe, scheduled skips volume prune."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        version_stdout="",
+        version_returncode=1,
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
 
 
 def test_scheduled_respects_skip_envs(tmp_path, monkeypatch):
