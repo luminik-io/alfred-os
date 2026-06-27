@@ -25,7 +25,7 @@ export function FleetStep({
   customNames: CustomRosterNames;
   saveError: string | null;
   onChange: (next: RosterThemeId) => void;
-  onSaveCustom: (next: CustomRosterNames) => void | Promise<void>;
+  onSaveCustom: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
 }) {
   const [customOpen, setCustomOpen] = useState(false);
   const activePreview = useMemo(

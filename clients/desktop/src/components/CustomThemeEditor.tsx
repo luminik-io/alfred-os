@@ -40,7 +40,7 @@ export function CustomThemeEditor({
   open: boolean;
   value: CustomRosterNames;
   onOpenChange: (open: boolean) => void;
-  onSave: (next: CustomRosterNames) => void | Promise<void>;
+  onSave: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
 }) {
   const agents = useMemo(() => editableAgents(), []);
   const [names, setNames] = useState<Record<string, string>>(value.names);

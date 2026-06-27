@@ -70,8 +70,8 @@ function writeStored(theme: RosterThemeId, custom: CustomRosterNames): void {
 export type UseRosterTheme = {
   rosterTheme: RosterThemeId;
   customNames: CustomRosterNames;
-  setRosterTheme: (next: RosterThemeId) => void;
-  setCustomNames: (next: CustomRosterNames) => void;
+  setRosterTheme: (next: RosterThemeId) => Promise<boolean>;
+  setCustomNames: (next: CustomRosterNames) => Promise<boolean>;
   // Non-null when the most recent save did not reach the server (no token, 403,
   // offline). The local picker still reflects the choice, but Slack and a fresh
   // reload keep the old persisted cast until a save succeeds, so the UI must be
@@ -105,7 +105,15 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const saveSeqRef = useRef(0);
   const inFlightRef = useRef(false);
   const pendingRef = useRef<
-    Map<string, { theme: RosterThemeId; custom: CustomRosterNames; seq: number }>
+    Map<
+      string,
+      {
+        theme: RosterThemeId;
+        custom: CustomRosterNames;
+        seq: number;
+        resolve: (saved: boolean) => void;
+      }
+    >
   >(new Map());
   // The latest seq issued per runtime url. Staleness is per runtime: a save's
   // outcome is suppressed only when a NEWER save for the SAME runtime supersedes
@@ -160,7 +168,12 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // Persist a theme switch to the server when connected. localStorage is always
   // written via the effect above, so a failed POST still keeps the local choice.
   const runSave = useCallback(
-    (url: string, theme: RosterThemeId, custom: CustomRosterNames, seq: number) => {
+    (
+      url: string,
+      theme: RosterThemeId,
+      custom: CustomRosterNames,
+      seq: number,
+    ): Promise<boolean> => {
       // Only a custom save carries the cast. A preset switch must omit both
       // maps so the server retains the authored custom cast (it replaces the
       // retained maps only when an explicit payload is present); sending empty
@@ -170,13 +183,13 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           ? { theme, custom_names: custom.names, custom_roles: custom.roles }
           : { theme };
       inFlightRef.current = true;
-      void saveRosterTheme(url, body)
+      return saveRosterTheme(url, body)
         .then(() => {
           // The server is now the agreed source of truth; clear any prior
           // failure and record this runtime as synced so a racing GET cannot
           // clobber the choice we just persisted. Skip if a newer save has
           // since been issued: that save owns the agreed state, not this one.
-          if (seq !== latestSeqByUrlRef.current.get(url)) return;
+          if (seq !== latestSeqByUrlRef.current.get(url)) return true;
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
@@ -190,13 +203,14 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
             saveErrorUrlRef.current = null;
             setSaveError(null);
           }
+          return true;
         })
         .catch((err: unknown) => {
           // The local value still reflects the choice, but Slack and a fresh
           // reload keep the old server state. Surface that so the change does
           // not silently look successful. A superseded save stays quiet; the
           // newer one reports its own outcome.
-          if (seq !== latestSeqByUrlRef.current.get(url)) return;
+          if (seq !== latestSeqByUrlRef.current.get(url)) return false;
           // The optimistic hydration recorded in persist() assumed this save
           // would land. It did not, so the server still holds the old cast.
           // Clear the marker for this runtime (if it is still ours) so an
@@ -211,6 +225,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
               ? `Could not save to Alfred: ${err.message}`
               : "Could not save to Alfred. The cast is local-only until a save succeeds.",
           );
+          return false;
         })
         .finally(() => {
           inFlightRef.current = false;
@@ -222,7 +237,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (nextUrl !== undefined) {
             const next = pendingRef.current.get(nextUrl)!;
             pendingRef.current.delete(nextUrl);
-            runSave(nextUrl, next.theme, next.custom, next.seq);
+            void runSave(nextUrl, next.theme, next.custom, next.seq).then(next.resolve);
           }
         });
     },
@@ -230,7 +245,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   );
 
   const persist = useCallback(
-    (theme: RosterThemeId, custom: CustomRosterNames) => {
+    (theme: RosterThemeId, custom: CustomRosterNames): Promise<boolean> => {
       if (!baseUrl) {
         // Offline change: keep it in memory/localStorage but do NOT mark the
         // hook hydrated. When the runtime later connects, the hydration effect
@@ -238,7 +253,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         // A connection-level error is not tied to a specific synced runtime.
         saveErrorUrlRef.current = null;
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
-        return;
+        return Promise.resolve(false);
       }
       // The operator's change now owns this runtime's state locally. Record the
       // runtime as synced immediately, before the (possibly queued) save even
@@ -255,10 +270,15 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         // the in-flight save's finally() drains it once the socket is free.
         // Same-runtime re-edits coalesce to the latest; other runtimes keep
         // their own queued edits.
-        pendingRef.current.set(baseUrl, { theme, custom, seq });
-        return;
+        const previous = pendingRef.current.get(baseUrl);
+        if (previous) {
+          previous.resolve(false);
+        }
+        return new Promise((resolve) => {
+          pendingRef.current.set(baseUrl, { theme, custom, seq, resolve });
+        });
       }
-      runSave(baseUrl, theme, custom, seq);
+      return runSave(baseUrl, theme, custom, seq);
     },
     [baseUrl, runSave],
   );
@@ -266,7 +286,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const setRosterTheme = useCallback(
     (next: RosterThemeId) => {
       setRosterThemeState(next);
-      persist(next, customNames);
+      return persist(next, customNames);
     },
     [customNames, persist],
   );
@@ -276,7 +296,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       // Editing the custom cast also selects it, so the change is visible.
       setCustomNamesState(next);
       setRosterThemeState("custom");
-      persist("custom", next);
+      return persist("custom", next);
     },
     [persist],
   );

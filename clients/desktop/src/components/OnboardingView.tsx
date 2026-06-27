@@ -195,8 +195,8 @@ export function OnboardingView({
   rosterTheme: RosterThemeId;
   customNames: CustomRosterNames;
   rosterSaveError: string | null;
-  onRosterThemeChange: (next: RosterThemeId) => void;
-  onCustomNamesChange: (next: CustomRosterNames) => void | Promise<void>;
+  onRosterThemeChange: (next: RosterThemeId) => boolean | void | Promise<boolean | void>;
+  onCustomNamesChange: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
 }) {
   // The mutating steps need the per-launch token the native bridge attaches; the
   // browser preview cannot, so it shows a read-only note. The read steps work
@@ -224,6 +224,7 @@ export function OnboardingView({
   // if server hydration replaces a local fallback, this state does not keep the
   // old fallback checked off.
   const [fleetTouched, setFleetTouched] = useState(false);
+  const [fleetSavePending, setFleetSavePending] = useState(false);
   const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
   // The step the auto-advance effect last moved past, so a detected gh/engine
   // only auto-advances once and never fights a manual Back.
@@ -493,7 +494,7 @@ export function OnboardingView({
         case "repos":
           return reposSelected;
         case "fleet":
-          return !rosterSaveError && (fleetTouched || persistedFleetChoice);
+          return !fleetSavePending && !rosterSaveError && (fleetTouched || persistedFleetChoice);
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -509,6 +510,7 @@ export function OnboardingView({
     [
       engineReady,
       fleetTouched,
+      fleetSavePending,
       githubConnected,
       persistedFleetChoice,
       reachedIndex,
@@ -574,31 +576,83 @@ export function OnboardingView({
     setStepKey(key);
   }, []);
 
-  const advance = useCallback(() => {
-    if (stepKey === "fleet" && !rosterSaveError) {
-      setFleetTouched(true);
+  const saveFleetChoice = useCallback(
+    async (
+      save: () => boolean | void | Promise<boolean | void>,
+      failureMessage = "Save the fleet naming choice before continuing.",
+    ): Promise<boolean> => {
+      setFleetSavePending(true);
+      try {
+        const saved = await save();
+        if (saved === false || rosterSaveError) {
+          setFleetTouched(false);
+          setNotice({
+            tone: "error",
+            message: rosterSaveError ?? failureMessage,
+          });
+          return false;
+        }
+        setFleetTouched(true);
+        return true;
+      } catch (err) {
+        setFleetTouched(false);
+        setNotice({
+          tone: "error",
+          message: err instanceof Error && err.message ? err.message : failureMessage,
+        });
+        return false;
+      } finally {
+        setFleetSavePending(false);
+      }
+    },
+    [rosterSaveError],
+  );
+
+  const advance = useCallback(async () => {
+    if (stepKey === "fleet") {
+      if (fleetSavePending) return;
+      if (rosterSaveError) {
+        setFleetTouched(false);
+        setNotice({ tone: "error", message: rosterSaveError });
+        return;
+      }
+      if (!persistedFleetChoice && !fleetTouched) {
+        const saved = await saveFleetChoice(() => onRosterThemeChange(rosterTheme));
+        if (!saved) return;
+      }
     }
     if (nextKey) goToStep(nextKey);
-  }, [goToStep, nextKey, rosterSaveError, stepKey]);
+  }, [
+    fleetSavePending,
+    fleetTouched,
+    goToStep,
+    nextKey,
+    onRosterThemeChange,
+    persistedFleetChoice,
+    rosterSaveError,
+    rosterTheme,
+    saveFleetChoice,
+    stepKey,
+  ]);
 
   const handleRosterThemeChange = useCallback(
     (next: RosterThemeId) => {
-      onRosterThemeChange(next);
-      if (!rosterSaveError) {
-        setFleetTouched(true);
-      }
+      void saveFleetChoice(
+        () => onRosterThemeChange(next),
+        "Save the fleet naming theme before continuing.",
+      );
     },
-    [onRosterThemeChange, rosterSaveError],
+    [onRosterThemeChange, saveFleetChoice],
   );
 
   const handleCustomNamesChange = useCallback(
     async (next: CustomRosterNames) => {
-      await onCustomNamesChange(next);
-      if (!rosterSaveError) {
-        setFleetTouched(true);
-      }
+      await saveFleetChoice(
+        () => onCustomNamesChange(next),
+        "Save the custom fleet names before continuing.",
+      );
     },
-    [onCustomNamesChange, rosterSaveError],
+    [onCustomNamesChange, saveFleetChoice],
   );
 
   const skipStep = useCallback(
@@ -835,8 +889,13 @@ export function OnboardingView({
               </Button>
             ) : null}
             {nextKey ? (
-              <Button type="button" size="sm" onClick={advance}>
-                <span>Continue</span>
+              <Button
+                type="button"
+                size="sm"
+                disabled={stepKey === "fleet" && fleetSavePending}
+                onClick={() => void advance()}
+              >
+                <span>{stepKey === "fleet" && fleetSavePending ? "Saving" : "Continue"}</span>
                 <ArrowRight size={15} aria-hidden="true" />
               </Button>
             ) : (

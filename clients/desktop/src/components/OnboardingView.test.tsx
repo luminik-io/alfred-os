@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -624,7 +624,13 @@ describe("OnboardingView seven-step takeover", () => {
         repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
       }),
     );
-    const onRosterThemeChange = vi.fn();
+    let resolveSave: (saved: boolean) => void = () => {};
+    const onRosterThemeChange = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
     renderOnboarding({ onRosterThemeChange });
     const user = userEvent.setup();
 
@@ -637,6 +643,12 @@ describe("OnboardingView seven-step takeover", () => {
     );
     await user.click(screen.getByLabelText(/transformers/i));
     expect(onRosterThemeChange).toHaveBeenCalledWith("transformers");
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /4 of 7/i,
+    );
+    await act(async () => {
+      resolveSave(true);
+    });
     await waitFor(() =>
       expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
         /5 of 7/i,
@@ -682,6 +694,31 @@ describe("OnboardingView seven-step takeover", () => {
       expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
         /5 of 7/i,
       ),
+    );
+  });
+
+  it("keeps fleet naming incomplete when accepting the default cannot be saved", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => false);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(onRosterThemeChange).toHaveBeenCalledWith(DEFAULT_ROSTER_THEME);
+    await waitFor(() =>
+      expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+        /4 of 7/i,
+      ),
+    );
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /fleet/i,
     );
   });
 
