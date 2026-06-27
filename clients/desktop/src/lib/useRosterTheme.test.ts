@@ -176,6 +176,39 @@ describe("useRosterTheme", () => {
     });
   });
 
+  it("clears a same-runtime save error when a newer save starts", async () => {
+    loadRosterTheme.mockResolvedValue(serverState());
+    let rejectSecond: (reason?: unknown) => void = () => {};
+    saveRosterTheme
+      .mockRejectedValueOnce(new Error("alfred serve returned 403"))
+      .mockReturnValueOnce(
+        new Promise<RosterThemeResponse>((_resolve, reject) => {
+          rejectSecond = reject;
+        }),
+      );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    await waitFor(() => {
+      expect(result.current.saveError).toContain("403");
+    });
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    expect(result.current.saveError).toBeNull();
+
+    await act(async () => {
+      rejectSecond(new Error("alfred serve returned 500"));
+    });
+    await waitFor(() => {
+      expect(result.current.saveError).toContain("500");
+    });
+  });
+
   // Thread: "Out-of-order saves persist stale theme". Two fast switches must be
   // serialized: only the first POST goes out immediately, the newest is
   // coalesced and sent once the socket frees, so the server's final write is

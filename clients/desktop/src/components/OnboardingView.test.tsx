@@ -308,6 +308,11 @@ describe("OnboardingView seven-step takeover", () => {
         onOpenConnection={vi.fn()}
         onSwitch={vi.fn()}
         onRefreshBoard={vi.fn(async () => undefined)}
+        rosterTheme={DEFAULT_ROSTER_THEME}
+        customNames={{ names: {}, roles: {} }}
+        rosterSaveError={null}
+        onRosterThemeChange={vi.fn(async () => true)}
+        onCustomNamesChange={vi.fn(async () => true)}
       />,
     );
 
@@ -862,6 +867,43 @@ describe("OnboardingView seven-step takeover", () => {
 
     expect(await screen.findByText(/save the fleet naming choice before continuing/i)).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await waitFor(() =>
+      expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+        /slack/i,
+      ),
+    );
+    expect(screen.queryByText(/save the fleet naming choice before continuing/i)).not.toBeInTheDocument();
+  });
+
+  it("ignores superseded Fleet save results after the latest choice succeeds", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const oldSave = deferred<boolean>();
+    const latestSave = deferred<boolean>();
+    const onRosterThemeChange = vi
+      .fn()
+      .mockReturnValueOnce(oldSave.promise)
+      .mockReturnValueOnce(latestSave.promise);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    fireEvent.click(screen.getByLabelText(/justice league/i));
+    fireEvent.click(screen.getByLabelText(/transformers/i));
+    expect(onRosterThemeChange).toHaveBeenCalledTimes(2);
+
+    latestSave.resolve(true);
+    await waitFor(() =>
+      expect(screen.queryByText(/save the fleet naming choice before continuing/i)).not.toBeInTheDocument(),
+    );
+
+    oldSave.resolve(false);
     await user.click(screen.getByRole("button", { name: /^continue$/i }));
 
     const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });

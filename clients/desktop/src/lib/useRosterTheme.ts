@@ -255,6 +255,10 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
         return Promise.resolve(false);
       }
+      if (saveErrorUrlRef.current === baseUrl) {
+        saveErrorUrlRef.current = null;
+        setSaveError(null);
+      }
       // The operator's change now owns this runtime's state locally. Record the
       // runtime as synced immediately, before the (possibly queued) save even
       // goes out: otherwise a still-in-flight hydration GET for this runtime can
