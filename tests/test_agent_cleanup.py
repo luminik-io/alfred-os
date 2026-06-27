@@ -65,6 +65,7 @@ def cleanup(tmp_path, monkeypatch):
     # sweep_extra_paths is a no-op during fixture load. Tests invoke
     # sweep_extra_paths directly with their own paths.
     monkeypatch.delenv("ALFRED_CLEANUP_EXTRA_PATHS", raising=False)
+    monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
     # No claim sweep work.
     monkeypatch.setenv("ALFRED_CLAIM_SWEEP_REPOS", "")
 
@@ -90,7 +91,14 @@ def test_cleanup_preflight_has_no_runtime_env_requirement(cleanup):
     assert cleanup.PREFLIGHT.check_disk is False
 
 
-def _exec_cleanup(tmp_path, monkeypatch, *, argv, home):
+def _exec_cleanup(
+    tmp_path,
+    monkeypatch,
+    *,
+    argv,
+    home,
+    scheduled_reclaim_env: str | None = None,
+):
     """Run the procedural cleanup body once with a controlled env + HOME."""
     alfred = tmp_path / "alfred"
     workspace = tmp_path / "workspace"
@@ -100,6 +108,10 @@ def _exec_cleanup(tmp_path, monkeypatch, *, argv, home):
     monkeypatch.setenv("ALFRED_HOME", str(alfred))
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
     monkeypatch.delenv("ALFRED_CLEANUP_EXTRA_PATHS", raising=False)
+    if scheduled_reclaim_env is None:
+        monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
+    else:
+        monkeypatch.setenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", scheduled_reclaim_env)
     monkeypatch.setenv("ALFRED_CLAIM_SWEEP_REPOS", "")
     monkeypatch.setenv("ALFRED_SLACK_WEBHOOK_URL", "")
     monkeypatch.setattr(sys, "argv", argv)
@@ -161,6 +173,7 @@ def test_emergency_dev_cache_skips_symlinks_but_still_clears(tmp_path, monkeypat
 
 def test_non_emergency_leaves_dev_caches_untouched(tmp_path, monkeypatch):
     """A normal (non-emergency) sweep never touches machine-wide dev caches."""
+    monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
     home = tmp_path / "home"
     _seed_dev_caches(home)
     mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
@@ -180,7 +193,16 @@ def test_emergency_skip_env_preserves_dev_caches(tmp_path, monkeypatch):
     assert mod.dev_caches_cleared == 0
 
 
-def _patch_docker(monkeypatch, *, present, stdout):
+def _patch_docker(
+    monkeypatch,
+    *,
+    present,
+    stdout,
+    version_stdout="24.0.0\n",
+    api_stdout="1.42\n",
+    version_returncode=0,
+    api_returncode=0,
+):
     """Route docker prune calls to a fake while leaving real subprocess intact.
 
     The procedural cleanup body runs ``subprocess.run`` for git/worktree work
@@ -199,6 +221,20 @@ def _patch_docker(monkeypatch, *, present, stdout):
     def fake_run(cmd, *args, **kwargs):
         if isinstance(cmd, (list, tuple)) and cmd and str(cmd[0]).endswith("docker"):
             calls.append(list(cmd))
+            if len(cmd) > 1 and cmd[1] == "version":
+                if cmd[-1] == "{{.Client.APIVersion}}":
+                    return subprocess.CompletedProcess(
+                        cmd,
+                        api_returncode,
+                        stdout=api_stdout,
+                        stderr="",
+                    )
+                return subprocess.CompletedProcess(
+                    cmd,
+                    version_returncode,
+                    stdout=version_stdout,
+                    stderr="",
+                )
             return subprocess.CompletedProcess(cmd, 0, stdout=stdout, stderr="")
         return real_run(cmd, *args, **kwargs)
 
@@ -249,11 +285,160 @@ def test_emergency_skip_env_preserves_docker(tmp_path, monkeypatch):
 
 def test_non_emergency_leaves_docker_untouched(tmp_path, monkeypatch):
     """A normal (non-emergency) sweep never runs docker prunes."""
+    monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
     home = tmp_path / "home"
     calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
     mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
     assert mod.dock_n == 0
     assert mod.dock_freed_mb == 0.0
+    assert calls == []
+
+
+def test_scheduled_flag_reclaims_dev_caches_without_emergency(tmp_path, monkeypatch):
+    """--scheduled reclaims regenerable dev caches on a normal (non-emergency) pass."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DOCKER", "1")
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert not (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert not (home / ".npm" / "_cacache").exists()
+    assert mod.dev_caches_cleared == 2
+    assert mod.dev_cache_freed_mb > 0
+    # --scheduled must NOT flip the aggressive emergency thresholds on.
+    assert mod.EMERGENCY is False
+    assert mod.SCHEDULED_RECLAIM is True
+
+
+def test_scheduled_env_reclaims_dev_caches_without_flag(tmp_path, monkeypatch):
+    """ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 opts the daily pass in with no flag."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DOCKER", "1")
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    mod = _exec_cleanup(
+        tmp_path,
+        monkeypatch,
+        argv=["agent-cleanup.py"],
+        home=home,
+        scheduled_reclaim_env="1",
+    )
+    assert not (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert mod.dev_caches_cleared == 2
+    assert mod.SCHEDULED_RECLAIM is True
+
+
+def test_scheduled_flag_reclaims_docker_without_emergency(tmp_path, monkeypatch):
+    """--scheduled runs safe Docker prunes, with anonymous-only volumes on 23+.
+
+    Unlike --emergency it must not pass --all to volume prune, since that also
+    removes named orphaned volumes which can hold local dev data.
+    """
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 3
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+        ["volume", "prune", "-f"],
+    ]
+    assert [c[1:] for c in calls if len(c) > 1 and c[1] == "version"] == [
+        ["version", "--format", "{{.Server.Version}}"],
+        ["version", "--format", "{{.Client.APIVersion}}"],
+    ]
+    for cmd in calls:
+        assert "--all" not in cmd
+        assert "container" not in cmd
+
+
+def test_scheduled_old_docker_skips_volume_prune(tmp_path, monkeypatch):
+    """Older Docker bare volume prune can delete named volumes, so skip it."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        version_stdout="20.10.24\n",
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
+
+
+def test_scheduled_old_docker_api_skips_volume_prune(tmp_path, monkeypatch):
+    """Older negotiated APIs keep bare volume prune named-volume-capable."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        version_stdout="24.0.0\n",
+        api_stdout="1.41\n",
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
+
+
+def test_scheduled_unknown_docker_version_skips_volume_prune(tmp_path, monkeypatch):
+    """If the server version cannot be proven safe, scheduled skips volume prune."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        version_stdout="",
+        version_returncode=1,
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
+
+
+def test_scheduled_unknown_docker_api_skips_volume_prune(tmp_path, monkeypatch):
+    """If the effective API cannot be proven safe, scheduled skips volume prune."""
+    monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DOCKER", raising=False)
+    home = tmp_path / "home"
+    calls = _patch_docker(
+        monkeypatch,
+        present=True,
+        stdout="Total reclaimed space: 1.5GB\n",
+        api_stdout="",
+        api_returncode=1,
+    )
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert mod.dock_n == 2
+    assert [c[1:] for c in calls if "prune" in c] == [
+        ["builder", "prune", "-f"],
+        ["image", "prune", "-f"],
+    ]
+
+
+def test_scheduled_respects_skip_envs(tmp_path, monkeypatch):
+    """The existing skip envs opt out of the scheduled reclaim too."""
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", "1")
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DOCKER", "1")
+    home = tmp_path / "home"
+    _seed_dev_caches(home)
+    calls = _patch_docker(monkeypatch, present=True, stdout="Total reclaimed space: 1.5GB\n")
+    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
+    assert (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
+    assert mod.dev_caches_cleared == 0
+    assert mod.dock_n == 0
     assert calls == []
 
 

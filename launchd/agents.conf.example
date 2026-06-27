@@ -66,6 +66,19 @@
 # (autofetch on by default; disable with ALFRED_CODE_MEMORY_AUTOFETCH=0).
 #   my.fleet.code-memory-refresh	code-memory-mcp	interval:21600	no		Code-memory index refresh
 
+# The cleanup janitor runs daily at 03:00 when enabled (it ships in the
+# starter fleet). By default that daily pass is workspace-scoped and the
+# regenerable dev-cache + Docker reclaim (Xcode DerivedData, npm cache,
+# Docker build cache, dangling images, orphaned volumes) runs only reactively,
+# when a firing already hit the disk floor and fires --emergency. To reclaim
+# that regenerable host build output proactively on the daily pass, set
+# ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 in ~/.alfredrc (equivalent to passing
+# --scheduled). The normal age gates and retention floors for the other
+# cleanup categories stay unchanged; the dev-cache reclaim itself is wholesale.
+# An explicit second cleanup row (e.g. a midday reclaim) is optional:
+#   my.fleet.cleanup	agent-cleanup.py	cron:3:00	no		Daily cleanup + reclaim
+#   my.fleet.cleanup-noon	agent-cleanup.py	cron:13:00	no	my.fleet.cleanup	Midday disk reclaim
+
 # Anonymous usage totals. This line stays commented until an install configures
 # an endpoint. The script sends only aggregate counts to ALFRED_TELEMETRY_URL,
 # and ALFRED_TELEMETRY_ENABLED=0 opts out. No repo names, code, prompts, titles,

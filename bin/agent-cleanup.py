@@ -64,7 +64,7 @@ PREFLIGHT = PreflightSpec(
     check_disk=False,
 )
 
-USAGE = """usage: agent-cleanup.py [--emergency]
+USAGE = """usage: agent-cleanup.py [--emergency] [--scheduled]
 
 Sweep stale Alfred runtime files:
   - old agent temp files
@@ -81,6 +81,19 @@ Options:
                 clears Alfred's own /tmp debug dirs regardless of the
                 1-day age gate. Still 100% Alfred-owned with the same
                 dirty-skip + recovery-ref safety as a normal sweep.
+  --scheduled   Opt-in proactive reclaim of REGENERABLE build output on the
+                normal daily pass instead of only when a firing already hit
+                the disk floor: Xcode DerivedData, npm cache, Docker build
+                cache, dangling images, and anonymous orphaned volumes when
+                Docker server version and effective API can be verified as
+                anonymous-only for bare volume prune. It does not change the
+                age gates or retention floors of the other sweep categories,
+                and unlike --emergency it never prunes named Docker volumes
+                (which may hold dev data). Disable per category with
+                ALFRED_EMERGENCY_SKIP_DOCKER=1 or
+                ALFRED_EMERGENCY_SKIP_DEV_CACHES=1. Also enabled by
+                ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 so a launchd entry that
+                cannot pass flags can still opt in via config.
 
 Configuration is via ALFRED_* environment variables.
 """
@@ -95,12 +108,35 @@ if any(arg in {"-h", "--help"} for arg in sys.argv[1:]):
 # is critical. Lowers age gates and retention floors so a full disk can
 # recover before the next firing crash-loops on ENOSPC.
 EMERGENCY = "--emergency" in sys.argv[1:]
+# --scheduled (or ALFRED_CLEANUP_SCHEDULED_RECLAIM=1) opts the daily pass
+# into the dev-cache + Docker reclaim that otherwise runs only reactively
+# under --emergency. The reclaim targets REGENERABLE build output only (Xcode
+# DerivedData, npm cache, Docker build cache, dangling images, ANONYMOUS
+# volumes when Docker server version and effective API can be verified as
+# anonymous-only for bare volume prune); the next build or run recreates whatever
+# it needs. It does NOT lower the age gates or retention floors of the OTHER
+# sweep categories (temp files, worktrees), and unlike --emergency it never
+# prunes named Docker volumes (which may hold dev data). Disable per category with
+# ALFRED_EMERGENCY_SKIP_DOCKER=1 / ALFRED_EMERGENCY_SKIP_DEV_CACHES=1. An
+# --emergency run already does this reclaim (plus the named-volume prune), so
+# the flag is redundant there but harmless. The env var lets a launchd entry
+# (which passes no flags to the script) turn the scheduled reclaim on.
+_SCHEDULED_RECLAIM_ENV = os.environ.get("ALFRED_CLEANUP_SCHEDULED_RECLAIM", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+SCHEDULED_RECLAIM = "--scheduled" in sys.argv[1:] or _SCHEDULED_RECLAIM_ENV
+# Run the regenerable dev-cache + Docker reclaim when EITHER an emergency
+# pass demands it or the operator opted the scheduled pass in.
+RECLAIM_DEV_CACHES = EMERGENCY or SCHEDULED_RECLAIM
 # Reject unknown flags only when run as the actual CLI. When the test
 # suite imports this script as a module, sys.argv belongs to pytest and
 # must not trip the parser (the procedural body would exit(2) before its
 # helper functions are defined).
 if __name__ == "__main__":
-    for _unknown in (a for a in sys.argv[1:] if a not in {"--emergency"}):
+    for _unknown in (a for a in sys.argv[1:] if a not in {"--emergency", "--scheduled"}):
         print(f"agent-cleanup.py: unknown argument: {_unknown} (see --help)", file=sys.stderr)
         sys.exit(2)
 
@@ -430,9 +466,64 @@ def _parse_docker_reclaimed_mb(stdout: str) -> float:
     return value * factors[unit]
 
 
-def reclaim_emergency_docker() -> tuple[float, int]:
-    """Reclaim regenerable Docker artifacts during --emergency.
+def _parse_major_minor(text: str) -> tuple[int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)", text)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
 
+
+def _docker_version_field(docker: str, template: str) -> tuple[int, int] | None:
+    """Return one Docker version field as major/minor, or ``None`` if unknown."""
+    try:
+        proc = subprocess.run(
+            [docker, "version", "--format", template],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return _parse_major_minor(proc.stdout or "")
+
+
+def _docker_server_version(docker: str) -> tuple[int, int] | None:
+    """Return the Docker server major/minor version, or ``None`` if unknown."""
+    return _docker_version_field(docker, "{{.Server.Version}}")
+
+
+def _docker_client_api_version(docker: str) -> tuple[int, int] | None:
+    """Return the Docker API version the CLI will use, or ``None`` if unknown."""
+    return _docker_version_field(docker, "{{.Client.APIVersion}}")
+
+
+def _docker_volume_prune_is_anonymous_only(docker: str) -> bool:
+    """True when bare ``docker volume prune -f`` is safe for scheduled cleanup.
+
+    Docker 23.0 / Engine API 1.42 changed the default bare volume prune behavior
+    to anonymous-only and introduced ``--all`` for named volumes. Older Docker
+    releases, or a client forced down to an older negotiated API via
+    DOCKER_API_VERSION, prune every unused volume with the bare command,
+    including named dev-data volumes. A scheduled daily pass must therefore skip
+    volume pruning unless it can prove both the server and effective client API
+    are new enough.
+    """
+    server_version = _docker_server_version(docker)
+    api_version = _docker_client_api_version(docker)
+    return (
+        server_version is not None
+        and server_version >= (23, 0)
+        and api_version is not None
+        and api_version >= (1, 42)
+    )
+
+
+def reclaim_emergency_docker() -> tuple[float, int]:
+    """Reclaim regenerable Docker artifacts.
+
+    Runs under --emergency and under the opt-in --scheduled daily reclaim.
     Like the dev-cache sweep, this targets machine-wide build output that can
     wedge the whole fleet off disk while every workspace-scoped pass reclaims
     0 MB. Docker's build cache, dangling images, and orphaned volumes are all
@@ -441,32 +532,50 @@ def reclaim_emergency_docker() -> tuple[float, int]:
 
     * ``docker builder prune -f``        -> build cache only
     * ``docker image prune -f``          -> dangling images only (NOT ``-a``)
-    * ``docker volume prune --all -f``   -> all volumes referenced by no
-      container, named or anonymous
+    * ``docker volume prune -f``         -> anonymous orphaned volumes only,
+      scheduled only when Docker >= 23.0 and API >= 1.42 verify that behavior
+    * ``docker volume prune --all -f``   -> ALSO named orphaned volumes,
+      EMERGENCY ONLY (see below)
 
-    Since Docker 23.0 a bare ``docker volume prune -f`` removes only anonymous
-    volumes, leaving named orphaned volumes (the usual source of large bloat)
-    on disk. ``--all`` restores the pre-23.0 behavior and reclaims both. On
-    Docker <23 the unknown flag exits non-zero with empty stdout, so the parser
-    reads 0.0 MB and the run is a no-op rather than a regression.
+    Since Docker 23.0 / Engine API 1.42, a bare ``docker volume prune -f``
+    removes only anonymous volumes. ``--all`` also removes NAMED orphaned
+    volumes, which can hold local dev data (a database, a cache) merely detached
+    from a stopped container. Routinely deleting those on a scheduled daily pass
+    could destroy data, so ``--all`` is gated to ``--emergency`` (the disk is
+    already full and recovery outranks the risk). The scheduled pass prunes only
+    anonymous volumes. Docker <23 or API <1.42 treats the bare volume prune as
+    named-volume-capable, so the scheduled path skips volume pruning there rather
+    than risking detached named dev volumes. The emergency path still uses
+    explicit ``--all``; on older Docker that flag exits non-zero with empty
+    stdout, so the parser reads 0.0 MB and the run is a no-op rather than a
+    regression.
 
     We never run ``docker container prune`` and never pass ``-a`` to the image
     prune, so running containers and their data are always preserved. Opt out
-    with ALFRED_EMERGENCY_SKIP_DOCKER=1.
+    entirely with ALFRED_EMERGENCY_SKIP_DOCKER=1 (applies to scheduled too).
 
     Returns ``(freed_mb, prunes_reclaimed)`` where ``prunes_reclaimed`` counts
     the prune commands that freed more than 0 bytes.
     """
-    if not EMERGENCY or os.environ.get("ALFRED_EMERGENCY_SKIP_DOCKER") == "1":
+    if not RECLAIM_DEV_CACHES or os.environ.get("ALFRED_EMERGENCY_SKIP_DOCKER") == "1":
         return 0.0, 0
     docker = shutil.which("docker")
     if docker is None:
         return 0.0, 0
+    # Named orphaned volumes (``--all``) may hold dev data; only an emergency
+    # (disk already full) justifies removing them. A scheduled pass prunes
+    # anonymous volumes only when Docker can prove bare prune is anonymous-only.
+    volume_prune: list[str] | None = None
+    if EMERGENCY:
+        volume_prune = [docker, "volume", "prune", "--all", "-f"]
+    elif _docker_volume_prune_is_anonymous_only(docker):
+        volume_prune = [docker, "volume", "prune", "-f"]
     commands = [
         [docker, "builder", "prune", "-f"],
         [docker, "image", "prune", "-f"],
-        [docker, "volume", "prune", "--all", "-f"],
     ]
+    if volume_prune is not None:
+        commands.append(volume_prune)
     freed_mb = 0.0
     reclaimed = 0
     for cmd in commands:
@@ -635,16 +744,18 @@ for lock_dir in Path("/tmp").glob("agent-lock-*"):
 if EMERGENCY:
     print("[cleanup] EMERGENCY mode: aggressive thresholds (disk-pressure recovery)")
 
-# In EMERGENCY mode, reclaim well-known regenerable developer caches that live
-# OUTSIDE the workspace. Every other pass here is workspace-scoped, so a host
-# whose free space is eaten by Xcode DerivedData or the npm cache can wedge the
-# whole fleet off disk while each sweep reclaims 0 MB and the preflight gate
-# keeps skipping firings. These two are pure build/download output: Xcode
-# recreates DerivedData on the next build, npm refetches its cache on the next
-# install. Opt out with ALFRED_EMERGENCY_SKIP_DEV_CACHES=1.
+# Reclaim well-known regenerable developer caches that live OUTSIDE the
+# workspace. Every other pass here is workspace-scoped, so a host whose free
+# space is eaten by Xcode DerivedData or the npm cache can wedge the whole
+# fleet off disk while each sweep reclaims 0 MB and the preflight gate keeps
+# skipping firings. These two are pure build/download output: Xcode recreates
+# DerivedData on the next build, npm refetches its cache on the next install.
+# Runs under --emergency and under the opt-in --scheduled daily reclaim so the
+# host recovers regenerable build output before disk pressure forces an
+# emergency pass. Opt out with ALFRED_EMERGENCY_SKIP_DEV_CACHES=1.
 dev_cache_freed_mb = 0.0
 dev_caches_cleared = 0
-if EMERGENCY and os.environ.get("ALFRED_EMERGENCY_SKIP_DEV_CACHES") != "1":
+if RECLAIM_DEV_CACHES and os.environ.get("ALFRED_EMERGENCY_SKIP_DEV_CACHES") != "1":
     HOME = Path.home()
     DEV_CACHE_ROOTS = [
         HOME / "Library" / "Developer" / "Xcode" / "DerivedData",  # macOS Xcode
@@ -694,7 +805,7 @@ print(
     f"[cleanup] transcripts: {transcript_removed} removed ({transcript_freed_mb:.1f} MB freed, >{TRANSCRIPT_RETENTION_DAYS}d)"
 )
 print(f"[cleanup] stuck locks: {locks_unlocked} force-released (>{LOCK_MAX_AGE // 3600}h)")
-if EMERGENCY:
+if RECLAIM_DEV_CACHES:
     print(
         f"[cleanup] dev caches: {dev_caches_cleared} reclaimed "
         f"({dev_cache_freed_mb:.1f} MB freed, Xcode DerivedData + npm cache)"

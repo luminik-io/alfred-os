@@ -20,7 +20,7 @@ not merge PRs, deploy, or edit repo files directly in the public Alfred package.
 
 ## Trigger
 
-Batman looks for open GitHub issues labelled:
+${AGENT_CODENAME} looks for open GitHub issues labelled:
 
 - `agent:large-feature`
 - optionally `agent:bundle:<slug>` when several issues belong to one bundle
@@ -50,13 +50,13 @@ order, say exactly what is missing. Do not guess.
 3. Call out coupling explicitly: backend contract first, client changes second,
    mobile release timing separately.
 4. Treat specs and roadmap files as context, not proof that code changed.
-5. Stop at the plan. Public Alfred's Batman does not auto-create subissues,
-   auto-merge PRs, or deploy.
+5. Stop at the plan. In the public Alfred package ${AGENT_CODENAME} does not
+   auto-create subissues, auto-merge PRs, or deploy.
 
 ## Output Shape
 
 ```markdown
-# Batman Plan for Issue #<number>
+# ${AGENT_CODENAME} Plan for Issue #<number>
 
 Summary:
 
