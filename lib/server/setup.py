@@ -220,8 +220,15 @@ def _env_path() -> Path:
     return _alfred_home(dict(os.environ)) / ".env"
 
 
-def _alfred_home() -> Path:
-    return Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
+def _alfred_home(env: dict[str, str] | None = None) -> Path:
+    source = dict(os.environ) if env is None else env
+    raw = str(source.get("ALFRED_HOME", "")).strip()
+    if raw:
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
+    return _default_alfred_home(source)
 
 
 def _format_repo_value(repos: list[str]) -> str:
@@ -753,16 +760,6 @@ def _config_flag(env: dict[str, str], key: str, *, default: bool) -> bool:
     if raw == "":
         return default
     return raw not in _FALSEY
-
-
-def _alfred_home(env: dict[str, str]) -> Path:
-    raw = _code_memory_config(env, "ALFRED_HOME")
-    if raw:
-        path = _safe_expand_path(raw)
-        if path:
-            return path
-        return Path(raw)
-    return _default_alfred_home(env)
 
 
 def _code_memory_index_dir(env: dict[str, str]) -> Path:
