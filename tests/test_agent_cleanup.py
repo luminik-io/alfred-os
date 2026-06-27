@@ -297,6 +297,7 @@ def test_non_emergency_leaves_docker_untouched(tmp_path, monkeypatch):
 def test_scheduled_flag_reclaims_dev_caches_without_emergency(tmp_path, monkeypatch):
     """--scheduled reclaims regenerable dev caches on a normal (non-emergency) pass."""
     monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DOCKER", "1")
     home = tmp_path / "home"
     _seed_dev_caches(home)
     mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py", "--scheduled"], home=home)
@@ -312,6 +313,7 @@ def test_scheduled_flag_reclaims_dev_caches_without_emergency(tmp_path, monkeypa
 def test_scheduled_env_reclaims_dev_caches_without_flag(tmp_path, monkeypatch):
     """ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 opts the daily pass in with no flag."""
     monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
+    monkeypatch.setenv("ALFRED_EMERGENCY_SKIP_DOCKER", "1")
     home = tmp_path / "home"
     _seed_dev_caches(home)
     mod = _exec_cleanup(
