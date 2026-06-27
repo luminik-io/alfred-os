@@ -71,3 +71,33 @@ def test_install_inventory_reports_existing_config_without_secret_values(
     assert by_key["repos"]["ok"] is True
     assert by_key["slack"]["ok"] is True
     assert by_key["token"]["ok"] is True
+
+
+def test_install_inventory_uses_launcher_home_for_agents_conf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_QUEUE_REPOS=acme/api\n", encoding="utf-8")
+
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+
+    inventory = setup_mod.install_inventory(repos=["acme/api"])
+
+    assert inventory["alfred_home"] == str(home)
+    assert inventory["agents_conf_path"] == str(conf)
+    assert inventory["agents_conf_present"] is True
+    assert inventory["scheduled_runs"] == 1

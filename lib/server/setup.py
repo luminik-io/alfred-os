@@ -1071,7 +1071,7 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
     home = _alfred_home(launcher_env)
     env_path = home / ".env"
     token_path = home / "state" / "server-token"
-    conf_path = setup_schedule.agents_conf_path()
+    conf_path = _install_agents_conf_path(home) or setup_schedule.agents_conf_path()
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
     selected = repos if repos is not None else selected_repos()
     selected_env_present = any(_has_config_value(launcher_env, key) for key in _REPO_ENV_KEYS)
@@ -1195,6 +1195,16 @@ def _inventory_item(
         "path": str(path) if path else None,
         "optional": optional,
     }
+
+
+def _install_agents_conf_path(home: Path) -> Path | None:
+    for conf in (
+        home / "launchd" / "agents.conf",
+        home / "infra" / "agents" / "launchd" / "agents.conf",
+    ):
+        if conf.is_file():
+            return conf
+    return None
 
 
 def _has_config_value(env: dict[str, str], key: str) -> bool:
