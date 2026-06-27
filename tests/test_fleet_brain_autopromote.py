@@ -179,6 +179,18 @@ def test_inline_commented_stop_controls_fail_closed(brain: FleetBrain) -> None:
     assert _status(brain, c2.id) == "candidate"
 
 
+def test_malformed_leading_hash_auto_promote_value_fails_closed(brain: FleetBrain) -> None:
+    c = _candidate(brain, "a durable lesson with malformed config", confidence=0.99)
+
+    summary = brain.auto_promote_candidates(
+        env={"ALFRED_AUTO_PROMOTE": "#abc"},
+        judge=lambda _p: _verdict(0.97),
+    )
+
+    assert summary["enabled"] is False
+    assert _status(brain, c.id) == "candidate"
+
+
 # --- structural gate (judge disabled) --------------------------------------
 
 

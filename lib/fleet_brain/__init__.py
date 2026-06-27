@@ -220,7 +220,7 @@ def _env_token(raw: object) -> str:
     """Normalize env flag values, accepting shell-style trailing comments."""
     value = str(raw).strip()
     for index, ch in enumerate(value):
-        if ch == "#" and (index == 0 or value[index - 1].isspace()):
+        if ch == "#" and index > 0 and value[index - 1].isspace():
             value = value[:index].rstrip()
             break
     return value.strip().lower()
