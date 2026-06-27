@@ -587,7 +587,7 @@ export function OnboardingView({
       try {
         const saved = await save();
         if (seq !== fleetSaveSeq.current) return false;
-        if (saved === false || rosterSaveError) {
+        if (saved === false || (saved !== true && rosterSaveError)) {
           setFleetTouched(false);
           setNotice({
             tone: "error",
@@ -617,12 +617,7 @@ export function OnboardingView({
   const advance = useCallback(async () => {
     if (stepKey === "fleet") {
       if (fleetSavePending) return;
-      if (rosterSaveError) {
-        setFleetTouched(false);
-        setNotice({ tone: "error", message: rosterSaveError });
-        return;
-      }
-      if (!persistedFleetChoice && !fleetTouched) {
+      if (rosterSaveError || (!persistedFleetChoice && !fleetTouched)) {
         const saved = await saveFleetChoice(() => onRosterThemeChange(rosterTheme));
         if (!saved) return;
       }
