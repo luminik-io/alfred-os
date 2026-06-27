@@ -9,7 +9,8 @@
 #
 # Config lives in two files, loaded in this order:
 #
-#   1. ~/.alfredrc          - optional shell rc the operator may also source
+#   1. ${ALFREDRC:-~/.alfredrc}
+#                           - optional shell rc the operator may also source
 #                             interactively (export KEY=value).
 #   2. ${ALFRED_HOME}/.env  - the canonical runtime store. This is the same
 #                             file the Set up surface, alfred-setup-token,
@@ -92,7 +93,8 @@ load_env_file() {
   done < "$file"
 }
 
-load_env_file "$HOME/.alfredrc"
+: "${ALFREDRC:=$HOME/.alfredrc}"
+load_env_file "$ALFREDRC"
 
 : "${ALFRED_HOME:=$HOME/.alfred}"
 
@@ -102,7 +104,7 @@ load_env_file "$ALFRED_HOME/.env" no_clobber
 
 : "${WORKSPACE_ROOT:=$HOME/code}"
 
-export ALFRED_HOME WORKSPACE_ROOT
+export ALFRED_HOME WORKSPACE_ROOT ALFREDRC
 
 case "$SCRIPT" in
   */*) TARGET="$SCRIPT" ;;

@@ -11,8 +11,9 @@
 # Env vars (defaults shown):
 #   ALFRED_HOME      = $HOME/.alfred
 #   WORKSPACE_ROOT   = $HOME/code
-# (Both flow into the rendered launchd plists / systemd units for any
-# consumer that ships agents.)
+#   ALFREDRC         = $HOME/.alfredrc
+# These flow into the rendered launchd plists / systemd units for any
+# consumer that ships agents.
 
 set -euo pipefail
 
@@ -45,11 +46,12 @@ load_env_file() {
   done < "$file"
 }
 
-load_env_file "$HOME/.alfredrc"
+: "${ALFREDRC:=$HOME/.alfredrc}"
+load_env_file "$ALFREDRC"
 
 : "${ALFRED_HOME:=$HOME/.alfred}"
 : "${WORKSPACE_ROOT:=$HOME/code}"
-export ALFRED_HOME WORKSPACE_ROOT
+export ALFRED_HOME WORKSPACE_ROOT ALFREDRC
 
 RUNTIME_BIN="$ALFRED_HOME/bin"
 RUNTIME_LIB="$ALFRED_HOME/lib"

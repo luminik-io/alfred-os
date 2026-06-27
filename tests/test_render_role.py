@@ -85,3 +85,15 @@ def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
     env = plist_data["EnvironmentVariables"]
     assert env["AGENT_CODENAME"] == "marshall"
     assert env["LAUNCHD_LABEL"] == "my.fleet.marshall"
+
+
+def test_render_passes_custom_alfredrc_to_launchd_environment(tmp_path):
+    custom_rc = tmp_path / "custom.alfredrc"
+    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
+
+    plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
+    env = plist_data["EnvironmentVariables"]
+    assert env["ALFREDRC"] == str(custom_rc)

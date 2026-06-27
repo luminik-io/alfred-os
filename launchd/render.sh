@@ -16,6 +16,7 @@
 #   __JAVA_BLOCK__         - JAVA_HOME entry (empty when needs_java=no)
 #   __ALFRED_BIN__         - $ALFRED_HOME/bin
 #   __ALFRED_HOME__        - resolves at render time from $ALFRED_HOME or ~/.alfred
+#   __ALFREDRC__           - resolves at render time from $ALFREDRC or ~/.alfredrc
 #   __WORKSPACE_ROOT__  - resolves at render time from $WORKSPACE_ROOT
 #   __HOME__               - $HOME at render time
 #   __LOG_STEM__           - basename for /tmp/<stem>.{stdout,stderr}
@@ -71,11 +72,12 @@ load_env_file() {
   done < "$file"
 }
 
-load_env_file "$HOME/.alfredrc"
+: "${ALFREDRC:=$HOME/.alfredrc}"
+load_env_file "$ALFREDRC"
 
 : "${ALFRED_HOME:=$HOME/.alfred}"
 : "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/code}}"
-export ALFRED_HOME WORKSPACE_ROOT
+export ALFRED_HOME WORKSPACE_ROOT ALFREDRC
 
 # Detect openjdk@21 install path at render time so this works across
 # Apple Silicon (`/opt/homebrew`), Intel Macs (`/usr/local`), and Linux
@@ -163,12 +165,12 @@ render_one() {
 
   python3 - "$TEMPLATE" "$out" \
       "$label" "$script" "$schedule_block" "$path_value" "$java_block" \
-      "$alfred_bin" "$ALFRED_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" \
+      "$alfred_bin" "$ALFRED_HOME" "$ALFREDRC" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" \
       "$agent_short" "$role" <<'PY'
 import sys
 from xml.sax.saxutils import escape
 template_path, out_path, label, script, schedule_block, path_value, java_block, \
-    alfred_bin, alfred_home, workspace_root, home_dir, log_stem, gh_org, \
+    alfred_bin, alfred_home, alfredrc, workspace_root, home_dir, log_stem, gh_org, \
     agent_short, role = sys.argv[1:]
 with open(template_path) as f:
     txt = f.read()
@@ -190,6 +192,7 @@ mapping = {
     "__JAVA_BLOCK__": java_block,
     "__ALFRED_BIN__": alfred_bin,
     "__ALFRED_HOME__": alfred_home,
+    "__ALFREDRC__": alfredrc,
     "__WORKSPACE_ROOT__": workspace_root,
     "__AGENT_SHORT__": agent_short,
     "__GH_ORG_BLOCK__": (

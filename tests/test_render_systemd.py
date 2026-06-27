@@ -121,6 +121,17 @@ def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
     assert "Environment=LAUNCHD_LABEL=my.fleet.marshall" in service
 
 
+def test_render_passes_custom_alfredrc_to_systemd_environment(tmp_path):
+    custom_rc = tmp_path / "custom.alfredrc"
+    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
+
+    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
+    assert f"Environment=ALFREDRC={custom_rc}" in service
+
+
 def test_render_omits_java_home_when_needs_java_no(tmp_path):
     # render.sh derives JAVA_HOME from `command -v java` or /usr/lib/jvm; on a
     # host with no java it omits the block with a warning, so the positive

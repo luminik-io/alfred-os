@@ -197,6 +197,26 @@ def test_agent_launch_alfredrc_wins_over_env_file(tmp_path: Path, alfred_home: P
     assert "TOKEN=sk-ant-oat01-fromrc" in proc.stdout
 
 
+def test_agent_launch_honors_custom_alfredrc_path(tmp_path: Path, alfred_home: Path) -> None:
+    custom_rc = tmp_path / "custom.alfredrc"
+    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    target = tmp_path / "echo-auto-promote.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFREDRC": str(custom_rc)},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "AUTO=0" in proc.stdout
+
+
 def test_bash_available() -> None:
     """Sanity: tests need bash on PATH."""
     assert shutil.which("bash"), "bash not on PATH; cannot run agent-launch tests"
