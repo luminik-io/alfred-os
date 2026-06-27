@@ -219,9 +219,11 @@ export function OnboardingView({
   const [slackTouched, setSlackTouched] = useState(false);
   const persistedFleetChoice =
     rosterTheme !== DEFAULT_ROSTER_THEME || hasCustomRosterValues(customNames);
-  // True once the user has either chosen a theme or continued from Fleet to
-  // accept the default roster. Merely reaching the step should not check it off.
-  const [fleetTouched, setFleetTouched] = useState(persistedFleetChoice);
+  // True once this onboarding session chooses a theme or continues from Fleet
+  // to accept the default roster. Current props still win for persisted choices:
+  // if server hydration replaces a local fallback, this state does not keep the
+  // old fallback checked off.
+  const [fleetTouched, setFleetTouched] = useState(false);
   const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
   // The step the auto-advance effect last moved past, so a detected gh/engine
   // only auto-advances once and never fights a manual Back.
@@ -460,12 +462,6 @@ export function OnboardingView({
     void refreshStatus();
   }, [refreshStatus]);
 
-  useEffect(() => {
-    if (persistedFleetChoice) {
-      setFleetTouched(true);
-    }
-  }, [persistedFleetChoice]);
-
   const githubConnected = Boolean(status?.github.ok);
   const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
   const reposSelected = (status?.repos.count ?? 0) > 0;
@@ -497,7 +493,7 @@ export function OnboardingView({
         case "repos":
           return reposSelected;
         case "fleet":
-          return fleetTouched || persistedFleetChoice;
+          return !rosterSaveError && (fleetTouched || persistedFleetChoice);
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -517,6 +513,7 @@ export function OnboardingView({
       persistedFleetChoice,
       reachedIndex,
       reposSelected,
+      rosterSaveError,
       requestDone,
       skipped,
       slackTouched,
@@ -578,26 +575,30 @@ export function OnboardingView({
   }, []);
 
   const advance = useCallback(() => {
-    if (stepKey === "fleet") {
+    if (stepKey === "fleet" && !rosterSaveError) {
       setFleetTouched(true);
     }
     if (nextKey) goToStep(nextKey);
-  }, [goToStep, nextKey, stepKey]);
+  }, [goToStep, nextKey, rosterSaveError, stepKey]);
 
   const handleRosterThemeChange = useCallback(
     (next: RosterThemeId) => {
-      setFleetTouched(true);
       onRosterThemeChange(next);
+      if (!rosterSaveError) {
+        setFleetTouched(true);
+      }
     },
-    [onRosterThemeChange],
+    [onRosterThemeChange, rosterSaveError],
   );
 
   const handleCustomNamesChange = useCallback(
     async (next: CustomRosterNames) => {
       await onCustomNamesChange(next);
-      setFleetTouched(true);
+      if (!rosterSaveError) {
+        setFleetTouched(true);
+      }
     },
-    [onCustomNamesChange],
+    [onCustomNamesChange, rosterSaveError],
   );
 
   const skipStep = useCallback(

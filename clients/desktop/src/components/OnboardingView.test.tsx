@@ -141,29 +141,33 @@ const TRUSTED_EMPTY: TrustedSlackUsersResponse = {
   state_path: "/tmp/trusted.json",
 };
 
+function onboardingProps(
+  props: Partial<React.ComponentProps<typeof OnboardingView>> = {},
+): React.ComponentProps<typeof OnboardingView> {
+  return {
+    baseUrl: "http://127.0.0.1:7010",
+    loading: false,
+    connected: true,
+    canRun: true,
+    nativeBusy: null,
+    nativeResult: null,
+    onConnectServer: vi.fn(),
+    onStartRuntime: vi.fn(),
+    onRunLocalAction: vi.fn(async () => null),
+    onOpenConnection: vi.fn(),
+    onSwitch: vi.fn(),
+    onRefreshBoard: vi.fn(async () => undefined),
+    rosterTheme: DEFAULT_ROSTER_THEME,
+    customNames: EMPTY_CUSTOM_NAMES,
+    rosterSaveError: null,
+    onRosterThemeChange: vi.fn(),
+    onCustomNamesChange: vi.fn(),
+    ...props,
+  };
+}
+
 function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingView>> = {}) {
-  return render(
-    <OnboardingView
-      baseUrl="http://127.0.0.1:7010"
-      loading={false}
-      connected
-      canRun
-      nativeBusy={null}
-      nativeResult={null}
-      onConnectServer={vi.fn()}
-      onStartRuntime={vi.fn()}
-      onRunLocalAction={vi.fn(async () => null)}
-      onOpenConnection={vi.fn()}
-      onSwitch={vi.fn()}
-      onRefreshBoard={vi.fn(async () => undefined)}
-      rosterTheme={DEFAULT_ROSTER_THEME}
-      customNames={EMPTY_CUSTOM_NAMES}
-      rosterSaveError={null}
-      onRosterThemeChange={vi.fn()}
-      onCustomNamesChange={vi.fn()}
-      {...props}
-    />,
-  );
+  return render(<OnboardingView {...onboardingProps(props)} />);
 }
 
 function deferred<T>() {
@@ -677,6 +681,68 @@ describe("OnboardingView seven-step takeover", () => {
     await waitFor(() =>
       expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
         /5 of 7/i,
+      ),
+    );
+  });
+
+  it("does not mark fleet naming complete while a roster save error is visible", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn();
+    renderOnboarding({
+      rosterSaveError: "Could not save to Alfred.",
+      onRosterThemeChange,
+    });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await user.click(screen.getByLabelText(/transformers/i));
+
+    expect(onRosterThemeChange).toHaveBeenCalledWith("transformers");
+    expect(screen.getByRole("alert")).toHaveTextContent(/could not save to alfred/i);
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /4 of 7/i,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+    await waitFor(() =>
+      expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+        /4 of 7/i,
+      ),
+    );
+  });
+
+  it("does not latch a non-default local roster after server hydration returns default", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const view = renderOnboarding({ rosterTheme: "transformers" });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /5 of 7/i,
+    );
+
+    view.rerender(
+      <OnboardingView
+        {...onboardingProps({
+          rosterTheme: DEFAULT_ROSTER_THEME,
+          customNames: EMPTY_CUSTOM_NAMES,
+        })}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+        /4 of 7/i,
       ),
     );
   });
