@@ -14,7 +14,11 @@ import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
-import type { CustomRosterNames, RosterThemeId } from "../lib/agentThemes";
+import {
+  DEFAULT_ROSTER_THEME,
+  type CustomRosterNames,
+  type RosterThemeId,
+} from "../lib/agentThemes";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
 import type { NativeCommandResult, SetupStatus } from "../types";
@@ -88,6 +92,12 @@ const IDLE_GITHUB_AUTH_FLOW: GithubAuthFlow = {
 };
 
 const GITHUB_DEVICE_URL = "https://github.com/login/device";
+
+function hasCustomRosterValues(customNames: CustomRosterNames): boolean {
+  return [...Object.values(customNames.names), ...Object.values(customNames.roles)].some(
+    (value) => value.trim().length > 0,
+  );
+}
 
 const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
   welcome: {
@@ -207,6 +217,11 @@ export function OnboardingView({
   // True once the user added a Slack approver, so the optional Slack step reads
   // as done in the rail (the server exposes no approver flag on SetupStatus).
   const [slackTouched, setSlackTouched] = useState(false);
+  const persistedFleetChoice =
+    rosterTheme !== DEFAULT_ROSTER_THEME || hasCustomRosterValues(customNames);
+  // True once the user has either chosen a theme or continued from Fleet to
+  // accept the default roster. Merely reaching the step should not check it off.
+  const [fleetTouched, setFleetTouched] = useState(persistedFleetChoice);
   const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
   // The step the auto-advance effect last moved past, so a detected gh/engine
   // only auto-advances once and never fights a manual Back.
@@ -445,6 +460,12 @@ export function OnboardingView({
     void refreshStatus();
   }, [refreshStatus]);
 
+  useEffect(() => {
+    if (persistedFleetChoice) {
+      setFleetTouched(true);
+    }
+  }, [persistedFleetChoice]);
+
   const githubConnected = Boolean(status?.github.ok);
   const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
   const reposSelected = (status?.repos.count ?? 0) > 0;
@@ -476,7 +497,7 @@ export function OnboardingView({
         case "repos":
           return reposSelected;
         case "fleet":
-          return true;
+          return fleetTouched || persistedFleetChoice;
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -489,7 +510,17 @@ export function OnboardingView({
           return false;
       }
     },
-    [engineReady, githubConnected, reachedIndex, reposSelected, requestDone, skipped, slackTouched],
+    [
+      engineReady,
+      fleetTouched,
+      githubConnected,
+      persistedFleetChoice,
+      reachedIndex,
+      reposSelected,
+      requestDone,
+      skipped,
+      slackTouched,
+    ],
   );
 
   // Per-step completion for the rail. A step is "done" only when the user has
@@ -547,8 +578,27 @@ export function OnboardingView({
   }, []);
 
   const advance = useCallback(() => {
+    if (stepKey === "fleet") {
+      setFleetTouched(true);
+    }
     if (nextKey) goToStep(nextKey);
-  }, [goToStep, nextKey]);
+  }, [goToStep, nextKey, stepKey]);
+
+  const handleRosterThemeChange = useCallback(
+    (next: RosterThemeId) => {
+      setFleetTouched(true);
+      onRosterThemeChange(next);
+    },
+    [onRosterThemeChange],
+  );
+
+  const handleCustomNamesChange = useCallback(
+    async (next: CustomRosterNames) => {
+      await onCustomNamesChange(next);
+      setFleetTouched(true);
+    },
+    [onCustomNamesChange],
+  );
 
   const skipStep = useCallback(
     (key: OnboardingStepKey) => {
@@ -732,8 +782,8 @@ export function OnboardingView({
                 value={rosterTheme}
                 customNames={customNames}
                 saveError={rosterSaveError}
-                onChange={onRosterThemeChange}
-                onSaveCustom={onCustomNamesChange}
+                onChange={handleRosterThemeChange}
+                onSaveCustom={handleCustomNamesChange}
               />
             </StepFrame>
           ) : null}

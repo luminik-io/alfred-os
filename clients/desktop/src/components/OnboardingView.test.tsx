@@ -615,6 +615,11 @@ describe("OnboardingView seven-step takeover", () => {
   });
 
   it("lets the user choose a full-fleet naming theme during onboarding", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
     const onRosterThemeChange = vi.fn();
     renderOnboarding({ onRosterThemeChange });
     const user = userEvent.setup();
@@ -622,9 +627,58 @@ describe("OnboardingView seven-step takeover", () => {
     await gotoStep(user, /^fleet$/i);
 
     expect(screen.getByText(/alfred installs the full engineering fleet by default/i)).toBeInTheDocument();
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /4 of 7/i,
+    );
     await user.click(screen.getByLabelText(/transformers/i));
     expect(onRosterThemeChange).toHaveBeenCalledWith("transformers");
+    await waitFor(() =>
+      expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+        /5 of 7/i,
+      ),
+    );
     expect(screen.getByText(/same fleet, different names/i)).toBeInTheDocument();
+  });
+
+  it("does not mark fleet naming complete just because the user reached the step", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /fleet/i,
+    );
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /4 of 7/i,
+    );
+  });
+
+  it("marks fleet naming complete when the user accepts the default and continues", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await waitFor(() =>
+      expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+        /5 of 7/i,
+      ),
+    );
   });
 
   it("opens the custom fleet naming editor from onboarding", async () => {
