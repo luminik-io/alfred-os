@@ -396,9 +396,22 @@ fn merged_alfred_env() -> HashMap<String, String> {
             &mut env,
             &alfredrc,
             true,
+            false,
             home.as_deref(),
             &process_env_keys,
         );
+        if let Some(pointed_alfredrc) = alfredrc_path(home.as_deref(), &env) {
+            if pointed_alfredrc != alfredrc {
+                load_config_file(
+                    &mut env,
+                    &pointed_alfredrc,
+                    true,
+                    true,
+                    home.as_deref(),
+                    &process_env_keys,
+                );
+            }
+        }
     }
 
     let runtime_home = env
@@ -413,6 +426,7 @@ fn merged_alfred_env() -> HashMap<String, String> {
             &mut env,
             &runtime_home.join(".env"),
             true,
+            false,
             home.as_deref(),
             &process_env_keys,
         );
@@ -436,6 +450,7 @@ fn load_config_file(
     env: &mut HashMap<String, String>,
     path: &Path,
     no_clobber: bool,
+    file_overrides_existing: bool,
     home: Option<&Path>,
     process_env_keys: &HashSet<String>,
 ) {
@@ -472,7 +487,7 @@ fn load_config_file(
                 continue;
             }
         }
-        if no_clobber && env.contains_key(key) {
+        if no_clobber && !file_overrides_existing && env.contains_key(key) {
             continue;
         }
         env.insert(key.to_string(), clean);
@@ -2244,6 +2259,68 @@ mod tests {
         std::env::remove_var("ALFRED_AUTO_PROMOTE_KILL");
 
         let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_HOME"),
+            Some(&runtime.to_string_lossy().to_string())
+        );
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"1".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
+        restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
+        restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
+    }
+
+    #[test]
+    fn native_subprocess_env_follows_persisted_alfredrc_pointer() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
+        let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
+        let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
+
+        let root = temp_root("alfred-persisted-alfredrc-pointer");
+        let home = root.join("home");
+        let stale_runtime = root.join("stale-runtime");
+        let runtime = root.join("runtime");
+        let custom_rc = root.join("custom.alfredrc");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&stale_runtime).expect("create stale runtime");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            home.join(".alfredrc"),
+            format!(
+                "ALFREDRC='{}'\nALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=1\n\
+                 ALFRED_AUTO_PROMOTE_KILL=0\n",
+                custom_rc.to_string_lossy(),
+                stale_runtime.to_string_lossy()
+            ),
+        )
+        .expect("write home alfredrc pointer");
+        std::fs::write(
+            &custom_rc,
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n",
+                runtime.to_string_lossy()
+            ),
+        )
+        .expect("write custom alfredrc");
+
+        std::env::set_var("HOME", &home);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE_KILL");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFREDRC"),
+            Some(&custom_rc.to_string_lossy().to_string())
+        );
         assert_eq!(
             env.get("ALFRED_HOME"),
             Some(&runtime.to_string_lossy().to_string())
