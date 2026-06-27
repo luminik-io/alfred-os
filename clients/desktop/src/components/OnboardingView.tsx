@@ -495,7 +495,9 @@ export function OnboardingView({
         case "repos":
           return reposSelected;
         case "fleet":
-          return !fleetSavePending && !rosterSaveError && (fleetTouched || persistedFleetChoice);
+          if (fleetSavePending) return false;
+          if (!canMutate) return fleetTouched || persistedFleetChoice;
+          return !rosterSaveError && fleetTouched;
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -510,6 +512,7 @@ export function OnboardingView({
     },
     [
       engineReady,
+      canMutate,
       fleetTouched,
       fleetSavePending,
       githubConnected,
@@ -617,7 +620,9 @@ export function OnboardingView({
   const advance = useCallback(async () => {
     if (stepKey === "fleet") {
       if (fleetSavePending) return;
-      if (rosterSaveError || (!persistedFleetChoice && !fleetTouched)) {
+      if (!canMutate) {
+        setFleetTouched(true);
+      } else if (rosterSaveError || !fleetTouched) {
         const saved = await saveFleetChoice(() => onRosterThemeChange(rosterTheme));
         if (!saved) return;
       }
@@ -626,10 +631,10 @@ export function OnboardingView({
   }, [
     fleetSavePending,
     fleetTouched,
+    canMutate,
     goToStep,
     nextKey,
     onRosterThemeChange,
-    persistedFleetChoice,
     rosterSaveError,
     rosterTheme,
     saveFleetChoice,

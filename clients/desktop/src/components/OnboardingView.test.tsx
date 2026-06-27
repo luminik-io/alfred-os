@@ -782,6 +782,48 @@ describe("OnboardingView seven-step takeover", () => {
     );
   });
 
+  it("requires saving a non-default fleet choice in this onboarding session", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => true);
+    renderOnboarding({
+      rosterTheme: "transformers",
+      onRosterThemeChange,
+    });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await waitFor(() => expect(onRosterThemeChange).toHaveBeenCalledWith("transformers"));
+  });
+
+  it("lets the browser preview advance past Fleet without saving", async () => {
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => false);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    expect(onRosterThemeChange).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+        /slack/i,
+      ),
+    );
+  });
+
   it("does not latch a non-default local roster after server hydration returns default", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
@@ -794,7 +836,7 @@ describe("OnboardingView seven-step takeover", () => {
     await gotoStep(user, /^fleet$/i);
     const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
     expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
-      /5 of 7/i,
+      /4 of 7/i,
     );
 
     view.rerender(
