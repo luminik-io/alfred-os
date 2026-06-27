@@ -303,6 +303,59 @@ def test_render_agents_conf_does_not_trust_alfredrc_override_for_config_gates(
     assert "\nalfred.huntress\t" not in text
 
 
+def test_step_7_repos_preserves_managed_special_prompt_defaults(init_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                "# operator-owned settings",
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_HUNTRESS_TARGET_URL=https://staging.example.com",
+                "ALFRED_GORDON_ECS_CLUSTER=staging",
+                "ALFRED_GORDON_SENTRY_ORG=acme",
+                "",
+            ]
+        )
+    )
+
+    init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
+
+    assert state.role_to_extras["smoke_runner"] == {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+    }
+    assert state.role_to_extras["ops_morning"] == {
+        "ALFRED_GORDON_ECS_CLUSTER": "staging",
+        "ALFRED_GORDON_SENTRY_ORG": "acme",
+    }
+    text = init_mod.render_agents_conf(state)
+    assert "#alfred.huntress" not in text
+    assert "#alfred.gordon" not in text
+
+
+def test_step_7_repos_keeps_config_special_prompt_over_managed_default(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.role_to_extras["smoke_runner"] = {"ALFRED_HUNTRESS_TARGET_URL": "https://new.example.com"}
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
+                "",
+            ]
+        )
+    )
+
+    init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
+
+    assert state.role_to_extras["smoke_runner"] == {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://new.example.com"
+    }
+
+
 def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)

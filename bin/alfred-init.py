@@ -487,6 +487,17 @@ def read_unmanaged_alfredrc(path: Path) -> dict[str, str]:
     return _parse_alfredrc_text(raw)
 
 
+def read_managed_alfredrc(path: Path) -> dict[str, str]:
+    """Parse only the alfred-init managed block from ~/.alfredrc."""
+    if not path.exists():
+        return {}
+    raw = path.read_text()
+    managed = ALFREDRC_BANNER_RE.search(raw)
+    if not managed:
+        return {}
+    return _parse_alfredrc_text(raw[managed.end() :])
+
+
 def quote_alfredrc_value(value: str) -> str:
     """Return a shell-safe scalar for a generated ~/.alfredrc assignment."""
     if "\x00" in value or "\n" in value or "\r" in value:
@@ -1258,68 +1269,68 @@ def step_7_repos(
     step("Per-agent repos")
     repo_roles = [r for r in state.enabled_roles if role_uses_repos(r)]
     if not repo_roles:
-        ok("No repo-operating agents enabled; skipping.")
-        return
-
-    arg_repos: list[str] | None = None
-    if repos_arg is not None:
-        arg_repos = _resolve_repo_selection(
-            repos_arg, state.repos, gh_org=state.gh_org, allow_external=True
-        )
-        if not arg_repos and repos_arg.strip().lower() != "none":
-            fail(f"--repos did not match any visible repo: {repos_arg}")
-            sys.exit(1)
-        outside_org = [
-            repo
-            for repo in arg_repos
-            if "/" in repo
-            and state.gh_org
-            and repo.split("/", 1)[0].lower() != state.gh_org.lower()
-        ]
-        if outside_org:
-            fail(
-                "--repos must belong to GH_ORG for the shipped agents. "
-                f"Set GH_ORG accordingly or use bare repo names. Outside scope: {', '.join(outside_org)}"
+        ok("No repo-operating agents enabled; skipping repo prompts.")
+    else:
+        arg_repos: list[str] | None = None
+        if repos_arg is not None:
+            arg_repos = _resolve_repo_selection(
+                repos_arg, state.repos, gh_org=state.gh_org, allow_external=True
             )
-            sys.exit(1)
+            if not arg_repos and repos_arg.strip().lower() != "none":
+                fail(f"--repos did not match any visible repo: {repos_arg}")
+                sys.exit(1)
+            outside_org = [
+                repo
+                for repo in arg_repos
+                if "/" in repo
+                and state.gh_org
+                and repo.split("/", 1)[0].lower() != state.gh_org.lower()
+            ]
+            if outside_org:
+                fail(
+                    "--repos must belong to GH_ORG for the shipped agents. "
+                    f"Set GH_ORG accordingly or use bare repo names. Outside scope: {', '.join(outside_org)}"
+                )
+                sys.exit(1)
 
-    for role in repo_roles:
-        codename = state.codename_for(role)
-        # Honor --config role_repos (per-agent scoping) over the broader
-        # --repos / "repos" / non-interactive default-all behaviour.
-        if role in state.role_to_repos:
-            continue
-        if arg_repos is not None:
-            state.role_to_repos[role] = list(arg_repos)
-            continue
-        if non_interactive:
-            if len(state.repos) == 1:
-                state.role_to_repos[role] = list(state.repos)
+        for role in repo_roles:
+            codename = state.codename_for(role)
+            # Honor --config role_repos (per-agent scoping) over the broader
+            # --repos / "repos" / non-interactive default-all behaviour.
+            if role in state.role_to_repos:
                 continue
-            fail(
-                "Non-interactive setup with repo agents needs --repos or per-agent "
-                "role_repos in --config. Example: --repos owner/repo or --repos repo-a,repo-b"
-            )
-            sys.exit(1)
-        if not state.repos:
-            state.role_to_repos[role] = []
-            continue
-        print()
-        print(f"  Repos for {codename} ({AGENT_CATALOG[role][1]}):")
-        for i, repo in enumerate(state.repos, 1):
-            print(f"    {i:>2}. {repo}")
-        default = "all" if len(state.repos) == 1 else ""
-        while True:
-            raw = ask(
-                "Numbers, 'all', 'engineering' (excludes specs/docs), or 'none'",
-                default,
-            )
-            selected = _resolve_repo_selection(raw, state.repos, gh_org=state.gh_org)
-            if selected or (raw or "").strip().lower() == "none":
-                state.role_to_repos[role] = selected
-                break
-            fail("Select at least one repo, or type 'none' to leave this agent idle.")
+            if arg_repos is not None:
+                state.role_to_repos[role] = list(arg_repos)
+                continue
+            if non_interactive:
+                if len(state.repos) == 1:
+                    state.role_to_repos[role] = list(state.repos)
+                    continue
+                fail(
+                    "Non-interactive setup with repo agents needs --repos or per-agent "
+                    "role_repos in --config. Example: --repos owner/repo or --repos repo-a,repo-b"
+                )
+                sys.exit(1)
+            if not state.repos:
+                state.role_to_repos[role] = []
+                continue
+            print()
+            print(f"  Repos for {codename} ({AGENT_CATALOG[role][1]}):")
+            for i, repo in enumerate(state.repos, 1):
+                print(f"    {i:>2}. {repo}")
+            default = "all" if len(state.repos) == 1 else ""
+            while True:
+                raw = ask(
+                    "Numbers, 'all', 'engineering' (excludes specs/docs), or 'none'",
+                    default,
+                )
+                selected = _resolve_repo_selection(raw, state.repos, gh_org=state.gh_org)
+                if selected or (raw or "").strip().lower() == "none":
+                    state.role_to_repos[role] = selected
+                    break
+                fail("Select at least one repo, or type 'none' to leave this agent idle.")
     # Special prompts (Huntress staging URL, Gordon ECS cluster, etc.)
+    managed_defaults = read_managed_alfredrc(state.alfredrc)
     for role in state.enabled_roles:
         codename = state.codename_for(role)
         # Match by canonical Batman name even if operator renamed the codename.
@@ -1329,11 +1340,14 @@ def step_7_repos(
             continue
         extras: dict[str, str] = {}
         for env_key, label in prompts:
-            val = ask(f"{label}", "", non_interactive=non_interactive)
+            current = state.role_to_extras.get(role, {}).get(
+                env_key, managed_defaults.get(env_key, "")
+            )
+            val = ask(f"{label}", current, non_interactive=non_interactive)
             if val:
                 extras[env_key] = val
         if extras:
-            state.role_to_extras[role] = extras
+            state.role_to_extras.setdefault(role, {}).update(extras)
 
 
 def _resolve_repo_selection(
