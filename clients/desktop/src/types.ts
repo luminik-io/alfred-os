@@ -470,10 +470,28 @@ export type SetupEngine = {
   path: string | null;
 };
 
+export type SetupCodeMemory = {
+  enabled: boolean;
+  autofetch: boolean;
+  binary: {
+    resolved: boolean;
+    path: string | null;
+    source: "env" | "path" | "cache" | "none" | string;
+    configured: string | null;
+  };
+  version_pin: string;
+  repo: string;
+  index_dir: string;
+  index_present: boolean;
+  repos: { configured: string[]; count: number };
+  detail: string;
+};
+
 export type SetupStatus = {
   github: SetupGithub;
   engines: SetupEngine[];
   engine_ready: boolean;
+  code_memory?: SetupCodeMemory;
   repos: { selected: string[]; count: number; keys: string[] };
   demo: { present: boolean };
   ready: boolean;
@@ -667,6 +685,7 @@ export type NativeAction =
   | "auth_status"
   | "github_auth_login"
   | "brain_doctor"
+  | "code_memory_status"
   | "redis_status"
   | "redis_sync_preview"
   | "memory_harvest";

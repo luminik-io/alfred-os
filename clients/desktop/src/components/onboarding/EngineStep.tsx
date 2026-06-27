@@ -1,4 +1,4 @@
-import { CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { CheckCircle2, MemoryStick, RefreshCw, XCircle } from "lucide-react";
 
 import type { NativeActionRequest } from "../../lib/uiTypes";
 import type { SetupStatus } from "../../types";
@@ -30,6 +30,19 @@ export function EngineStep({
 }) {
   const engines = status?.engines ?? [];
   const readyEngine = engines.find((engine) => engine.installed);
+  const codeMemory = status?.code_memory;
+  const codeMemoryReady = Boolean(
+    codeMemory?.enabled && codeMemory.binary.resolved && codeMemory.index_present,
+  );
+  const codeMemoryTone = !codeMemory?.enabled
+    ? "off"
+    : codeMemoryReady
+      ? "ready"
+      : codeMemory?.binary.resolved
+        ? "index pending"
+        : codeMemory?.autofetch
+          ? "will fetch"
+          : "not found";
 
   return (
     <div className="grid gap-4">
@@ -85,6 +98,54 @@ export function EngineStep({
       </div>
 
       <p className="text-sm text-muted-foreground">No API keys needed.</p>
+
+      {codeMemory ? (
+        <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">
+          <CardContent className="grid gap-2 px-3 text-sm">
+            <div className="flex items-start gap-2">
+              {codeMemoryReady ? (
+                <CheckCircle2 size={15} aria-hidden="true" className="mt-0.5 text-primary" />
+              ) : (
+                <MemoryStick size={15} aria-hidden="true" className="mt-0.5 text-muted-foreground" />
+              )}
+              <div className="min-w-0 flex-1">
+                <strong className="block text-foreground">Code memory</strong>
+                <span className="text-muted-foreground">{codeMemory.detail}</span>
+              </div>
+              <Badge variant={codeMemoryReady ? "secondary" : "outline"}>{codeMemoryTone}</Badge>
+            </div>
+            <details className="group">
+              <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground">
+                Advanced: code-memory probe
+              </summary>
+              <dl className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                <div className="grid gap-0.5">
+                  <dt className="font-medium text-foreground">Binary</dt>
+                  <dd>{codeMemory.binary.path || "not resolved"}</dd>
+                </div>
+                <div className="grid gap-0.5">
+                  <dt className="font-medium text-foreground">Pinned release</dt>
+                  <dd>
+                    {codeMemory.repo}@{codeMemory.version_pin}
+                  </dd>
+                </div>
+                <div className="grid gap-0.5">
+                  <dt className="font-medium text-foreground">Index</dt>
+                  <dd>{codeMemory.index_dir}</dd>
+                </div>
+                <div className="grid gap-0.5">
+                  <dt className="font-medium text-foreground">Scoped repos</dt>
+                  <dd>
+                    {codeMemory.repos.configured.length
+                      ? codeMemory.repos.configured.join(", ")
+                      : "none configured yet"}
+                  </dd>
+                </div>
+              </dl>
+            </details>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {engines.length ? (
         <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">

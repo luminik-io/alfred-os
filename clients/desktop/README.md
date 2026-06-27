@@ -62,10 +62,10 @@ reviewable memory candidates with promote / reject and failure-pattern harvest.
 
 **Setup** is the client-owned, onboarding-first surface and the repair path: it
 detects installed engine CLIs, connects GitHub and picks repos, starts the local
-runtime, runs common Alfred checks in-app, adds or removes local trusted Slack
-collaborators, and keeps the underlying CLI commands visible as advanced detail.
-It also owns Appearance, including the Alfred and Linear Crisp themes plus
-dark/light mode.
+runtime, checks the optional code-memory graph layer, runs common Alfred checks
+in-app, adds or removes local trusted Slack collaborators, and keeps the
+underlying CLI commands visible as advanced detail. It also owns Appearance,
+including the Alfred and Linear Crisp themes plus dark/light mode.
 
 A command palette (Cmd+K) navigates anywhere, and the sidebar includes a fast
 dark/light mode toggle.

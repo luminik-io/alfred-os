@@ -61,6 +61,8 @@ Subcommands today:
                               layer (`status`, `lessons`, `reflect`,
                               `governor`, `failure-patterns`, `firings`,
                               `forget`, `export`).
+  alfred code-memory ...      Inspect, index, or serve the optional
+                              code-structure memory MCP layer.
   alfred serve                Open the read-only localhost dashboard over
                               fleet state and reliability-governor actions.
   alfred slack-listener       Run the Slack-native planning listener, or
@@ -1408,6 +1410,12 @@ def cmd_brain(args: argparse.Namespace) -> int:
     return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
 
 
+def cmd_code_memory(args: argparse.Namespace) -> int:
+    script = _HERE / "code-memory-mcp"
+    forwarded = args.code_memory_args or ["doctor"]
+    return subprocess.run([str(script), *forwarded], check=False).returncode
+
+
 def cmd_github_poll(args: argparse.Namespace) -> int:
     script = _HERE / "fleet-github-poll.py"
     cmd = [sys.executable, str(script)]
@@ -2425,6 +2433,12 @@ def main(argv: list[str] | None = None) -> int:
     p_brain = sub.add_parser("brain", help="inspect and seed local fleet-brain memory")
     p_brain.add_argument("brain_args", nargs=argparse.REMAINDER)
     p_brain.set_defaults(func=cmd_brain)
+
+    p_code_memory = sub.add_parser(
+        "code-memory", help="inspect, index, or serve code-structure memory"
+    )
+    p_code_memory.add_argument("code_memory_args", nargs=argparse.REMAINDER)
+    p_code_memory.set_defaults(func=cmd_code_memory)
 
     p_github_poll = sub.add_parser("github-poll", help="poll GitHub issues/PRs into fleet-brain")
     p_github_poll.add_argument("--repo", action="append")

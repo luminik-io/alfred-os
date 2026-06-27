@@ -36,7 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agent_runner.paths import config_value
+from agent_runner.paths import config_value, decode_env_value
 from issue_queue import allowed_queue_repos
 from shipped_board import _gh_bin, _gh_subprocess_env
 
@@ -57,6 +57,13 @@ _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 # spawn): the golden path needs at least one of these signed-in subscription
 # CLIs, never an API key paste.
 _ENGINE_BINS = ("claude", "codex")
+_FALSEY = {"0", "false", "no", "off", ""}
+_CODE_MEMORY_BIN_NAME = "codebase-memory-mcp"
+_CODE_MEMORY_LAUNCHER = Path(__file__).resolve().parents[2] / "bin" / "code-memory-mcp"
+_CODE_MEMORY_VERSION_RE = re.compile(
+    r'^CODE_MEMORY_VERSION="\$\{ALFRED_CODE_MEMORY_VERSION:-([^}]+)\}"'
+)
+_CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
 
 _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
@@ -283,6 +290,48 @@ def engine_clis() -> list[dict[str, Any]]:
     return out
 
 
+def code_memory_status() -> dict[str, Any]:
+    """Detect the optional code-structure memory layer without mutating state.
+
+    ``bin/code-memory-mcp doctor`` may auto-fetch the pinned upstream binary,
+    which is great for an explicit repair action but too surprising for the
+    read-only setup checklist. This probe only inspects config, PATH, the
+    pinned launcher metadata, and the existing index directory.
+    """
+
+    launcher_env = _code_memory_launcher_env()
+    enabled = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_MCP", default=True)
+    autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
+    binary = _code_memory_binary(launcher_env)
+    index_dir = _code_memory_index_dir(launcher_env)
+    configured_repos = _code_memory_repos(launcher_env)
+    index_present = _dir_has_entries(index_dir)
+    pin = _code_memory_pin(launcher_env)
+
+    if not enabled:
+        detail = "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+    elif binary["resolved"] and index_present:
+        detail = "Code-memory binary and index are present."
+    elif binary["resolved"]:
+        detail = "Code-memory binary is present; run an index before relying on graph queries."
+    elif autofetch:
+        detail = "Code-memory binary is not installed yet; Alfred can fetch the pinned release on first explicit use."
+    else:
+        detail = "Code-memory binary is not installed and autofetch is disabled."
+
+    return {
+        "enabled": enabled,
+        "autofetch": autofetch,
+        "binary": binary,
+        "version_pin": pin["version"],
+        "repo": pin["repo"],
+        "index_dir": str(index_dir),
+        "index_present": index_present,
+        "repos": {"configured": configured_repos, "count": len(configured_repos)},
+        "detail": detail,
+    }
+
+
 def _engine_search_path() -> tuple[str, ...]:
     return (
         os.path.expanduser("~/.local/bin"),
@@ -291,6 +340,151 @@ def _engine_search_path() -> tuple[str, ...]:
         "/opt/homebrew/sbin",
         "/usr/local/bin",
     )
+
+
+def _code_memory_launcher_env() -> dict[str, str]:
+    """Return the env shape ``bin/code-memory-mcp`` sees after its loaders run."""
+
+    env = dict(os.environ)
+    if not env.get("ALFRED_HOME", "").strip():
+        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    _load_launcher_env_file(Path.home() / ".alfredrc", env)
+    if not env.get("ALFRED_HOME", "").strip():
+        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    _load_launcher_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
+    if not env.get("ALFRED_HOME", "").strip():
+        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    return env
+
+
+def _load_launcher_env_file(path: Path, env: dict[str, str]) -> None:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if not _ENV_KEY_RE.match(key):
+            continue
+        decoded = decode_env_value(value.strip())
+        decoded = decoded.replace("${HOME}", str(Path.home())).replace("$HOME", str(Path.home()))
+        env[key] = decoded
+
+
+def _code_memory_config(env: dict[str, str], key: str, default: str = "") -> str:
+    return env.get(key, "").strip() or default
+
+
+def _config_flag(env: dict[str, str], key: str, *, default: bool) -> bool:
+    raw = _code_memory_config(env, key).lower()
+    if raw == "":
+        return default
+    return raw not in _FALSEY
+
+
+def _alfred_home(env: dict[str, str]) -> Path:
+    return Path(_code_memory_config(env, "ALFRED_HOME", "~/.alfred")).expanduser()
+
+
+def _code_memory_index_dir(env: dict[str, str]) -> Path:
+    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_INDEX_DIR")
+    if raw.strip():
+        return Path(raw).expanduser()
+    return _alfred_home(env) / "state" / "code-memory"
+
+
+def _code_memory_repos(env: dict[str, str]) -> list[str]:
+    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_REPOS") or _code_memory_config(
+        env, "ALFRED_CODE_MAP_REPOS"
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for piece in raw.split(","):
+        name = piece.strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+    return out
+
+
+def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
+    search = os.pathsep.join((*_engine_search_path(), env.get("PATH", "")))
+    explicit = _code_memory_config(env, "ALFRED_CODE_MEMORY_BIN")
+    if explicit:
+        resolved = _resolve_configured_binary(explicit, search=search)
+        if resolved:
+            return {
+                "resolved": True,
+                "path": resolved,
+                "source": "env",
+                "configured": explicit,
+            }
+
+    on_path = shutil.which(_CODE_MEMORY_BIN_NAME, path=search)
+    if on_path:
+        return {"resolved": True, "path": on_path, "source": "path", "configured": explicit or None}
+
+    cache_bin = _alfred_home(env) / "bin" / _CODE_MEMORY_BIN_NAME
+    if cache_bin.is_file() and os.access(cache_bin, os.X_OK):
+        return {
+            "resolved": True,
+            "path": str(cache_bin),
+            "source": "cache",
+            "configured": explicit or None,
+        }
+
+    return {
+        "resolved": False,
+        "path": None,
+        "source": "env" if explicit else "none",
+        "configured": explicit or None,
+    }
+
+
+def _resolve_configured_binary(value: str, *, search: str) -> str | None:
+    path = Path(value).expanduser()
+    if path.is_file() and os.access(path, os.X_OK):
+        return str(path)
+    found = shutil.which(value, path=search)
+    return found or None
+
+
+def _code_memory_pin(env: dict[str, str]) -> dict[str, str]:
+    version = _code_memory_config(env, "ALFRED_CODE_MEMORY_VERSION")
+    repo = _code_memory_config(env, "ALFRED_CODE_MEMORY_REPO")
+    try:
+        for line in _CODE_MEMORY_LAUNCHER.read_text(encoding="utf-8").splitlines():
+            if not version:
+                match = _CODE_MEMORY_VERSION_RE.match(line)
+                if match:
+                    version = match.group(1)
+                    continue
+            if not repo:
+                match = _CODE_MEMORY_REPO_RE.match(line)
+                if match:
+                    repo = match.group(1)
+    except OSError:
+        pass
+    return {
+        "version": version or "unknown",
+        "repo": repo or "DeusData/codebase-memory-mcp",
+    }
+
+
+def _dir_has_entries(path: Path) -> bool:
+    try:
+        return any(path.iterdir())
+    except OSError:
+        return False
 
 
 def bootstrap_status() -> dict[str, Any]:
@@ -309,6 +503,7 @@ def bootstrap_status() -> dict[str, Any]:
         "github": gh,
         "engines": engines,
         "engine_ready": any_engine,
+        "code_memory": code_memory_status(),
         "repos": {
             "selected": repos,
             "count": len(repos),

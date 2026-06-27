@@ -33,7 +33,7 @@ The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary 
 | **Ask** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
 | **Agents** | The agent roster, activity feed, latest-run inspector, and memory learning queue. | Pause, resume, run once, dry-run a codename, promote or reject memory candidates, and inspect firing traces. |
-| **Setup** | Guided repair and onboarding: runtime, auth, repos, labels, engine checks, Slack collaborators, and demo data. | Start the local runtime, run curated checks in-app, and add or remove local trusted Slack collaborators. |
+| **Setup** | Guided repair and onboarding: runtime, auth, repos, labels, engine checks, code memory, Slack collaborators, and demo data. | Start the local runtime, run curated checks in-app, and add or remove local trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -83,21 +83,21 @@ Memory review is reviewable and appears where you are already working:
 - Inbox surfaces memory candidates ready for review
 - Ask recalls promoted planning hints beside drafts
 - candidate promote/reject, the memory doctor, Redis status, a Redis sync preview, and the repeated-failure harvest are available in-app
-- Setup keeps memory and Redis checks available as repair actions
+- Setup keeps memory, code-memory, and Redis checks available as repair actions
 - Slack exposes `memory`, `remember`, `memory remember`, `memory promote`, `memory reject`, `memory redis`, and `memory sync`
 
 The app visibly separates promoted lessons from candidates and raw logs.
 
 ### Setup in detail
 
-Setup is a guided doctor: install or repair the CLI, start the local runtime, GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, labels, memory provider, and browser dependencies for agents that need them. Failures tell you what Alfred checked, why it matters, and the smallest next step.
+Setup is a guided doctor: install or repair the CLI, start the local runtime, GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, labels, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Failures tell you what Alfred checked, why it matters, and the smallest next step.
 
 ## How it talks to the fleet
 
 The client reads the fleet's own state over the `alfred serve` JSON API and runs a small set of safe local actions through a native command allowlist. It opens no public port, and `$ALFRED_HOME` remains the single source of truth.
 
 - **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
-- **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
+- **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, code-memory doctor, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
 - **Outside links.** Slack and GitHub links open outside the app through Tauri's opener plugin. Local Alfred plans and firings stay in the native inspector panes.
 
 When run in a plain browser (development preview), the app stays read-only: native actions are unavailable and only the JSON read path works.

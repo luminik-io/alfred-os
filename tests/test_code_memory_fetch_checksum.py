@@ -102,5 +102,24 @@ def test_pinned_digest_overridable_via_env(tmp_path: Path) -> None:
     assert res.returncode == 0, res.stderr
 
 
+def test_fetch_path_has_bounded_curl_timeouts() -> None:
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    assert "--connect-timeout" in script
+    assert "CODE_MEMORY_CONNECT_TIMEOUT_S" in script
+    assert "--max-time" in script
+    assert "CODE_MEMORY_FETCH_TIMEOUT_S" in script
+
+
+def test_fetch_timeout_knobs_are_derived_after_env_files_load() -> None:
+    script = SCRIPT.read_text(encoding="utf-8")
+
+    load_pos = script.index('load_env_file "$ALFRED_HOME/.env"')
+    fetch_timeout_pos = script.index("CODE_MEMORY_FETCH_TIMEOUT_S=")
+    connect_timeout_pos = script.index("CODE_MEMORY_CONNECT_TIMEOUT_S=")
+    assert load_pos < fetch_timeout_pos
+    assert load_pos < connect_timeout_pos
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

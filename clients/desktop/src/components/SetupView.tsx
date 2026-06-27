@@ -239,6 +239,15 @@ export function SetupView({
               <button
                 className="secondary-button"
                 type="button"
+                disabled={!canRun || nativeBusy === "code_memory_status:fleet"}
+                onClick={() => onRunLocalAction({ action: "code_memory_status" })}
+              >
+                <MemoryStick size={16} aria-hidden="true" />
+                <span>Code memory</span>
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
                 disabled={!canRun || nativeBusy === "redis_status:fleet"}
                 onClick={() => onRunLocalAction({ action: "redis_status" })}
               >
@@ -285,6 +294,7 @@ export function SetupView({
                 <code>alfred auth status</code>
                 <code>alfred agents</code>
                 <code>alfred brain status --json</code>
+                <code>alfred code-memory doctor</code>
                 <code>alfred brain redis-status --json</code>
                 <code>alfred dry-run &lt;codename&gt;</code>
                 <code>alfred pause &lt;codename&gt;</code>
