@@ -65,6 +65,7 @@ def cleanup(tmp_path, monkeypatch):
     # sweep_extra_paths is a no-op during fixture load. Tests invoke
     # sweep_extra_paths directly with their own paths.
     monkeypatch.delenv("ALFRED_CLEANUP_EXTRA_PATHS", raising=False)
+    monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
     # No claim sweep work.
     monkeypatch.setenv("ALFRED_CLAIM_SWEEP_REPOS", "")
 
@@ -90,7 +91,14 @@ def test_cleanup_preflight_has_no_runtime_env_requirement(cleanup):
     assert cleanup.PREFLIGHT.check_disk is False
 
 
-def _exec_cleanup(tmp_path, monkeypatch, *, argv, home):
+def _exec_cleanup(
+    tmp_path,
+    monkeypatch,
+    *,
+    argv,
+    home,
+    scheduled_reclaim_env: str | None = None,
+):
     """Run the procedural cleanup body once with a controlled env + HOME."""
     alfred = tmp_path / "alfred"
     workspace = tmp_path / "workspace"
@@ -100,6 +108,10 @@ def _exec_cleanup(tmp_path, monkeypatch, *, argv, home):
     monkeypatch.setenv("ALFRED_HOME", str(alfred))
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
     monkeypatch.delenv("ALFRED_CLEANUP_EXTRA_PATHS", raising=False)
+    if scheduled_reclaim_env is None:
+        monkeypatch.delenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", raising=False)
+    else:
+        monkeypatch.setenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", scheduled_reclaim_env)
     monkeypatch.setenv("ALFRED_CLAIM_SWEEP_REPOS", "")
     monkeypatch.setenv("ALFRED_SLACK_WEBHOOK_URL", "")
     monkeypatch.setattr(sys, "argv", argv)
@@ -291,10 +303,15 @@ def test_scheduled_flag_reclaims_dev_caches_without_emergency(tmp_path, monkeypa
 def test_scheduled_env_reclaims_dev_caches_without_flag(tmp_path, monkeypatch):
     """ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 opts the daily pass in with no flag."""
     monkeypatch.delenv("ALFRED_EMERGENCY_SKIP_DEV_CACHES", raising=False)
-    monkeypatch.setenv("ALFRED_CLEANUP_SCHEDULED_RECLAIM", "1")
     home = tmp_path / "home"
     _seed_dev_caches(home)
-    mod = _exec_cleanup(tmp_path, monkeypatch, argv=["agent-cleanup.py"], home=home)
+    mod = _exec_cleanup(
+        tmp_path,
+        monkeypatch,
+        argv=["agent-cleanup.py"],
+        home=home,
+        scheduled_reclaim_env="1",
+    )
     assert not (home / "Library" / "Developer" / "Xcode" / "DerivedData").exists()
     assert mod.dev_caches_cleared == 2
     assert mod.SCHEDULED_RECLAIM is True
