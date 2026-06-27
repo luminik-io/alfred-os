@@ -18,12 +18,14 @@ export function FleetStep({
   value,
   customNames,
   saveError,
+  disabled = false,
   onChange,
   onSaveCustom,
 }: {
   value: RosterThemeId;
   customNames: CustomRosterNames;
   saveError: string | null;
+  disabled?: boolean;
   onChange: (next: RosterThemeId) => void;
   onSaveCustom: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
 }) {
@@ -61,6 +63,7 @@ export function FleetStep({
                   type="radio"
                   name="roster-theme"
                   checked={selected}
+                  disabled={disabled}
                   onChange={() => onChange(themeId)}
                 />
                 <span className="flex items-start justify-between gap-3">
@@ -87,7 +90,13 @@ export function FleetStep({
             <p className="text-sm font-medium text-foreground">Preview</p>
             <p className="text-xs text-muted-foreground">Same fleet, different names.</p>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => setCustomOpen(true)}>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled}
+            onClick={() => setCustomOpen(true)}
+          >
             <Pencil size={14} aria-hidden="true" />
             <span>{value === "custom" ? "Edit custom names" : "Use custom names"}</span>
           </Button>

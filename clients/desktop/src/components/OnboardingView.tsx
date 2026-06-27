@@ -225,6 +225,7 @@ export function OnboardingView({
   // old fallback checked off.
   const [fleetTouched, setFleetTouched] = useState(false);
   const [fleetSavePending, setFleetSavePending] = useState(false);
+  const fleetSaveSeq = useRef(0);
   const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
   // The step the auto-advance effect last moved past, so a detected gh/engine
   // only auto-advances once and never fights a manual Back.
@@ -581,9 +582,11 @@ export function OnboardingView({
       save: () => boolean | void | Promise<boolean | void>,
       failureMessage = "Save the fleet naming choice before continuing.",
     ): Promise<boolean> => {
+      const seq = ++fleetSaveSeq.current;
       setFleetSavePending(true);
       try {
         const saved = await save();
+        if (seq !== fleetSaveSeq.current) return false;
         if (saved === false || rosterSaveError) {
           setFleetTouched(false);
           setNotice({
@@ -595,6 +598,7 @@ export function OnboardingView({
         setFleetTouched(true);
         return true;
       } catch (err) {
+        if (seq !== fleetSaveSeq.current) return false;
         setFleetTouched(false);
         setNotice({
           tone: "error",
@@ -602,7 +606,9 @@ export function OnboardingView({
         });
         return false;
       } finally {
-        setFleetSavePending(false);
+        if (seq === fleetSaveSeq.current) {
+          setFleetSavePending(false);
+        }
       }
     },
     [rosterSaveError],
@@ -837,6 +843,7 @@ export function OnboardingView({
                 value={rosterTheme}
                 customNames={customNames}
                 saveError={rosterSaveError}
+                disabled={fleetSavePending}
                 onChange={handleRosterThemeChange}
                 onSaveCustom={handleCustomNamesChange}
               />

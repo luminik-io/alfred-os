@@ -643,6 +643,8 @@ describe("OnboardingView seven-step takeover", () => {
     );
     await user.click(screen.getByLabelText(/transformers/i));
     expect(onRosterThemeChange).toHaveBeenCalledWith("transformers");
+    expect(screen.getByLabelText(/justice league/i)).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^saving$/i })).toBeDisabled();
     expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
       /4 of 7/i,
     );
