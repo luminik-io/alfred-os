@@ -58,6 +58,28 @@ def test_binary_defaults_respect_env(fresh_agent_runner, monkeypatch):
     assert agent_runner.CODEX_BIN == "/opt/codex/bin/codex"
 
 
+def test_launcher_env_matches_agent_launch_tilde_home(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    """The bash launcher does not expand a literal ``~`` read from rc files."""
+    import agent_runner.paths as paths_mod
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text("ALFRED_HOME=~/runtime\n", encoding="utf-8")
+    expanded_env = tmp_path / "runtime" / ".env"
+    expanded_env.parent.mkdir(parents=True)
+    expanded_env.write_text("ALFRED_QUEUE_REPOS=org/expanded\n", encoding="utf-8")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_HOME"] == "~/runtime"
+    assert "ALFRED_QUEUE_REPOS" not in env
+
+
 def test_today_str_uses_utc_not_local_time(fresh_agent_runner, monkeypatch):
     """The daily spend ledger filename must rotate at UTC midnight, not at
     the operator's local midnight. Otherwise a non-UTC operator firing

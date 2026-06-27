@@ -167,7 +167,7 @@ def _rc_path() -> Path:
 def _alfred_home(env: dict[str, str] | None = None) -> Path:
     if env is None:
         return Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
-    return Path(_code_memory_config(env, "ALFRED_HOME", "~/.alfred")).expanduser()
+    return Path(_code_memory_config(env, "ALFRED_HOME", os.path.expanduser("~/.alfred")))
 
 
 def _format_repo_value(repos: list[str]) -> str:
