@@ -844,6 +844,35 @@ describe("OnboardingView seven-step takeover", () => {
     );
   });
 
+  it("clears a stale Fleet save notice after a successful retry", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    expect(await screen.findByText(/save the fleet naming choice before continuing/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await waitFor(() =>
+      expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+        /slack/i,
+      ),
+    );
+    expect(screen.queryByText(/save the fleet naming choice before continuing/i)).not.toBeInTheDocument();
+  });
+
   it("requires saving a non-default fleet choice in this onboarding session", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({

@@ -599,6 +599,7 @@ export function OnboardingView({
           return false;
         }
         setFleetTouched(true);
+        setNotice(null);
         return true;
       } catch (err) {
         if (seq !== fleetSaveSeq.current) return false;
