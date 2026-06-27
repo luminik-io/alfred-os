@@ -475,7 +475,7 @@ def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
             continue
         k, _, v = line.partition("=")
         k = k.strip()
-        v = v.strip()
+        v = strip_inline_comment(v.strip())
         try:
             parsed = shlex.split(v)
         except ValueError:
@@ -487,6 +487,29 @@ def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
         if k:
             out[k] = v
     return out
+
+
+def strip_inline_comment(value: str) -> str:
+    """Strip shell-style inline comments while preserving quoted hashes."""
+    quote: str | None = None
+    escaped = False
+    for index, ch in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            continue
+        if ch == "#" and index > 0 and value[index - 1].isspace():
+            return value[:index].rstrip()
+    return value
 
 
 def read_alfredrc(path: Path) -> dict[str, str]:

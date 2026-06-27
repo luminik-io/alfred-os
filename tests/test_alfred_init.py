@@ -819,6 +819,30 @@ def test_read_alfredrc_parses_kv_and_strips_quotes(tmp_path, init_mod):
     assert out["QUOTED"] == "hello world"
 
 
+def test_read_alfredrc_strips_inline_comments_without_touching_quoted_hashes(tmp_path, init_mod):
+    rc = tmp_path / ".alfredrc"
+    rc.write_text(
+        "\n".join(
+            [
+                "ALFRED_AUTO_PROMOTE=0 # opted out",
+                "ALFRED_AUTO_PROMOTE_KILL=1 # halt",
+                "TOPIC='memory # literal' # comment",
+                'BODY="ship # literal" # comment',
+                "TOKEN=abc#not-comment",
+                "",
+            ]
+        )
+    )
+
+    out = init_mod.read_alfredrc(rc)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert out["TOPIC"] == "memory # literal"
+    assert out["BODY"] == "ship # literal"
+    assert out["TOKEN"] == "abc#not-comment"
+
+
 def test_upsert_alfredrc_idempotent(tmp_path, init_mod):
     rc = tmp_path / ".alfredrc"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")

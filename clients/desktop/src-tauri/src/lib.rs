@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -389,9 +389,16 @@ fn config_value(key: &str) -> Option<String> {
 
 fn merged_alfred_env() -> HashMap<String, String> {
     let mut env: HashMap<String, String> = std::env::vars().collect();
+    let process_env_keys: HashSet<String> = env.keys().cloned().collect();
     let home = home_dir();
     if let Some(home) = home.as_deref() {
-        load_config_file(&mut env, &home.join(".alfredrc"), true, Some(home));
+        load_config_file(
+            &mut env,
+            &home.join(".alfredrc"),
+            true,
+            Some(home),
+            &process_env_keys,
+        );
     }
 
     let runtime_home = env
@@ -402,7 +409,13 @@ fn merged_alfred_env() -> HashMap<String, String> {
     if let Some(runtime_home) = runtime_home.as_deref() {
         env.entry("ALFRED_HOME".to_string())
             .or_insert_with(|| runtime_home.to_string_lossy().into_owned());
-        load_config_file(&mut env, &runtime_home.join(".env"), true, home.as_deref());
+        load_config_file(
+            &mut env,
+            &runtime_home.join(".env"),
+            true,
+            home.as_deref(),
+            &process_env_keys,
+        );
     }
     if let Some(home) = home.as_deref() {
         env.entry("WORKSPACE_ROOT".to_string())
@@ -416,6 +429,7 @@ fn load_config_file(
     path: &Path,
     no_clobber: bool,
     home: Option<&Path>,
+    process_env_keys: &HashSet<String>,
 ) {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return;
@@ -438,6 +452,9 @@ fn load_config_file(
         let clean = decode_config_value(strip_inline_comment(value.trim()), home)
             .trim()
             .to_string();
+        if no_clobber && process_env_keys.contains(key) {
+            continue;
+        }
         if overrides_with_stop_control(key, &clean) {
             env.insert(key.to_string(), clean);
             continue;
@@ -2280,6 +2297,49 @@ mod tests {
         let env = merged_alfred_env();
         assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
         assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"1".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
+        restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
+    }
+
+    #[test]
+    fn native_subprocess_env_preserves_process_stop_control_over_files() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
+        let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
+
+        let root = temp_root("alfred-process-stop-control-over-files");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create temp runtime");
+        std::fs::write(
+            home.join(".alfredrc"),
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n",
+                runtime.to_string_lossy()
+            ),
+        )
+        .expect("write temp alfredrc");
+        std::fs::write(
+            runtime.join(".env"),
+            "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n",
+        )
+        .expect("write temp env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::set_var("ALFRED_AUTO_PROMOTE", "1");
+        std::env::set_var("ALFRED_AUTO_PROMOTE_KILL", "0");
+
+        let env = merged_alfred_env();
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"1".to_string()));
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"0".to_string()));
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
