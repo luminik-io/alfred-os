@@ -712,15 +712,16 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
 
     from . import schedule as setup_schedule
 
-    home = _alfred_home()
+    launcher_env = _code_memory_launcher_env()
+    home = _alfred_home(launcher_env)
     env_path = home / ".env"
     token_path = home / "state" / "server-token"
     conf_path = setup_schedule.agents_conf_path()
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
     selected = repos if repos is not None else selected_repos()
-    selected_env_present = any(_has_config_value(key) for key in _REPO_ENV_KEYS)
-    slack_configured = any(_has_config_value(key) for key in _SLACK_CONFIG_KEYS)
-    memory_overridden = any(_has_config_value(key) for key in _MEMORY_CONFIG_KEYS)
+    selected_env_present = any(_has_config_value(launcher_env, key) for key in _REPO_ENV_KEYS)
+    slack_configured = any(_has_config_value(launcher_env, key) for key in _SLACK_CONFIG_KEYS)
+    memory_overridden = any(_has_config_value(launcher_env, key) for key in _MEMORY_CONFIG_KEYS)
     memory_detail = (
         "Custom Redis Agent Memory settings found."
         if memory_overridden
@@ -841,8 +842,8 @@ def _inventory_item(
     }
 
 
-def _has_config_value(key: str) -> bool:
-    return bool(config_value(key).strip())
+def _has_config_value(env: dict[str, str], key: str) -> bool:
+    return bool(_code_memory_config(env, key))
 
 
 def list_owner_repos(limit: int = 100) -> dict[str, Any]:
