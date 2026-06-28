@@ -161,6 +161,31 @@ def test_kill_switch_overrides_arm(brain: FleetBrain) -> None:
     assert _status(brain, c.id) == "candidate"
 
 
+@pytest.mark.parametrize("value", ["fales", "1#halt"])
+def test_malformed_kill_switch_value_fails_closed(brain: FleetBrain, value: str) -> None:
+    c = _candidate(brain, "a strong durable lesson", confidence=0.99)
+    summary = brain.auto_promote_candidates(
+        env={"ALFRED_AUTO_PROMOTE_KILL": value},
+        judge=lambda _p: _verdict(0.97),
+    )
+    assert summary["enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["considered"] == 0
+    assert _status(brain, c.id) == "candidate"
+
+
+@pytest.mark.parametrize("value", ["0", "off", "disabled", "0 # keep running"])
+def test_falsy_kill_switch_values_do_not_block_promotion(brain: FleetBrain, value: str) -> None:
+    c = _candidate(brain, "a strong durable lesson", confidence=0.99)
+    summary = brain.auto_promote_candidates(
+        env={"ALFRED_AUTO_PROMOTE_KILL": value},
+        judge=lambda _p: _verdict(0.97),
+    )
+    assert summary["enabled"] is True
+    assert c.id in summary["promoted"]
+    assert _status(brain, c.id) == "validated"
+
+
 def test_inline_commented_stop_controls_fail_closed(brain: FleetBrain) -> None:
     c1 = _candidate(brain, "a strong durable lesson", confidence=0.99)
     killed = brain.auto_promote_candidates(

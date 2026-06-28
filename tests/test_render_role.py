@@ -101,6 +101,24 @@ def test_render_passes_custom_alfredrc_to_launchd_environment(tmp_path):
     assert env["ALFREDRC"] == str(custom_rc)
 
 
+def test_render_escapes_custom_alfredrc_in_launchd_plist(tmp_path):
+    custom_rc = tmp_path / "custom&a<config>.alfredrc"
+    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
+
+    rendered = out_dir / "my.fleet.memory-auto-promote.plist"
+    plist = rendered.read_text()
+    assert str(custom_rc) not in plist
+    assert "&amp;" in plist
+    assert "&lt;" in plist
+    assert "&gt;" in plist
+    plist_data = plistlib.loads(rendered.read_bytes())
+    env = plist_data["EnvironmentVariables"]
+    assert env["ALFREDRC"] == str(custom_rc)
+
+
 def test_render_follows_persisted_alfredrc_pointer(tmp_path):
     home = tmp_path / "home"
     home.mkdir()

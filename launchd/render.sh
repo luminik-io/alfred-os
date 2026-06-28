@@ -269,30 +269,27 @@ with open(template_path) as f:
 role_block = ""
 if role:
     env_key = "ALFRED_" + agent_short.upper().replace("-", "_") + "_ROLE"
-    # Roles can in principle contain & < > characters; escape them so
-    # the rendered plist remains valid XML. Real-world values today are
-    # plain ASCII, but the escape is cheap insurance.
     role_block = (
-        f'    <key>{env_key}</key>\n'
+        f'    <key>{escape(env_key)}</key>\n'
         f'    <string>{escape(role)}</string>'
     )
 mapping = {
-    "__LABEL__": label,
-    "__SCRIPT__": script,
+    "__LABEL__": escape(label),
+    "__SCRIPT__": escape(script),
     "__SCHEDULE_BLOCK__": schedule_block,
-    "__PATH__": path_value,
+    "__PATH__": escape(path_value),
     "__JAVA_BLOCK__": java_block,
-    "__ALFRED_BIN__": alfred_bin,
-    "__ALFRED_HOME__": alfred_home,
-    "__ALFREDRC__": alfredrc,
-    "__WORKSPACE_ROOT__": workspace_root,
-    "__AGENT_SHORT__": agent_short,
+    "__ALFRED_BIN__": escape(alfred_bin),
+    "__ALFRED_HOME__": escape(alfred_home),
+    "__ALFREDRC__": escape(alfredrc),
+    "__WORKSPACE_ROOT__": escape(workspace_root),
+    "__AGENT_SHORT__": escape(agent_short),
     "__GH_ORG_BLOCK__": (
-        f'    <key>GH_ORG</key>\n    <string>{gh_org}</string>'
+        f'    <key>GH_ORG</key>\n    <string>{escape(gh_org)}</string>'
         if gh_org else ""
     ),
-    "__HOME__": home_dir,
-    "__LOG_STEM__": log_stem,
+    "__HOME__": escape(home_dir),
+    "__LOG_STEM__": escape(log_stem),
     "__ROLE_BLOCK__": role_block,
 }
 for k, v in mapping.items():

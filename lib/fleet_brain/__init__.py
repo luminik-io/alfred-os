@@ -196,10 +196,14 @@ class MemoryPromotionError(RuntimeError):
     """
 
 
-def _env_flag_on(name: str, env: Mapping[str, str] | None = None) -> bool:
-    """True only for an explicit truthy token (1/true/yes/on)."""
+def _env_kill_switch_on(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """Default off, but treat malformed nonblank values as enabled."""
     src = env if env is not None else os.environ
-    return _env_token(src.get(name, "")) in {"1", "true", "yes", "on"}
+    raw = src.get(name)
+    value = _env_token(raw)
+    if raw is None or not value:
+        return False
+    return value not in {"0", "false", "no", "off", "disabled"}
 
 
 def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
@@ -770,7 +774,7 @@ class FleetBrain:
         values fail closed too. ``ALFRED_AUTO_PROMOTE_KILL=1`` wins over
         everything so a bad batch can be halted without editing the rest of the
         deployment config."""
-        if _env_flag_on("ALFRED_AUTO_PROMOTE_KILL", env):
+        if _env_kill_switch_on("ALFRED_AUTO_PROMOTE_KILL", env):
             return False
         if not _env_flag_recognized_or_blank("ALFRED_AUTO_PROMOTE_LLM_JUDGE", env):
             return False
