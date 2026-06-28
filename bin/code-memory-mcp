@@ -126,7 +126,15 @@ load_env_file() {
             ;;
         esac
         if [ -n "${!key+x}" ]; then
-          continue
+          if [ "$key" = "ALFREDRC" ]; then
+            :
+          elif [ "${ALFREDRC_FILE_OVERRIDES_RUNTIME:-0}" = "1" ] && {
+            [ "$key" = "ALFRED_HOME" ] || [ "$key" = "ALFRED_FLEET_BRAIN_DB" ];
+          }; then
+            :
+          else
+            continue
+          fi
         fi
         ;;
       no_clobber)
@@ -210,21 +218,53 @@ read_env_key() {
   done < "$file"
 }
 
-RC_TARGETS_EFFECTIVE_HOME=1
-if [ "$ORIGINAL_ALFRED_HOME_PRESENT" -eq 1 ]; then
-  ORIGINAL_ALFRED_HOME_EXPANDED="$(normalize_runtime_home "$ALFRED_HOME")"
-  RC_ALFRED_HOME="$(read_env_key "$HOME/.alfredrc" "ALFRED_HOME")"
-  if [ -n "$RC_ALFRED_HOME" ]; then
-    RC_ALFRED_HOME_EXPANDED="$(normalize_runtime_home "$RC_ALFRED_HOME")"
-  else
-    RC_ALFRED_HOME_EXPANDED="$(normalize_runtime_home "$HOME/.alfred")"
+rc_targets_effective_home() {
+  local selected_alfredrc="$1" direct_selected_alfredrc="$2" original_home rc_home rc_home_expanded
+  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+    return 0
   fi
-  if [ "$RC_ALFRED_HOME_EXPANDED" != "$ORIGINAL_ALFRED_HOME_EXPANDED" ]; then
+  if [ "$ORIGINAL_ALFRED_HOME_PRESENT" -ne 1 ]; then
+    return 0
+  fi
+  original_home="$(normalize_runtime_home "$ALFRED_HOME")"
+  rc_home="$(read_env_key "$selected_alfredrc" "ALFRED_HOME")"
+  if [ -n "$rc_home" ]; then
+    rc_home_expanded="$(normalize_runtime_home "$rc_home")"
+  else
+    rc_home_expanded="$(normalize_runtime_home "$HOME/.alfred")"
+  fi
+  [ "$rc_home_expanded" = "$original_home" ]
+}
+
+load_selected_alfredrc() {
+  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" direct_selected_alfredrc=""
+  if env_key_was_original "ALFREDRC" && [ -n "${ALFREDRC:-}" ]; then
+    direct_selected_alfredrc="direct_selected_alfredrc"
+  fi
+  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
+  ALFREDRC="$selected_alfredrc"
+  export ALFREDRC
+  if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
+    RC_TARGETS_EFFECTIVE_HOME=1
+  else
     RC_TARGETS_EFFECTIVE_HOME=0
   fi
-fi
+  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+    ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+  else
+    ALFREDRC_FILE_OVERRIDES_RUNTIME=0 load_env_file "$selected_alfredrc" alfredrc
+  fi
+  if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
+    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
+    ALFREDRC="$selected_alfredrc"
+    export ALFREDRC
+    RC_TARGETS_EFFECTIVE_HOME=1
+    ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+  fi
+}
 
-load_env_file "$HOME/.alfredrc" alfredrc
+RC_TARGETS_EFFECTIVE_HOME=1
+load_selected_alfredrc
 : "${ALFRED_HOME:=$HOME/.alfred}"
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 load_env_file "$ALFRED_HOME/.env" no_clobber
@@ -567,6 +607,8 @@ case "$CMD" in
       log "binary:  NOT RESOLVED (set ALFRED_CODE_MEMORY_BIN or enable autofetch)"
     fi
     log "version-pin: ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION}"
+    log "rc:          ${ALFREDRC:-}"
+    log "index-dir:   $INDEX_DIR"
     log "index-home:  $CODE_MEMORY_HOME"
     log "cache-dir:   $CODE_MEMORY_CACHE_DIR"
     log "workspace:   $WORKSPACE"

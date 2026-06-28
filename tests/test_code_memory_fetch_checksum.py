@@ -630,5 +630,71 @@ def test_launcher_empty_alfred_home_loads_rc_home_for_code_memory(tmp_path: Path
     assert "repos:       org/runtime" in res.stderr
 
 
+def test_launcher_respects_explicit_alfredrc_for_code_memory(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    stale_runtime = tmp_path / "stale"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    stale_runtime.mkdir()
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\n"
+        f"ALFRED_CODE_MEMORY_INDEX_DIR={runtime / 'custom-index'}\n"
+        "ALFRED_CODE_MEMORY_AUTOFETCH=0\n"
+        "ALFRED_CODE_MEMORY_REPOS=org/custom\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFREDRC"] = str(custom_rc)
+    env["ALFRED_HOME"] = str(stale_runtime)
+    env.pop("ALFRED_CODE_MEMORY_INDEX_DIR", None)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+    env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"rc:          {custom_rc}" in res.stderr
+    assert f"index-dir:   {runtime / 'custom-index'}" in res.stderr
+    assert "repos:       org/custom" in res.stderr
+
+
+def test_launcher_follows_alfredrc_pointer_for_code_memory(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/pointed\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = ""
+    env.pop("ALFREDRC", None)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"rc:          {custom_rc}" in res.stderr
+    assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
+    assert "repos:       org/pointed" in res.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
