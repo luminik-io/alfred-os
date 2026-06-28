@@ -207,7 +207,7 @@ def test_bootstrap_status_does_not_treat_queue_only_scope_as_ready(
 
     status = setup_mod.bootstrap_status()
 
-    assert setup_mod.selected_repos() == ["acme/api"]
+    assert setup_mod.selected_repos() == []
     assert status["repos"]["selected"] == []
     assert status["repos"]["count"] == 0
     assert status["install"]["selected_repos_env_present"] is True
@@ -306,6 +306,26 @@ def test_selected_repos_skips_stale_launcher_queue_scope(
 
     (tmp_path / ".alfredrc").write_text(
         f"export ALFRED_HOME={launcher_home}\nexport ALFRED_QUEUE_REPOS=old/repo\n",
+        encoding="utf-8",
+    )
+    home.mkdir(parents=True)
+
+    assert setup_mod.selected_repos() == []
+
+
+def test_selected_repos_skips_matching_launcher_queue_only_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"export ALFRED_HOME={home}\nexport ALFRED_QUEUE_REPOS=old/repo\n",
         encoding="utf-8",
     )
     home.mkdir(parents=True)

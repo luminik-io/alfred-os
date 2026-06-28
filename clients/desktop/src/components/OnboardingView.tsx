@@ -225,6 +225,9 @@ export function OnboardingView({
   );
   const interruptStaleGithubAuthRequest = useCallback(
     (requestId: number) => {
+      if (githubAuthFlowRequestSeq.current !== requestId) {
+        return;
+      }
       resetStaleGithubAuthFlow(
         requestId,
         "GitHub sign-in was interrupted. Start it again for this runtime.",

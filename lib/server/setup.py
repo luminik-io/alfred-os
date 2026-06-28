@@ -205,15 +205,21 @@ def normalize_repo_slugs(values: Any) -> list[str]:
 
 
 def selected_repos(env: dict[str, str] | None = None) -> list[str]:
-    """The repos currently scoped to the connected Alfred runtime.
+    """The board-visible repos selected for first-run setup.
 
-    Reads the queue allowlist (``allowed_queue_repos``) so the Set up surface
-    shows the same scope queue/hold/close actually enforce. Sorted for a stable
-    render.
+    Setup owns the board/bridge repo picker, not the narrower queue mutation
+    scope. Reading only ``ALFRED_SHIPPED_REPOS`` / ``ALFRED_BRIDGE_REPOS`` keeps
+    queue-only repos from being pre-checked and then accidentally written back as
+    board-visible repos.
     """
     if env is not None:
-        return sorted(_repos_from_env(env))
-    return sorted(_allowed_queue_repos())
+        return sorted(_repos_from_env(env, _BOARD_REPO_ENV_KEYS))
+
+    runtime_env = _runtime_config_env()
+    repos = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
+    if repos or any(_has_config_value(runtime_env, key) for key in _BOARD_REPO_ENV_KEYS):
+        return sorted(repos)
+    return []
 
 
 def setup_board_repos(env: dict[str, str] | None = None) -> list[str]:
