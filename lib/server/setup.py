@@ -78,6 +78,7 @@ _CODE_MEMORY_DISCOVERY_IGNORES = {
     "target",
     "venv",
 }
+_CODE_MEMORY_GRAPH_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
 
 _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
@@ -325,7 +326,7 @@ def code_memory_status() -> dict[str, Any]:
         if enabled
         else _disabled_code_memory_repo_scope(launcher_env)
     )
-    index_present = _dir_has_entries(index_dir) or _dir_has_entries(graph_dir)
+    index_present = _code_memory_index_present(index_dir, graph_dir)
     pin = _code_memory_pin(launcher_env)
 
     if not enabled:
@@ -479,8 +480,16 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
     if not workspace.is_dir():
         return found
     queue = [workspace]
+    seen_real_paths: set[Path] = set()
     while queue:
         repo = queue.pop(0)
+        try:
+            real_repo = repo.resolve(strict=False)
+        except OSError:
+            real_repo = repo.absolute()
+        if real_repo in seen_real_paths:
+            continue
+        seen_real_paths.add(real_repo)
         try:
             entries = list(repo.iterdir())
         except OSError:
@@ -500,9 +509,7 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
         children = sorted(
             entry
             for entry in entries
-            if not entry.is_symlink()
-            and entry.is_dir()
-            and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
+            if entry.is_dir() and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
         )
         for child in children:
             try:
@@ -619,11 +626,22 @@ def _code_memory_pin(env: dict[str, str]) -> dict[str, str]:
     }
 
 
-def _dir_has_entries(path: Path) -> bool:
+def _code_memory_index_present(index_dir: Path, graph_dir: Path) -> bool:
+    return _has_graph_artifact(graph_dir) or _has_graph_artifact(index_dir)
+
+
+def _has_graph_artifact(path: Path) -> bool:
     try:
-        return any(path.iterdir())
+        if path.is_file():
+            return path.suffix.lower() in _CODE_MEMORY_GRAPH_SUFFIXES
+        if not path.is_dir():
+            return False
+        for child in path.rglob("*"):
+            if child.is_file() and child.suffix.lower() in _CODE_MEMORY_GRAPH_SUFFIXES:
+                return True
     except OSError:
         return False
+    return False
 
 
 def bootstrap_status() -> dict[str, Any]:

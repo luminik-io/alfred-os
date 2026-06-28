@@ -273,15 +273,26 @@ discovery_limit() {
 }
 
 discover_scope_repos() {
-  local limit count dir child base
+  local limit count dir child base real_dir seen_real
   local -a stack children
   limit="$(discovery_limit)"
   count=0
   [ -d "$WORKSPACE" ] || return 0
   stack=("$WORKSPACE")
+  seen_real=""
   while [ "${#stack[@]}" -gt 0 ]; do
     dir="${stack[0]}"
     stack=("${stack[@]:1}")
+    real_dir="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"
+    case "
+$seen_real
+" in
+      *"
+$real_dir
+"*) continue ;;
+    esac
+    seen_real="${seen_real}${real_dir}
+"
     if [ -e "$dir/.git" ]; then
       printf '%s\n' "$dir"
       count=$((count + 1))
@@ -297,7 +308,7 @@ discover_scope_repos() {
           ;;
       esac
       children+=("$child")
-    done < <(find -H "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    done < <(find -L "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
     stack+=("${children[@]}")
   done
   return 0

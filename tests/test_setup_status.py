@@ -137,6 +137,29 @@ def test_bootstrap_status_checks_code_memory_home_cache_for_index(
     assert code_memory["detail"] == "Code-memory binary and index are present."
 
 
+def test_bootstrap_status_ignores_empty_code_memory_cache_scaffolding(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    code_home = tmp_path / "code-memory-home"
+    graph_dir = code_home / ".cache" / "codebase-memory-mcp"
+    graph_dir.mkdir(parents=True)
+
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", str(code_home))
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["index_home"] == str(code_home)
+    assert code_memory["graph_dir"] == str(graph_dir)
+    assert code_memory["index_present"] is False
+    assert "run an index" in code_memory["detail"]
+
+
 def test_bootstrap_status_reads_code_memory_launcher_env_files(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -270,7 +293,7 @@ def test_bootstrap_status_auto_discovers_code_memory_repos(
     }
 
 
-def test_bootstrap_status_skips_symlinked_code_memory_repos(
+def test_bootstrap_status_follows_symlinked_code_memory_repos(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
@@ -287,8 +310,8 @@ def test_bootstrap_status_skips_symlinked_code_memory_repos(
 
     code_memory = setup_mod.bootstrap_status()["code_memory"]
 
-    assert code_memory["repos"]["selected"] == ["real"]
-    assert code_memory["repos"]["discovered"] == ["real"]
+    assert code_memory["repos"]["selected"] == ["api", "real"]
+    assert code_memory["repos"]["discovered"] == ["api", "real"]
 
 
 def test_bootstrap_status_follows_symlinked_code_memory_workspace_root(
