@@ -86,8 +86,31 @@ $key
 }
 
 load_env_file() {
-  local file="$1" line key value
+  local file="$1" no_clobber="${2:-}" line key value quote_style
   [ -f "$file" ] || return 0
+  env_value_quote_style() {
+    case "$1" in
+      \'*\') printf '%s' single ;;
+      \"*\") printf '%s' double ;;
+      *) printf '%s' none ;;
+    esac
+  }
+  decode_env_value() {
+    local value="$1" sq="'" dq='"' splice
+    splice="${sq}${dq}${sq}${dq}${sq}"
+    case "$value" in
+      \'*\')
+        value="${value#\'}"
+        value="${value%\'}"
+        value="${value//$splice/$sq}"
+        ;;
+      \"*\")
+        value="${value#\"}"
+        value="${value%\"}"
+        ;;
+    esac
+    printf '%s' "$value"
+  }
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       ''|\#*) continue ;;
@@ -101,21 +124,34 @@ load_env_file() {
     if is_inherited_env_key "$key"; then
       continue
     fi
-    case "$value" in
-      \"*\") value="${value#\"}"; value="${value%\"}" ;;
-      \'*\') value="${value#\'}"; value="${value%\'}" ;;
-    esac
-    value="${value//\$\{HOME\}/$HOME}"
-    value="${value//\$HOME/$HOME}"
+    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
+      continue
+    fi
+    quote_style="$(env_value_quote_style "$value")"
+    value="$(decode_env_value "$value")"
+    if [ "$quote_style" != "single" ]; then
+      value="${value//\$\{HOME\}/$HOME}"
+      value="${value//\$HOME/$HOME}"
+    fi
     export "$key=$value"
   done < "$file"
 }
 
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
+expand_user_path() {
+  local value="$1"
+  case "$value" in
+    \~) printf '%s' "$HOME" ;;
+    \~/*) printf '%s/%s' "$HOME" "${value#\~/}" ;;
+    *) printf '%s' "$value" ;;
+  esac
+}
+
 load_env_file "$HOME/.alfredrc"
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
-load_env_file "$ALFRED_HOME/.env"
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
+: "${ALFRED_HOME:=$HOME/.alfred}"
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
+load_env_file "$ALFRED_HOME/.env" no_clobber
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
+export ALFRED_HOME
 
 CODE_MEMORY_VERSION="${ALFRED_CODE_MEMORY_VERSION:-v0.8.1}"
 CODE_MEMORY_REPO="${ALFRED_CODE_MEMORY_REPO:-DeusData/codebase-memory-mcp}"

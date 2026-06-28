@@ -449,5 +449,34 @@ def test_process_code_memory_binary_overrides_runtime_env_file(tmp_path: Path) -
     assert str(file_bin) not in res.stderr
 
 
+def test_launcher_keeps_rc_home_when_runtime_env_has_stale_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime_a = tmp_path / "runtime-a"
+    runtime_b = tmp_path / "runtime-b"
+    home.mkdir()
+    runtime_a.mkdir()
+    runtime_b.mkdir()
+    (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime_a}\n", encoding="utf-8")
+    (runtime_a / ".env").write_text(
+        f"ALFRED_HOME={runtime_b}\nALFRED_CODE_MEMORY_AUTOFETCH=0\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"index-dir:   {runtime_a}/state/code-memory" in res.stderr
+    assert f"{runtime_b}/state/code-memory" not in res.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

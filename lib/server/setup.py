@@ -36,6 +36,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
 # The watched-repo allowlist the rest of the fleet reads. The Set up surface
 # writes BOTH the queue allowlist (controls what an operator can arm/hold/close)
 # and the shipped allowlist (controls which repos the board scans), so the one
@@ -749,7 +750,8 @@ def _code_memory_launcher_env() -> dict[str, str]:
         env["ALFRED_HOME"] = str(_default_alfred_home(env))
     alfred_home = _safe_expand_path(env["ALFRED_HOME"])
     if alfred_home:
-        _load_launcher_env_file(alfred_home / ".env", env, protected_keys=protected)
+        current_keys = {key for key, value in env.items() if value.strip()}
+        _load_launcher_env_file(alfred_home / ".env", env, protected_keys=current_keys)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = str(_default_alfred_home(env))
     return env
