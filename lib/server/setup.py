@@ -500,7 +500,9 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
         children = sorted(
             entry
             for entry in entries
-            if entry.is_dir() and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
+            if not entry.is_symlink()
+            and entry.is_dir()
+            and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
         )
         for child in children:
             try:
