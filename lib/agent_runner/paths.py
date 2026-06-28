@@ -195,6 +195,60 @@ def decode_env_value(value: str) -> str:
     return value
 
 
+def _strip_inline_comment(value: str) -> str:
+    """Strip shell-style inline comments the same way ``agent-launch`` does."""
+
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
+def _env_file_entry(path: Path, key: str) -> tuple[bool, str]:
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line.removeprefix("export ").strip()
+                if "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                if name.strip() == key:
+                    value = _strip_inline_comment(value)
+                    return True, decode_env_value(value.strip()).strip()
+    except OSError:
+        pass
+    return False, ""
+
+
+def _same_runtime_home(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
+
+
 def config_value(key: str, default: str = "") -> str:
     """Resolve a config value from process env, then ``$ALFRED_HOME/.env``."""
 
@@ -202,17 +256,9 @@ def config_value(key: str, default: str = "") -> str:
     if val:
         return val
     home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-    try:
-        with open(Path(home) / ".env", encoding="utf-8") as fh:
-            for raw_line in fh:
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                name, _, value = line.partition("=")
-                if name.strip() == key:
-                    return decode_env_value(value.strip())
-    except OSError:
-        pass
+    present, value = _env_file_entry(Path(home) / ".env", key)
+    if present:
+        return value
     return default
 
 
@@ -326,7 +372,7 @@ def load_env_file(
         protected = preserve_keys is not None and key in preserve_keys
         if no_clobber and key in env and (not can_clobber or protected):
             continue
-        value = raw_value.strip()
+        value = _strip_inline_comment(raw_value).strip()
         single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"
         decoded = decode_env_value(value)
         if not single_quoted:

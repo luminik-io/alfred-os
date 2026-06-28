@@ -126,6 +126,35 @@ def test_launcher_env_respects_explicit_alfredrc(fresh_agent_runner, monkeypatch
     assert env["ALFRED_QUEUE_REPOS"] == "org/custom"
 
 
+def test_launcher_env_strips_inline_comments_like_shell_launcher(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(custom_rc))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime} # active runtime\n"
+        'ALFRED_QUEUE_REPOS="org/#quoted" # human note\n'
+        "ALFRED_CODE_MEMORY_REPOS=org/memory # human note\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_QUEUE_REPOS"] == "org/#quoted"
+    assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/memory"
+
+
 def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, tmp_path):
     import agent_runner.paths as paths_mod
 
