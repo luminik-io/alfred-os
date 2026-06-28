@@ -214,6 +214,7 @@ export function OnboardingView({
   const [statusLoading, setStatusLoading] = useState(false);
   const [notice, setNotice] = useState<OnboardingNotice>(null);
   const [stepKey, setStepKey] = useState<OnboardingStepKey>("welcome");
+  const stepKeyRef = useRef(stepKey);
   // True once the first request / demo landed, so the rail shows the journey
   // complete even though the user has already been routed to Home / Ask.
   const [requestDone, setRequestDone] = useState(false);
@@ -592,6 +593,7 @@ export function OnboardingView({
     if (options?.manual) {
       manualSteps.current.add(key);
     }
+    stepKeyRef.current = key;
     setNotice(null);
     setStepKey(key);
   }, []);
@@ -679,6 +681,7 @@ export function OnboardingView({
     if (stepKey === "fleet") {
       const saved = await ensureFleetChoiceSaved();
       if (!saved) return;
+      if (stepKeyRef.current !== "fleet") return;
     }
     if (nextKey) goToStep(nextKey);
   }, [ensureFleetChoiceSaved, goToStep, nextKey, stepKey]);
@@ -692,6 +695,7 @@ export function OnboardingView({
           if (stepKey === "fleet") {
             const saved = await ensureFleetChoiceSaved();
             if (!saved) return;
+            if (stepKeyRef.current !== "fleet") return;
           } else {
             goToStep("fleet", { manual: true });
             setNotice({

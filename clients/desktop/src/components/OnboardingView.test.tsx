@@ -961,6 +961,39 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.queryByText(/save the fleet naming choice before continuing/i)).not.toBeInTheDocument();
   });
 
+  it("does not advance after a slow Fleet save if the user leaves Fleet", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const slowSave = deferred<boolean>();
+    const onRosterThemeChange = vi.fn(() => slowSave.promise);
+    renderOnboarding({ onRosterThemeChange });
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+    expect(screen.getByRole("button", { name: /^saving$/i })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: /^back$/i }));
+    await waitFor(() =>
+      expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+        /repositories/i,
+      ),
+    );
+
+    slowSave.resolve(true);
+
+    await waitFor(() =>
+      expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+        /repositories/i,
+      ),
+    );
+    expect(screen.queryByText(/want approvals and questions in slack/i)).not.toBeInTheDocument();
+  });
+
   it("resets the Fleet save acknowledgement when the runtime changes", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
