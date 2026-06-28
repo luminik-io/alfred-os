@@ -83,6 +83,15 @@ load_env_file() {
   done < "$file"
 }
 
+expand_user_path() {
+  local path="$1"
+  case "$path" in
+    "~") printf '%s' "$HOME" ;;
+    "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    *) printf '%s' "$path" ;;
+  esac
+}
+
 discover_alfredrc_from_launchd() {
   local dir="$HOME/Library/LaunchAgents"
   [[ -d "$dir" ]] || return 0
@@ -165,12 +174,13 @@ load_selected_alfredrc() {
   if [[ -z "$selected_alfredrc" ]]; then
     selected_alfredrc="$HOME/.alfredrc"
   fi
+  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
   load_env_file "$ALFREDRC"
   if [[ -n "${ALFREDRC:-}" && "$ALFREDRC" != "$selected_alfredrc" ]]; then
-    selected_alfredrc="$ALFREDRC"
-    load_env_file "$ALFREDRC"
+    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
+    load_env_file "$selected_alfredrc"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
   fi
