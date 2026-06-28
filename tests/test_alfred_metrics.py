@@ -127,7 +127,7 @@ def test_discover_codenames_empty(tmp_path: Path):
 
 
 def test_agent_metric_full_rollup(tmp_path: Path):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     _write_spend(tmp_path, "lucius", today, firings=3, successes=2, failures=1, turns=12, cost=1.50)
     _write_transcript(
         tmp_path,
@@ -158,7 +158,7 @@ def test_agent_metric_empty_state(tmp_path: Path):
 
 
 def test_fleet_metrics_multi_agent(tmp_path: Path):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     _write_spend(tmp_path, "lucius", today, firings=1, successes=1)
     _write_spend(tmp_path, "drake", today, firings=2, successes=1, failures=1)
     report = metrics.fleet_metrics(tmp_path, days=7)
@@ -173,7 +173,7 @@ def test_fleet_metrics_multi_agent(tmp_path: Path):
 
 
 def test_cli_table_output_smoke(tmp_path: Path, capsys):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     _write_spend(tmp_path, "lucius", today, firings=2, successes=2, turns=8, cost=0.42)
     cli = _load_alfred_metrics()
     rc = cli.main(["--state-dir", str(tmp_path), "--since", "7d"])
@@ -186,7 +186,7 @@ def test_cli_table_output_smoke(tmp_path: Path, capsys):
 
 
 def test_cli_json_output_round_trip(tmp_path: Path, capsys):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     _write_spend(tmp_path, "lucius", today, firings=1, successes=1, cost=0.10)
     cli = _load_alfred_metrics()
     rc = cli.main(["--state-dir", str(tmp_path), "--json"])
@@ -205,7 +205,7 @@ def test_cli_missing_state_dir_exit_2(tmp_path: Path, capsys):
 
 
 def test_cli_unknown_codename_exit_1(tmp_path: Path, capsys):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     _write_spend(tmp_path, "lucius", today, firings=1, successes=1)
     cli = _load_alfred_metrics()
     rc = cli.main(["--state-dir", str(tmp_path), "--codename", "ghost"])
@@ -214,7 +214,7 @@ def test_cli_unknown_codename_exit_1(tmp_path: Path, capsys):
 
 
 def test_cli_by_day(tmp_path: Path, capsys):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     _write_spend(tmp_path, "lucius", today, firings=2, successes=2)
     cli = _load_alfred_metrics()
     rc = cli.main(["--state-dir", str(tmp_path), "--by-day"])

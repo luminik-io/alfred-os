@@ -151,12 +151,12 @@ def render_table(report: FleetReport) -> str:
 def render_by_day(report: FleetReport, state_dir: Path) -> str:
     """Daily breakdown across the window. Reads spend files directly."""
     from collections import defaultdict
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
     days_map: dict[str, dict[str, float]] = defaultdict(
         lambda: {"firings": 0, "ok": 0, "fail": 0, "turns": 0, "cost": 0.0}
     )
-    cutoff = datetime.now().date() - timedelta(days=max(0, report.days - 1))
+    cutoff = datetime.now(UTC).date() - timedelta(days=max(0, report.days - 1))
     if state_dir.is_dir():
         for entry in state_dir.iterdir():
             if not entry.is_dir() or entry.name.startswith("_"):
