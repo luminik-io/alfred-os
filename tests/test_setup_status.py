@@ -158,6 +158,21 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
     assert setup_mod._repo_list_owners() == ["env-org"]
 
 
+def test_gh_subprocess_env_drops_empty_path_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", "")
+
+    parts = setup_mod._gh_subprocess_env()["PATH"].split(os.pathsep)
+
+    assert "" not in parts
+    assert "." not in parts
+    assert str(home / ".local" / "bin") in parts
+
+
 def test_selected_repos_preserves_shipped_and_bridge_fallbacks(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

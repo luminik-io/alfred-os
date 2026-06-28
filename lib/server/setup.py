@@ -121,8 +121,7 @@ def _gh_bin() -> str:
 
 def _gh_subprocess_env() -> dict[str, str]:
     env = dict(os.environ)
-    search = os.pathsep.join((*_engine_search_path(env), env.get("PATH", "")))
-    env["PATH"] = search
+    env["PATH"] = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     return env
 
 
@@ -326,7 +325,7 @@ def engine_clis() -> list[dict[str, Any]]:
     the in-browser-capable fallback so the runtime checks work without Tauri.
     Honours ``CLAUDE_BIN`` / ``CODEX_BIN`` overrides via config.
     """
-    search = os.pathsep.join((*_engine_search_path(os.environ), os.environ.get("PATH", "")))
+    search = _join_search_path(_engine_search_path(os.environ), os.environ.get("PATH", ""))
     out: list[dict[str, Any]] = []
     for name in _ENGINE_BINS:
         configured = _setup_config_value(f"{name.upper()}_BIN")
@@ -487,9 +486,7 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
 
 
 def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
-    search = os.pathsep.join(
-        _engine_search_path(env) + tuple(env.get("PATH", "").split(os.pathsep))
-    )
+    search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     binary = shutil.which("headroom", path=search)
     enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
     if binary:
@@ -633,6 +630,12 @@ def _engine_search_path(env: Mapping[str, str]) -> tuple[str, ...]:
     return tuple(paths)
 
 
+def _join_search_path(paths: tuple[str, ...], inherited_path: str) -> str:
+    parts = [part for part in paths if part]
+    parts.extend(part for part in inherited_path.split(os.pathsep) if part)
+    return os.pathsep.join(parts)
+
+
 def _code_memory_launcher_env() -> dict[str, str]:
     """Return the env shape ``bin/code-memory-mcp`` sees after its loaders run."""
 
@@ -729,7 +732,7 @@ def _code_memory_repos(env: dict[str, str]) -> list[str]:
 
 
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
-    search = os.pathsep.join((*_engine_search_path(env), env.get("PATH", "")))
+    search = _join_search_path(_engine_search_path(env), env.get("PATH", ""))
     explicit = _code_memory_config(env, "ALFRED_CODE_MEMORY_BIN")
     if explicit:
         resolved = _resolve_configured_binary(explicit, search=search)
