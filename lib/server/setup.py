@@ -104,8 +104,11 @@ def _setup_config_value(key: str, default: str = "") -> str:
 
 
 def _allowed_queue_repos() -> set[str]:
-    raw = _setup_config_value(QUEUE_REPOS_ENV)
-    return set(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
+    repos: set[str] = set()
+    for key in _REPO_ENV_KEYS:
+        raw = _setup_config_value(key)
+        repos.update(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
+    return repos
 
 
 def _gh_bin() -> str:

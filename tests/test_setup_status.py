@@ -158,6 +158,19 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
     assert setup_mod._repo_list_owners() == ["env-org"]
 
 
+def test_selected_repos_preserves_shipped_and_bridge_fallbacks(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "octocat/api, octocat/web")
+
+    assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
+
+
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
