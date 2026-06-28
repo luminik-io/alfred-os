@@ -264,6 +264,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           // clobber the choice we just persisted. Skip if a newer save has
           // since been issued: that save owns the agreed state, not this one.
           if (seq !== latestSeqByUrlRef.current.get(url)) return false;
+          clearRuntimeSaveError(url);
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
@@ -274,7 +275,6 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           setRosterThemeState(theme);
           setCustomNamesState(custom);
           setHydrationError(null);
-          clearRuntimeSaveError(url);
           writeStored(theme, custom);
           return true;
         })
