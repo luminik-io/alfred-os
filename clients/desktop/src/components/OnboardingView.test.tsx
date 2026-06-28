@@ -484,6 +484,9 @@ describe("OnboardingView six-step takeover", () => {
     view.rerender(<OnboardingView {...props} connected={false} />);
     view.rerender(<OnboardingView {...props} connected />);
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
 
     pollStatus.resolve(
       makeStatus({

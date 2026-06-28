@@ -199,6 +199,18 @@ export function OnboardingView({
   const connectionGenerationRef = useRef(0);
 
   useEffect(() => {
+    if (baseUrlRef.current !== baseUrl) {
+      connectionGenerationRef.current += 1;
+      setGithubAuthFlow((current) =>
+        current.state === "starting" || current.state === "waiting"
+          ? {
+              ...IDLE_GITHUB_AUTH_FLOW,
+              state: "error",
+              message: "GitHub sign-in was interrupted. Start it again for this runtime.",
+            }
+          : current,
+      );
+    }
     baseUrlRef.current = baseUrl;
   }, [baseUrl]);
 
@@ -206,6 +218,15 @@ export function OnboardingView({
     connectedRef.current = connected;
     if (!connected) {
       connectionGenerationRef.current += 1;
+      setGithubAuthFlow((current) =>
+        current.state === "starting" || current.state === "waiting"
+          ? {
+              ...IDLE_GITHUB_AUTH_FLOW,
+              state: "error",
+              message: "GitHub sign-in was interrupted. Reconnect, then start it again.",
+            }
+          : current,
+      );
     }
   }, [connected]);
 
