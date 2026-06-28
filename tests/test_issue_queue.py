@@ -96,12 +96,12 @@ def test_set_issue_pickup_requires_configured_allowlist(monkeypatch):
     assert "allowlist is not configured" in detail
 
 
-def test_allowed_queue_repos_accepts_fallback_env(monkeypatch):
+def test_allowed_queue_repos_ignores_board_only_env(monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", "/nonexistent-alfred-home")
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "org/api, org/web")
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "org/extra")
-    assert iq.allowed_queue_repos() == {"org/api", "org/web", "org/extra"}
+    assert iq.allowed_queue_repos() == set()
 
 
 def test_allowed_queue_repos_keeps_explicit_queue_scope(monkeypatch):
@@ -176,7 +176,7 @@ def test_allowed_queue_repos_honors_empty_active_board_scope(tmp_path: Path, mon
     assert iq.allowed_queue_repos() == set()
 
 
-def test_allowed_queue_repos_accepts_same_home_launcher_board_scope(tmp_path: Path, monkeypatch):
+def test_allowed_queue_repos_ignores_same_home_launcher_board_scope(tmp_path: Path, monkeypatch):
     home = tmp_path / "runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(home))
@@ -190,7 +190,7 @@ def test_allowed_queue_repos_accepts_same_home_launcher_board_scope(tmp_path: Pa
     )
     home.mkdir(parents=True)
 
-    assert iq.allowed_queue_repos() == {"org/board"}
+    assert iq.allowed_queue_repos() == set()
 
 
 def test_allowed_queue_repos_ignores_launcher_rc_for_different_runtime_home(

@@ -1115,13 +1115,16 @@ def bootstrap_status() -> dict[str, Any]:
     Surfaces what is connected vs missing with a next action per row:
     GitHub auth, at least one engine CLI, the watched-repo selection, and a
     demo-present flag. ``ready`` is the golden-path gate: gh authed + at least
-    one engine + at least one repo selected (no AWS / Slack required).
+    one engine + at least one board-visible repo selected and covered by queue
+    scope (no AWS / Slack required).
     """
     gh = gh_auth_status()
     engines = engine_clis()
     runtime_env = _runtime_config_env()
     repos = setup_board_repos(runtime_env)
     queue_repos = _setup_queue_repos_for_status()
+    queue_missing = sorted(set(repos) - queue_repos)
+    queue_covers_selected = bool(repos) and not queue_missing
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status(runtime_env)
     capability_plane = capability_status(code_memory, launcher_env=runtime_env)
@@ -1139,10 +1142,12 @@ def bootstrap_status() -> dict[str, Any]:
         "queue": {
             "ready": bool(queue_repos),
             "count": len(queue_repos),
+            "covers_selected": queue_covers_selected,
+            "missing_selected": queue_missing,
         },
         "demo": {"present": any(load_demo_cards().values())},
         "install": install_inventory(repos=repos, env=runtime_env),
-        "ready": bool(gh["ok"] and any_engine and repos and queue_repos),
+        "ready": bool(gh["ok"] and any_engine and repos and queue_repos and queue_covers_selected),
     }
 
 
@@ -1302,17 +1307,12 @@ def _inventory_item(
 
 
 def _install_agents_conf_path(home: Path) -> Path | None:
-    from . import schedule as setup_schedule
-
     for conf in (
         home / "launchd" / "agents.conf",
         home / "infra" / "agents" / "launchd" / "agents.conf",
     ):
         if conf.is_file():
             return conf
-    resolved = setup_schedule.agents_conf_path()
-    if resolved is not None:
-        return resolved
     return None
 
 

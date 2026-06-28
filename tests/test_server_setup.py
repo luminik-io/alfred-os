@@ -111,7 +111,7 @@ def test_install_inventory_uses_active_serve_home_for_agents_conf(
     assert inventory["scheduled_runs"] == 1
 
 
-def test_install_inventory_reuses_scheduler_agents_conf_resolver(
+def test_install_inventory_does_not_reuse_checkout_agents_conf_for_runtime_home(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -131,9 +131,9 @@ def test_install_inventory_reuses_scheduler_agents_conf_resolver(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["agents_conf_path"] == str(conf)
-    assert inventory["agents_conf_present"] is True
-    assert inventory["scheduled_runs"] == 1
+    assert inventory["agents_conf_path"] is None
+    assert inventory["agents_conf_present"] is False
+    assert inventory["scheduled_runs"] == 0
 
 
 def test_install_inventory_prefers_runtime_home_agents_conf_over_repo_resolver(
@@ -313,6 +313,48 @@ def test_bootstrap_status_uses_active_serve_home_for_board_repo_selection(
     by_key = {item["key"]: item for item in status["install"]["items"]}
     assert by_key["repos"]["ok"] is True
     assert status["ready"] is True
+
+
+def test_bootstrap_status_rejects_split_queue_and_board_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(
+        "ALFRED_QUEUE_REPOS=Legacy/Repo\nALFRED_SHIPPED_REPOS=Acme/API\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda: {"ok": True, "account": "octo", "detail": "Signed in."},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda: [{"name": "codex", "installed": True, "path": "/bin/codex"}],
+    )
+    monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
+
+    status = setup_mod.bootstrap_status()
+
+    assert status["repos"]["selected"] == ["acme/api"]
+    assert status["queue"]["ready"] is True
+    assert status["queue"]["covers_selected"] is False
+    assert status["queue"]["missing_selected"] == ["acme/api"]
+    assert status["ready"] is False
+
 
 def test_bootstrap_status_requires_enabled_queue_scope(
     tmp_path: Path,

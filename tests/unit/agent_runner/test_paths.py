@@ -78,6 +78,30 @@ def test_launcher_env_matches_agent_launch_tilde_home(fresh_agent_runner, monkey
     assert env["ALFRED_QUEUE_REPOS"] == "org/expanded"
 
 
+def test_launcher_env_treats_empty_process_home_as_absent(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", "")
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_QUEUE_REPOS=org/from-rc\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_QUEUE_REPOS"] == "org/from-rc"
+
+
 def test_launcher_env_lets_env_file_repo_scope_override_rc(
     fresh_agent_runner, monkeypatch, tmp_path
 ):

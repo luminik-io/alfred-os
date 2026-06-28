@@ -34,7 +34,7 @@ _SLUG_NUM_RE = re.compile(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)[#\s]+(\d+)$")
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 QUEUE_ACTIONS = ("queue", "hold", "done")
-_ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS", "ALFRED_BRIDGE_REPOS")
+_ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS",)
 
 
 def _runtime_config_entry(key: str) -> tuple[bool, str]:
@@ -155,8 +155,7 @@ def set_issue_pickup(repo: str, number: int, *, hold: bool) -> tuple[bool, str]:
     if not allowed:
         return (
             False,
-            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS, "
-            "ALFRED_SHIPPED_REPOS, or ALFRED_BRIDGE_REPOS",
+            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS",
         )
     if repo.lower() not in allowed:
         return False, f"repo not in Alfred queue allowlist: {repo}"
@@ -232,8 +231,7 @@ def close_issue(repo: str, number: int) -> tuple[bool, str]:
     if not allowed:
         return (
             False,
-            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS, "
-            "ALFRED_SHIPPED_REPOS, or ALFRED_BRIDGE_REPOS",
+            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS",
         )
     if repo.lower() not in allowed:
         return False, f"repo not in Alfred queue allowlist: {repo}"

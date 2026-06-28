@@ -555,6 +555,12 @@ export type SetupStatus = {
   code_memory?: SetupCodeMemory;
   capability_plane?: SetupCapabilityPlane;
   repos: { selected: string[]; count: number; keys: string[] };
+  queue?: {
+    ready: boolean;
+    count: number;
+    covers_selected?: boolean;
+    missing_selected?: string[];
+  };
   demo: { present: boolean };
   install?: SetupInstallInventory;
   ready: boolean;

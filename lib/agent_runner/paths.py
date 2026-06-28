@@ -227,6 +227,8 @@ def launcher_env() -> dict[str, str]:
 
     home = Path(os.path.expanduser("~"))
     env = dict(os.environ)
+    if not env.get("ALFRED_HOME", "").strip():
+        env.pop("ALFRED_HOME", None)
     inherited_keys = set(env)
     rc_path = home / ".alfredrc"
     rc_env: dict[str, str] = {}
