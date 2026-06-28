@@ -219,13 +219,14 @@ def launcher_env() -> dict[str, str]:
     rc_env: dict[str, str] = {}
     load_env_file(rc_path, rc_env)
     process_home = env.get("ALFRED_HOME", "").strip()
+    blocked_rc_keys: set[str] | None = None
     if process_home:
         effective_home = Path(process_home).expanduser()
         rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
-        if _same_runtime_home(effective_home, rc_home):
-            load_env_file(rc_path, env, no_clobber=True)
-    elif rc_env:
-        load_env_file(rc_path, env, no_clobber=True)
+        if not _same_runtime_home(effective_home, rc_home):
+            blocked_rc_keys = _REPO_SCOPE_ENV_KEYS
+    if rc_env:
+        load_env_file(rc_path, env, no_clobber=True, skip_keys=blocked_rc_keys)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
     else:
@@ -255,6 +256,7 @@ def load_env_file(
     no_clobber: bool = False,
     clobber_keys: set[str] | None = None,
     preserve_keys: set[str] | None = None,
+    skip_keys: set[str] | None = None,
 ) -> None:
     """Load a dotenv/shell-rc file into ``env`` with ``agent-launch`` semantics."""
 
@@ -273,6 +275,8 @@ def load_env_file(
         key, _, raw_value = line.partition("=")
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
+            continue
+        if skip_keys is not None and key in skip_keys:
             continue
         can_clobber = clobber_keys is not None and key in clobber_keys
         protected = preserve_keys is not None and key in preserve_keys

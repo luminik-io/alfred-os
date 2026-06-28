@@ -663,6 +663,56 @@ def test_agent_launch_expands_user_relative_alfredrc_path(
     assert f"RC={Path(user_info.pw_dir) / 'custom.alfredrc'}" in proc.stdout
 
 
+def test_agent_launch_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_scope(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        "\n".join(
+            [
+                "WORKSPACE_ROOT=$HOME/code space",
+                "CLAUDE_CODE_OAUTH_TOKEN=from-rc",
+                "ALFRED_QUEUE_REPOS=org/from-rc",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/from-env\n", encoding="utf-8")
+    target = tmp_path / "echo-env.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "WORKSPACE=${WORKSPACE_ROOT:-unset}"\n'
+        'echo "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(runtime)
+    env.pop("WORKSPACE_ROOT", None)
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"WORKSPACE={home}/code space" in proc.stdout
+    assert "TOKEN=from-rc" in proc.stdout
+    assert "REPOS=org/from-env" in proc.stdout
+
+
 def test_bash_available() -> None:
     """Sanity: tests need bash on PATH."""
     assert shutil.which("bash"), "bash not on PATH; cannot run agent-launch tests"

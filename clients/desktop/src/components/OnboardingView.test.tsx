@@ -544,6 +544,65 @@ describe("OnboardingView six-step takeover", () => {
     expect(onRunLocalAction).toHaveBeenCalledTimes(2);
   });
 
+  it("reenables GitHub sign-in when stale native auth resolves after reconnect", async () => {
+    const pending = makeStatus({
+      github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+    });
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(pending);
+    const nativeAuth = deferred<Awaited<ReturnType<React.ComponentProps<typeof OnboardingView>["onRunLocalAction"]>>>();
+    const onRunLocalAction = vi.fn(() => nativeAuth.promise);
+    const props = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      canRun: true,
+      nativeBusy: null,
+      nativeResult: null,
+      onConnectServer: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction,
+      onOpenConnection: vi.fn(),
+      onSwitch: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+    };
+    const view = render(<OnboardingView {...props} connected />);
+    const user = userEvent.setup();
+    await gotoStep(user, /^github$/i);
+
+    await user.click(await screen.findByRole("button", { name: /sign in with github/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /starting/i })).toBeDisabled(),
+    );
+
+    view.rerender(<OnboardingView {...props} connected={false} />);
+    view.rerender(<OnboardingView {...props} connected />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
+    expect(screen.getByText(/GitHub sign-in was interrupted/i)).toBeInTheDocument();
+
+    nativeAuth.resolve({
+      command: ["gh", "auth", "login", "--web"],
+      stdout: "",
+      stderr: "",
+      status: null,
+      success: true,
+      pid: 42,
+      message: "GitHub sign-in started. Enter the one-time code in your browser.",
+      github_auth: {
+        device_url: "https://github.com/login/device",
+        device_code: "ABCD-1234",
+        poll_interval_ms: 250,
+        timeout_ms: 1_000,
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
+    expect(screen.queryByRole("button", { name: /waiting for github/i })).not.toBeInTheDocument();
+  });
+
   it("falls back to copy-paste gh auth + recheck in browser mode", async () => {
     vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
     const refetch = vi

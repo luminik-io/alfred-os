@@ -146,7 +146,7 @@ expand_user_path() {
   esac
 }
 
-load_env_file "$HOME/.alfredrc"
+load_env_file "$HOME/.alfredrc" no_clobber
 : "${ALFRED_HOME:=$HOME/.alfred}"
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 load_env_file "$ALFRED_HOME/.env" no_clobber

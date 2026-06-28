@@ -120,6 +120,41 @@ def test_launcher_env_preserves_real_env_repo_scope_over_env_file(
     assert env["ALFRED_SHIPPED_REPOS"] == "org/process"
 
 
+def test_launcher_env_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_scope(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+
+    (home / ".alfredrc").write_text(
+        "\n".join(
+            [
+                "WORKSPACE_ROOT=$HOME/code space",
+                "CLAUDE_CODE_OAUTH_TOKEN=from-rc",
+                "ALFRED_QUEUE_REPOS=org/from-rc",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/from-env\n", encoding="utf-8")
+
+    env = paths_mod.launcher_env()
+
+    assert env["WORKSPACE_ROOT"] == f"{home}/code space"
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "from-rc"
+    assert env["ALFRED_QUEUE_REPOS"] == "org/from-env"
+
+
 def test_today_str_uses_utc_not_local_time(fresh_agent_runner, monkeypatch):
     """The daily spend ledger filename must rotate at UTC midnight, not at
     the operator's local midnight. Otherwise a non-UTC operator firing

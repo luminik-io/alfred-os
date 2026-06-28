@@ -202,15 +202,17 @@ export function OnboardingView({
 
   const setInterruptedGithubAuthFlow = useCallback((message: string, requestId?: number) => {
     setStatusLoading(false);
+    const activeFlowRequestId = githubAuthFlowRequestSeq.current;
+    const ownsFlow =
+      requestId === undefined || activeFlowRequestId === requestId || activeFlowRequestId === null;
+    if (ownsFlow) {
+      githubAuthFlowRequestSeq.current = null;
+    }
     setGithubAuthFlow((current) => {
       const canInterrupt = current.state === "starting" || current.state === "waiting";
-      const activeFlowRequestId = githubAuthFlowRequestSeq.current;
-      const ownsFlow =
-        requestId === undefined || activeFlowRequestId === requestId || activeFlowRequestId === null;
       if (!canInterrupt || !ownsFlow) {
         return current;
       }
-      githubAuthFlowRequestSeq.current = null;
       return {
         ...IDLE_GITHUB_AUTH_FLOW,
         state: "error",
