@@ -112,6 +112,34 @@ def decode_env_value(value: str) -> str:
     return value
 
 
+def _strip_inline_comment(value: str) -> str:
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
 def _setup_config_value(key: str, default: str = "") -> str:
     return _runtime_config_value(key, default)
 
@@ -119,6 +147,7 @@ def _setup_config_value(key: str, default: str = "") -> str:
 def _runtime_config_env() -> dict[str, str]:
     env = dict(os.environ)
     protected = {key for key, value in os.environ.items() if value.strip()}
+    protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
     raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
@@ -816,7 +845,7 @@ def _load_launcher_env_file(
             continue
         if key in protected_keys:
             continue
-        decoded = decode_env_value(value.strip())
+        decoded = decode_env_value(_strip_inline_comment(value).strip())
         home = _safe_home(env)
         if home:
             decoded = decoded.replace("${HOME}", str(home)).replace("$HOME", str(home))
