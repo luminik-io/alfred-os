@@ -154,6 +154,34 @@ def test_direct_auto_promote_env_follows_explicit_alfredrc_pointer(
     assert env["ALFRED_AUTO_PROMOTE_KILL"] == "1"
 
 
+def test_direct_auto_promote_env_direct_alfredrc_retargets_stale_process_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    stale_runtime = tmp_path / "stale-runtime"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    stale_runtime.mkdir()
+    runtime.mkdir()
+    custom_rc.write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (stale_runtime / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(custom_rc))
+    monkeypatch.setenv("ALFRED_HOME", str(stale_runtime))
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_KILL", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", raising=False)
+
+    env = direct_auto_promote_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_AUTO_PROMOTE"] == "0"
+
+
 # --- arm / kill switch -----------------------------------------------------
 
 
@@ -192,6 +220,18 @@ def test_direct_auto_promote_reads_runtime_env_opt_out(
     monkeypatch.delenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", raising=False)
 
     c = _candidate(brain, "runtime env opted out", confidence=0.99)
+    summary = brain.auto_promote_candidates(judge=lambda _p: _verdict(0.97))
+
+    assert summary["enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["considered"] == 0
+    assert _status(brain, c.id) == "candidate"
+
+
+def test_auto_promote_uses_constructor_env_when_env_arg_is_absent(tmp_path: Path) -> None:
+    brain = FleetBrain(db_path=tmp_path / "brain.db", env=OPT_OUT)
+    c = _candidate(brain, "constructor env opted out", confidence=0.99)
+
     summary = brain.auto_promote_candidates(judge=lambda _p: _verdict(0.97))
 
     assert summary["enabled"] is False

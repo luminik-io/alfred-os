@@ -222,11 +222,18 @@ load_env_file() {
 }
 
 load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" allow_alfredrc_pointer="allow_alfredrc_pointer"
+  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" allow_alfredrc_pointer="allow_alfredrc_pointer" direct_selected_alfredrc=""
+  if original_env_has_key "ALFREDRC" && [ -n "${ALFREDRC:-}" ]; then
+    direct_selected_alfredrc="direct_selected_alfredrc"
+  fi
   selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
-  load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer"
+  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+    load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer" file_overrides_existing file_overrides_process_runtime
+  else
+    load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer"
+  fi
   if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
     ALFREDRC="$selected_alfredrc"

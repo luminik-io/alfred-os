@@ -351,12 +351,17 @@ def direct_auto_promote_env() -> dict[str, str]:
     env = dict(os.environ)
     process_keys = set(os.environ)
     selected_rc = Path(env.get("ALFREDRC") or "~/.alfredrc").expanduser()
+    direct_selected_rc = bool(os.environ.get("ALFREDRC", "").strip())
     env["ALFREDRC"] = str(selected_rc)
     _load_auto_promote_env_file(
         selected_rc,
         env,
         allow_alfredrc_pointer=True,
+        override_existing=direct_selected_rc,
         protected_keys=process_keys,
+        protected_key_overrides=(
+            {"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"} if direct_selected_rc else set()
+        ),
     )
     pointed_rc = Path(env.get("ALFREDRC") or str(selected_rc)).expanduser()
     if pointed_rc != selected_rc:
@@ -900,8 +905,15 @@ class FleetBrain:
         values fail closed too. ``ALFRED_AUTO_PROMOTE_KILL=1`` wins over
         everything so a bad batch can be halted without editing the rest of the
         deployment config."""
-        env_src = env if env is not None else _direct_auto_promote_env()
+        env_src = self._auto_promote_env(env)
         return _auto_promote_switches_allow_learning(env_src)
+
+    def _auto_promote_env(self, env: Mapping[str, str] | None = None) -> Mapping[str, str]:
+        if env is not None:
+            return env
+        if self._env is not None:
+            return self._env
+        return _direct_auto_promote_env()
 
     def hold_candidate_for_review(
         self, candidate_id: str, *, note: str = ""
@@ -974,7 +986,7 @@ class FleetBrain:
         ``reviewer="auto"`` so the whole batch stays auditable. ``judge`` is an
         injectable ``str -> str|None`` seam; tests pass a stub so no real model
         process is spawned. Returns a summary dict (always safe to log)."""
-        env_src = env if env is not None else _direct_auto_promote_env()
+        env_src = self._auto_promote_env(env)
         summary: dict[str, Any] = {
             "enabled": self.auto_promote_enabled(env_src),
             "judge_enabled": False,
