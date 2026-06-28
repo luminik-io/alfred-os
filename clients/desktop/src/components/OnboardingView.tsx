@@ -198,26 +198,28 @@ export function OnboardingView({
   const connectedRef = useRef(connected);
   const connectionGenerationRef = useRef(0);
   const githubAuthRequestSeq = useRef(0);
+  const githubAuthFlowRequestSeq = useRef<number | null>(null);
 
-  const setInterruptedGithubAuthFlow = useCallback((message: string) => {
+  const setInterruptedGithubAuthFlow = useCallback((message: string, requestId?: number) => {
     setStatusLoading(false);
-    setGithubAuthFlow((current) =>
-      current.state === "starting" || current.state === "waiting"
-        ? {
-            ...IDLE_GITHUB_AUTH_FLOW,
-            state: "error",
-            message,
-          }
-        : current,
-    );
+    setGithubAuthFlow((current) => {
+      const canInterrupt = current.state === "starting" || current.state === "waiting";
+      const ownsFlow = requestId === undefined || githubAuthFlowRequestSeq.current === requestId;
+      if (!canInterrupt || !ownsFlow) {
+        return current;
+      }
+      githubAuthFlowRequestSeq.current = null;
+      return {
+        ...IDLE_GITHUB_AUTH_FLOW,
+        state: "error",
+        message,
+      };
+    });
   }, []);
 
   const resetStaleGithubAuthFlow = useCallback(
     (requestId: number, message: string) => {
-      if (githubAuthRequestSeq.current !== requestId) {
-        return;
-      }
-      setInterruptedGithubAuthFlow(message);
+      setInterruptedGithubAuthFlow(message, requestId);
     },
     [setInterruptedGithubAuthFlow],
   );
@@ -309,6 +311,7 @@ export function OnboardingView({
 
   const startGithubAuthLogin = useCallback(async () => {
     if (!canRun || !connected) {
+      githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
         ...IDLE_GITHUB_AUTH_FLOW,
         state: "error",
@@ -318,6 +321,7 @@ export function OnboardingView({
     }
 
     const requestAuthId = ++githubAuthRequestSeq.current;
+    githubAuthFlowRequestSeq.current = requestAuthId;
     setStatusLoading(true);
     setGithubAuthFlow({
       ...IDLE_GITHUB_AUTH_FLOW,
@@ -375,6 +379,7 @@ export function OnboardingView({
         interruptStaleGithubAuthRequest(requestAuthId);
         return;
       }
+      githubAuthFlowRequestSeq.current = null;
       if (poll.status) {
         setStatus(poll.status);
       }
@@ -400,6 +405,7 @@ export function OnboardingView({
         interruptStaleGithubAuthRequest(requestAuthId);
         return;
       }
+      githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
         ...IDLE_GITHUB_AUTH_FLOW,
         state: "error",

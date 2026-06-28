@@ -21,6 +21,7 @@ import logging
 import re
 import subprocess
 
+from agent_runner.paths import launcher_config_value
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
 from shipped_board import _config_value, _gh_bin, _gh_subprocess_env
 
@@ -32,6 +33,12 @@ _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 QUEUE_ACTIONS = ("queue", "hold", "done")
 _ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS", "ALFRED_BRIDGE_REPOS")
+
+
+def _queue_config_value(key: str) -> str:
+    """Resolve queue config from the live runtime, then launcher rc fallback."""
+
+    return _config_value(key).strip() or launcher_config_value(key).strip()
 
 
 def parse_issue_ref(text: str) -> tuple[str, int] | None:
@@ -61,11 +68,11 @@ def allowed_queue_repos() -> set[str]:
     so it must be scoped at least as tightly as the Slack issue bridge. Require
     an explicit allowlist and never infer from arbitrary GitHub access.
     """
-    explicit = _config_value("ALFRED_QUEUE_REPOS")
+    explicit = _queue_config_value("ALFRED_QUEUE_REPOS")
     env_names = ("ALFRED_QUEUE_REPOS",) if explicit.strip() else _ALLOWLIST_ENV
     repos: set[str] = set()
     for env_name in env_names:
-        raw = _config_value(env_name)
+        raw = _queue_config_value(env_name)
         for item in re.split(r"[\s,]+", raw):
             repo = item.strip().lower()
             if repo:
