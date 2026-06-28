@@ -142,6 +142,58 @@ def test_explicit_opt_out_is_a_true_noop(brain: FleetBrain) -> None:
     assert _status(brain, c.id) == "candidate"
 
 
+def test_direct_auto_promote_reads_runtime_env_opt_out(
+    brain: FleetBrain,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shell_home = tmp_path / "shell-home"
+    runtime = tmp_path / "runtime"
+    shell_home.mkdir()
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(shell_home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_KILL", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", raising=False)
+
+    c = _candidate(brain, "runtime env opted out", confidence=0.99)
+    summary = brain.auto_promote_candidates(judge=lambda _p: _verdict(0.97))
+
+    assert summary["enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["considered"] == 0
+    assert _status(brain, c.id) == "candidate"
+
+
+def test_direct_auto_promote_runtime_judge_stop_overrides_stale_process_env(
+    brain: FleetBrain,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shell_home = tmp_path / "shell-home"
+    runtime = tmp_path / "runtime"
+    shell_home.mkdir()
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(shell_home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_KILL", raising=False)
+    monkeypatch.setenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", "1")
+
+    c = _candidate(brain, "runtime judge typo fails closed", confidence=0.99)
+    summary = brain.auto_promote_candidates(judge=lambda _p: _verdict(0.97))
+
+    assert summary["enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["considered"] == 0
+    assert _status(brain, c.id) == "candidate"
+
+
 def test_unrecognized_auto_promote_value_fails_closed(brain: FleetBrain) -> None:
     c = _candidate(brain, "a strong durable lesson", confidence=0.99)
     summary = brain.auto_promote_candidates(
