@@ -222,7 +222,8 @@ def write_env_values(values: dict[str, str]) -> Path:
 
     path = _env_path()
     _write_env_file_values(path, values)
-    _sync_repo_values_to_rc(values)
+    if _should_sync_repo_values_to_rc():
+        _sync_repo_values_to_rc(values)
     return path
 
 
@@ -268,6 +269,14 @@ def _sync_repo_values_to_rc(values: dict[str, str]) -> None:
     if not repo_values:
         return
     _write_env_file_values(_rc_path(), repo_values, export=True)
+
+
+def _should_sync_repo_values_to_rc() -> bool:
+    """Only mirror repo scope into rc when rc targets this connected runtime."""
+
+    runtime_env = _setup_runtime_env()
+    launcher_env = _setup_launcher_env()
+    return _same_runtime_home(_alfred_home(runtime_env), _alfred_home(launcher_env))
 
 
 def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
@@ -334,7 +343,14 @@ def _effective_queue_repos_for_save(runtime_env: dict[str, str]) -> list[str]:
     runtime_queue = _repos_from_env(runtime_env, (QUEUE_REPOS_ENV,))
     if runtime_queue or _has_config_value(runtime_env, QUEUE_REPOS_ENV):
         return sorted(runtime_queue)
-    return sorted(allowed_queue_repos())
+    launcher_env = _setup_launcher_env()
+    if _same_runtime_home(_alfred_home(runtime_env), _alfred_home(launcher_env)):
+        return sorted(_repos_from_env(launcher_env, (QUEUE_REPOS_ENV,)))
+    return []
+
+
+def _same_runtime_home(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
 
 
 # --------------------------------------------------------------------------- #
