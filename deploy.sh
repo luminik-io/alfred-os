@@ -58,8 +58,17 @@ trim_env_value() {
   printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
+ORIGINAL_ENV_KEYS=":$(env | sed 's/=.*//' | tr '\n' ':')"
+
+original_env_has_key() {
+  case "$ORIGINAL_ENV_KEYS" in
+    *:"$1":*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" line key value
+  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" line key value
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -83,19 +92,41 @@ load_env_file() {
     value="${value//\$\{HOME\}/$HOME}"
     value="${value//\$HOME/$HOME}"
     if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
-      if [ "$key" != "ALFREDRC" ] || [ "$allow_alfredrc_pointer" != "allow_alfredrc_pointer" ]; then
+      if [ "$key" = "ALFREDRC" ] && [ "$allow_alfredrc_pointer" = "allow_alfredrc_pointer" ]; then
+        export "$key=$value"
         continue
       fi
+      if [ "$file_overrides_existing" = "file_overrides_existing" ] && ! original_env_has_key "$key"; then
+        export "$key=$value"
+        continue
+      fi
+      continue
     fi
     export "$key=$value"
   done < "$file"
 }
 
 expand_user_path() {
-  local path="$1"
+  local path="$1" expanded=""
   case "$path" in
     "~") printf '%s' "$HOME" ;;
     "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    "~"*)
+      expanded="$(python3 - "$path" <<'PY' 2>/dev/null || true
+import os
+import sys
+
+print(os.path.expanduser(sys.argv[1]))
+PY
+)"
+      if [ -n "$expanded" ]; then
+        printf '%s' "$expanded"
+      else
+        printf '%s' "$path"
+      fi
+      ;;
+    "%h") printf '%s' "$HOME" ;;
+    "%h"/*) printf '%s/%s' "$HOME" "${path#%h/}" ;;
     *) printf '%s' "$path" ;;
   esac
 }
@@ -175,10 +206,7 @@ discover_persisted_alfredrc() {
 }
 
 load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-}" allow_alfredrc_pointer=""
-  if [ -z "${ALFREDRC:-}" ]; then
-    allow_alfredrc_pointer="allow_alfredrc_pointer"
-  fi
+  local selected_alfredrc="${ALFREDRC:-}" allow_alfredrc_pointer="allow_alfredrc_pointer"
   if [ -z "$selected_alfredrc" ]; then
     selected_alfredrc="$(discover_persisted_alfredrc)"
   fi
@@ -193,7 +221,7 @@ load_selected_alfredrc() {
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
-    load_env_file "$selected_alfredrc" no_clobber
+    load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing
   fi
 }
 

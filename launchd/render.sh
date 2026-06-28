@@ -133,10 +133,24 @@ load_env_file() {
 }
 
 expand_user_path() {
-  local path="$1"
+  local path="$1" expanded=""
   case "$path" in
     "~") printf '%s' "$HOME" ;;
     "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    "~"*)
+      expanded="$(python3 - "$path" <<'PY' 2>/dev/null || true
+import os
+import sys
+
+print(os.path.expanduser(sys.argv[1]))
+PY
+)"
+      if [[ -n "$expanded" ]]; then
+        printf '%s' "$expanded"
+      else
+        printf '%s' "$path"
+      fi
+      ;;
     "%h") printf '%s' "$HOME" ;;
     "%h"/*) printf '%s/%s' "$HOME" "${path#%h/}" ;;
     *) printf '%s' "$path" ;;

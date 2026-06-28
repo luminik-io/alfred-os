@@ -9,6 +9,7 @@ tries to parse `.sh` files as Python source (regression from PR #102).
 from __future__ import annotations
 
 import os
+import pwd
 import shutil
 import stat
 import subprocess
@@ -496,6 +497,27 @@ def test_agent_launch_expands_home_relative_persisted_alfredrc_pointer(
 
     assert proc.returncode == 0, proc.stderr
     assert "AUTO=0" in proc.stdout
+
+
+def test_agent_launch_expands_user_relative_alfredrc_path(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    user_info = pwd.getpwuid(os.getuid())
+    target = tmp_path / "echo-rc.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "RC=${ALFREDRC:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFREDRC": f"~{user_info.pw_name}/custom.alfredrc"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"RC={Path(user_info.pw_dir) / 'custom.alfredrc'}" in proc.stdout
 
 
 def test_bash_available() -> None:
