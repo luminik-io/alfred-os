@@ -526,20 +526,8 @@ describe("OnboardingView seven-step takeover", () => {
         timeout_ms: 1_000,
       },
     }));
-    const props = {
-      baseUrl: "http://127.0.0.1:7010",
-      loading: false,
-      canRun: true,
-      nativeBusy: null,
-      nativeResult: null,
-      onConnectServer: vi.fn(),
-      onStartRuntime: vi.fn(),
-      onRunLocalAction,
-      onOpenConnection: vi.fn(),
-      onSwitch: vi.fn(),
-      onRefreshBoard: vi.fn(async () => undefined),
-    };
-    const view = render(<OnboardingView {...props} connected />);
+    const props = onboardingProps({ onRunLocalAction });
+    const view = render(<OnboardingView {...props} />);
     const user = userEvent.setup();
     await gotoStep(user, /^github$/i);
 
