@@ -183,6 +183,58 @@ def test_cli_auto_promote_uses_persisted_alfred_home_for_default_brain(
     assert json.loads(capsys.readouterr().out)["enabled"] is False
 
 
+def test_cli_auto_promote_followed_alfredrc_overrides_stale_process_db(
+    cli_mod: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    bootstrap_rc = tmp_path / "bootstrap.alfredrc"
+    custom_rc = tmp_path / "custom.alfredrc"
+    stale_db = tmp_path / "stale.db"
+    custom_db = runtime / "fleet-brain.db"
+    home.mkdir()
+    runtime.mkdir()
+    bootstrap_rc.write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_FLEET_BRAIN_DB={custom_db}\nALFRED_AUTO_PROMOTE=0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(bootstrap_rc))
+    monkeypatch.setenv("ALFRED_FLEET_BRAIN_DB", str(stale_db))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    built_db_paths: list[str | None] = []
+
+    class FakeBrain:
+        def __init__(self, db_path: str | None = None) -> None:
+            built_db_paths.append(db_path)
+
+        @classmethod
+        def from_env(cls, env: dict[str, str]):
+            return cls(db_path=env.get("ALFRED_FLEET_BRAIN_DB"))
+
+        def auto_promote_candidates(
+            self,
+            *,
+            threshold: float | None = None,
+            max_per_run: int | None = None,
+            env: dict[str, str] | None = None,
+        ) -> dict[str, object]:
+            return {"enabled": False, "promoted": [], "considered": 0}
+
+    monkeypatch.setattr(cli_mod, "FleetBrain", FakeBrain)
+
+    rc = cli_mod.main(["auto-promote", "--json"])
+
+    assert rc == 0
+    assert built_db_paths == [str(custom_db)]
+    assert json.loads(capsys.readouterr().out)["enabled"] is False
+
+
 def test_cli_auto_promote_applies_persisted_env_to_process_dependencies(
     cli_mod: ModuleType,
     tmp_path: Path,

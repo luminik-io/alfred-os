@@ -271,6 +271,39 @@ def test_direct_auto_promote_pointed_rc_overrides_stale_parent_defaults(
     assert _status(brain, c.id) == "candidate"
 
 
+def test_direct_auto_promote_uses_followed_alfredrc_home_for_runtime_env(
+    brain: FleetBrain,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shell_home = tmp_path / "shell-home"
+    stale_runtime = tmp_path / "stale-runtime"
+    runtime = tmp_path / "runtime"
+    bootstrap_rc = tmp_path / "bootstrap.alfredrc"
+    custom_rc = tmp_path / "custom.alfredrc"
+    shell_home.mkdir()
+    stale_runtime.mkdir()
+    runtime.mkdir()
+    bootstrap_rc.write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (stale_runtime / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(shell_home))
+    monkeypatch.setenv("ALFREDRC", str(bootstrap_rc))
+    monkeypatch.setenv("ALFRED_HOME", str(stale_runtime))
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_KILL", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_LLM_JUDGE", raising=False)
+
+    c = _candidate(brain, "followed runtime env opted out", confidence=0.99)
+    summary = brain.auto_promote_candidates(judge=lambda _p: _verdict(0.97))
+
+    assert summary["enabled"] is False
+    assert summary["promoted"] == []
+    assert summary["considered"] == 0
+    assert _status(brain, c.id) == "candidate"
+
+
 def test_direct_auto_promote_runtime_judge_stop_overrides_stale_process_env(
     brain: FleetBrain,
     tmp_path: Path,

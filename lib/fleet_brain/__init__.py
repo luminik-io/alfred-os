@@ -312,12 +312,14 @@ def _load_auto_promote_env_file(
     allow_alfredrc_pointer: bool = False,
     override_existing: bool = False,
     protected_keys: set[str] | None = None,
+    protected_key_overrides: set[str] | None = None,
 ) -> None:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return
     protected = protected_keys or set()
+    protected_overrides = protected_key_overrides or set()
     for raw_line in lines:
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -339,7 +341,7 @@ def _load_auto_promote_env_file(
             if _auto_promote_stop_control_active(key, env[key]):
                 continue
             if not _auto_promote_stop_control_active(key, value) and (
-                not override_existing or key in protected
+                not override_existing or (key in protected and key not in protected_overrides)
             ):
                 continue
         env[key] = value
@@ -364,6 +366,7 @@ def direct_auto_promote_env() -> dict[str, str]:
             env,
             override_existing=True,
             protected_keys=process_keys,
+            protected_key_overrides={"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"},
         )
     env.setdefault("ALFRED_HOME", str(Path("~/.alfred").expanduser()))
     _load_auto_promote_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)

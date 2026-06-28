@@ -410,6 +410,8 @@ fn merged_alfred_env() -> HashMap<String, String> {
             false,
             home.as_deref(),
             &process_env_keys,
+            false,
+            &[],
         );
     }
     if let Some(home) = home.as_deref() {
@@ -429,14 +431,32 @@ fn load_selected_alfredrc_env(
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
     if let Some(alfredrc) = alfredrc_path(home, env) {
-        load_config_file(env, &alfredrc, true, false, home, process_env_keys);
+        load_config_file(
+            env,
+            &alfredrc,
+            true,
+            false,
+            home,
+            process_env_keys,
+            true,
+            &[],
+        );
         if let Some(pointed_alfredrc) = alfredrc_path(home, env) {
             if pointed_alfredrc != alfredrc {
                 env.insert(
                     "ALFREDRC".to_string(),
                     pointed_alfredrc.to_string_lossy().into_owned(),
                 );
-                load_config_file(env, &pointed_alfredrc, true, true, home, process_env_keys);
+                load_config_file(
+                    env,
+                    &pointed_alfredrc,
+                    true,
+                    true,
+                    home,
+                    process_env_keys,
+                    false,
+                    &["ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"],
+                );
             } else if had_alfredrc_value || env.contains_key("ALFREDRC") {
                 env.insert(
                     "ALFREDRC".to_string(),
@@ -541,6 +561,8 @@ fn load_config_file(
     file_overrides_existing: bool,
     home: Option<&Path>,
     process_env_keys: &HashSet<String>,
+    allow_alfredrc_pointer: bool,
+    process_override_keys: &[&str],
 ) {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return;
@@ -563,11 +585,18 @@ fn load_config_file(
         let clean = decode_config_value(strip_inline_comment(value), home)
             .trim()
             .to_string();
+        if key == "ALFREDRC" && allow_alfredrc_pointer {
+            env.insert(key.to_string(), clean);
+            continue;
+        }
         if overrides_with_stop_control(key, &clean) {
             env.insert(key.to_string(), clean);
             continue;
         }
-        if no_clobber && process_env_keys.contains(key) {
+        let overrides_process_key = process_override_keys
+            .iter()
+            .any(|allowed_key| *allowed_key == key);
+        if no_clobber && process_env_keys.contains(key) && !overrides_process_key {
             continue;
         }
         if let Some(existing) = env.get(key) {
@@ -2414,6 +2443,125 @@ mod tests {
             env.get("ALFREDRC"),
             Some(&custom_rc.to_string_lossy().to_string())
         );
+        assert_eq!(
+            env.get("ALFRED_HOME"),
+            Some(&runtime.to_string_lossy().to_string())
+        );
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"1".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
+        restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
+        restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
+    }
+
+    #[test]
+    fn native_subprocess_env_follows_process_alfredrc_redirect() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
+        let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
+
+        let root = temp_root("alfred-process-alfredrc-redirect");
+        let home = root.join("home");
+        let stale_runtime = root.join("stale-runtime");
+        let runtime = root.join("runtime");
+        let bootstrap_rc = root.join("bootstrap.alfredrc");
+        let custom_rc = root.join("custom.alfredrc");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&stale_runtime).expect("create stale runtime");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            &bootstrap_rc,
+            format!(
+                "ALFREDRC='{}'\nALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=1\n",
+                custom_rc.to_string_lossy(),
+                stale_runtime.to_string_lossy()
+            ),
+        )
+        .expect("write bootstrap alfredrc");
+        std::fs::write(
+            &custom_rc,
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE=0\n",
+                runtime.to_string_lossy()
+            ),
+        )
+        .expect("write custom alfredrc");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFREDRC", &bootstrap_rc);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFREDRC"),
+            Some(&custom_rc.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_HOME"),
+            Some(&runtime.to_string_lossy().to_string())
+        );
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
+        restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
+    }
+
+    #[test]
+    fn native_subprocess_env_loads_runtime_env_from_followed_alfredrc_home() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
+        let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
+        let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
+
+        let root = temp_root("alfred-followed-runtime-env");
+        let home = root.join("home");
+        let stale_runtime = root.join("stale-runtime");
+        let runtime = root.join("runtime");
+        let bootstrap_rc = root.join("bootstrap.alfredrc");
+        let custom_rc = root.join("custom.alfredrc");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&stale_runtime).expect("create stale runtime");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(
+            &bootstrap_rc,
+            format!("ALFREDRC='{}'\n", custom_rc.to_string_lossy()),
+        )
+        .expect("write bootstrap alfredrc");
+        std::fs::write(
+            &custom_rc,
+            format!("ALFRED_HOME='{}'\n", runtime.to_string_lossy()),
+        )
+        .expect("write custom alfredrc");
+        std::fs::write(
+            stale_runtime.join(".env"),
+            "ALFRED_AUTO_PROMOTE=1\nALFRED_AUTO_PROMOTE_KILL=0\n",
+        )
+        .expect("write stale runtime env");
+        std::fs::write(
+            runtime.join(".env"),
+            "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n",
+        )
+        .expect("write runtime env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFREDRC", &bootstrap_rc);
+        std::env::set_var("ALFRED_HOME", &stale_runtime);
+        std::env::remove_var("ALFRED_AUTO_PROMOTE");
+        std::env::remove_var("ALFRED_AUTO_PROMOTE_KILL");
+
+        let env = merged_alfred_env();
         assert_eq!(
             env.get("ALFRED_HOME"),
             Some(&runtime.to_string_lossy().to_string())

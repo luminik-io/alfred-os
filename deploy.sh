@@ -189,7 +189,8 @@ discover_persisted_alfredrc() {
     if [ -f "$candidate" ]; then
       IFS= read -r line < "$candidate" || true
       if [ -n "$line" ]; then
-        printf '%s\n' "$line"
+        expand_user_path "$line"
+        printf '\n'
         return 0
       fi
     fi
