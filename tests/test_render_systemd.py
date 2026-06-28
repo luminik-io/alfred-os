@@ -234,6 +234,31 @@ def test_render_expands_home_relative_persisted_alfredrc_pointer(tmp_path):
     assert f"Environment=WORKSPACE_ROOT={workspace}" in service
 
 
+def test_render_expands_systemd_home_specifier_from_discovered_alfredrc(tmp_path):
+    home = tmp_path / "fakehome"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    custom_rc = home / "custom.alfredrc"
+    custom_home = tmp_path / "runtime"
+    workspace = tmp_path / "workspace"
+    (systemd_user / "old.service").write_text(
+        "Environment=ALFREDRC=%h/custom.alfredrc\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(
+        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
+        encoding="utf-8",
+    )
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"HOME": str(home)})
+
+    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
+    assert "Environment=ALFREDRC=%h/custom.alfredrc" in service
+    assert f"Environment=ALFRED_HOME={custom_home}" in service
+    assert f"Environment=WORKSPACE_ROOT={workspace}" in service
+
+
 def test_render_preserves_process_layout_over_alfredrc(tmp_path):
     home = tmp_path / "fakehome"
     home.mkdir()

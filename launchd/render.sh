@@ -137,6 +137,8 @@ expand_user_path() {
   case "$path" in
     "~") printf '%s' "$HOME" ;;
     "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    "%h") printf '%s' "$HOME" ;;
+    "%h"/*) printf '%s/%s' "$HOME" "${path#%h/}" ;;
     *) printf '%s' "$path" ;;
   esac
 }
