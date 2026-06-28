@@ -203,6 +203,41 @@ def test_agent_launch_alfredrc_wins_over_env_file(tmp_path: Path, alfred_home: P
     assert "TOKEN=sk-ant-oat01-fromrc" in proc.stdout
 
 
+def test_agent_launch_expands_tilde_alfred_home_before_env_file(tmp_path: Path) -> None:
+    """ALFRED_HOME=~/runtime must load the runtime .env, matching setup/status."""
+
+    home = tmp_path / "home"
+    runtime = home / "runtime"
+    runtime.mkdir(parents=True)
+    (home / ".alfredrc").write_text("ALFRED_HOME=~/runtime\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/expanded\n", encoding="utf-8")
+    target = tmp_path / "echo-runtime.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME=${ALFRED_HOME:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFRED_PYTHON", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME={runtime}" in proc.stdout
+    assert "REPOS=org/expanded" in proc.stdout
+
+
 def test_agent_launch_env_file_stop_controls_override_stale_alfredrc(
     tmp_path: Path, alfred_home: Path
 ) -> None:
