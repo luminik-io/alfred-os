@@ -206,7 +206,37 @@ describe("OnboardingView six-step takeover", () => {
     expect(screen.getByText(/code-memory binary and index are present/i)).toBeInTheDocument();
     await user.click(screen.getByText(/advanced: code-memory probe/i));
     expect(screen.getByText(/DeusData\/codebase-memory-mcp@v0.8.1/i)).toBeInTheDocument();
+    expect(screen.getByText(/configured repos/i)).toBeInTheDocument();
     expect(screen.getByText(/api, web/i)).toBeInTheDocument();
+  });
+
+  it("handles older code-memory payloads without repo metadata", async () => {
+    const legacyCodeMemory = { ...makeStatus().code_memory! };
+    delete legacyCodeMemory.repos;
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+        code_memory: {
+          ...legacyCodeMemory,
+          binary: {
+            resolved: true,
+            path: "/opt/alfred/bin/codebase-memory-mcp",
+            source: "cache",
+            configured: null,
+          },
+          index_present: true,
+          detail: "Code-memory binary and index are present.",
+        },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await gotoStep(user, /^tools$/i);
+
+    expect(await screen.findByText(/code-memory binary and index are present/i)).toBeInTheDocument();
+    await user.click(screen.getByText(/advanced: code-memory probe/i));
+    expect(screen.getByText(/auto-discovered repos/i)).toBeInTheDocument();
+    expect(screen.getByText(/none found yet/i)).toBeInTheDocument();
   });
 
   it("shows an honest empty state when no engine is found", async () => {

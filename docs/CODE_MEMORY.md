@@ -41,9 +41,11 @@ it at a binary you installed yourself.
   index (`index` / `refresh`). Run `bin/code-memory-mcp doctor` to see what is
   resolved.
 - **Indexing.** The launcher indexes the repos in your scope list into
-  `$ALFRED_HOME/state/code-memory`. A scheduled `code-memory-refresh` agent
-  keeps the index current; it does an incremental `refresh` on each run so the
-  graph tracks git changes without a full rebuild.
+  `$ALFRED_HOME/state/code-memory`. If no scope list is configured, Alfred
+  auto-discovers git repos under `WORKSPACE_ROOT/product` by default, skipping
+  archive, worktree, build, and dependency directories. A scheduled
+  `code-memory-refresh` agent keeps the index current; it does an incremental
+  `refresh` on each run so the graph tracks git changes without a full rebuild.
 
 ## Install and index
 
@@ -69,14 +71,17 @@ All knobs are environment variables; set them in `~/.alfredrc` or
 | Variable | Default | What it does |
 |---|---|---|
 | `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the code-memory MCP to firings. Set `0` to disable. |
-| `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`) | Comma-separated repo dir names under your workspace to index. |
+| `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`, then auto-discovery) | Comma-separated repo dir names under your workspace to index. |
+| `ALFRED_CODE_MEMORY_DISCOVERY_LIMIT` | `25` | Max git repos auto-discovered when no explicit code-memory/code-map scope is configured. |
+| `ALFRED_WORKSPACE_SUBDIR` | (falls back to `WORKSPACE_SUBDIR`, then `product`) | Optional subdirectory under `WORKSPACE_ROOT` to scan for code-memory repos. Set it to an empty value to scan `WORKSPACE_ROOT` directly. |
 | `ALFRED_CODE_MEMORY_BIN` | (unset) | Explicit path to the `codebase-memory-mcp` binary. Skips PATH + autofetch. |
 | `ALFRED_CODE_MEMORY_VERSION` | pinned (`v0.8.1`) | Upstream release tag to fetch. |
 | `ALFRED_CODE_MEMORY_REPO` | `DeusData/codebase-memory-mcp` | Upstream GitHub repo for release assets. |
 | `ALFRED_CODE_MEMORY_AUTOFETCH` | `1` (on) | Fetch the pinned binary on first use. Set `0` for a strict no-network install. |
 | `ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S` | `10` | Connect timeout for first-use release downloads. |
 | `ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S` | `120` | Overall timeout for first-use release downloads. |
-| `ALFRED_CODE_MEMORY_INDEX_DIR` | `$ALFRED_HOME/state/code-memory` | Where the on-disk code graph lives. |
+| `ALFRED_CODE_MEMORY_INDEX_DIR` | `$ALFRED_HOME/state/code-memory` | Default storage root for code-memory state when `ALFRED_CODE_MEMORY_HOME` is unset. |
+| `ALFRED_CODE_MEMORY_HOME` | `ALFRED_CODE_MEMORY_INDEX_DIR` | HOME used for the upstream binary, which stores graph DBs under `.cache/codebase-memory-mcp`. |
 
 Binary resolution order (first hit wins):
 

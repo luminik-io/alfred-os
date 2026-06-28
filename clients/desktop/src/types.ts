@@ -483,7 +483,15 @@ export type SetupCodeMemory = {
   repo: string;
   index_dir: string;
   index_present: boolean;
-  repos: { configured: string[]; count: number };
+  repos?: {
+    configured: string[];
+    configured_existing?: string[];
+    discovered?: string[];
+    selected?: string[];
+    source?: "configured" | "auto" | "auto-fallback" | string;
+    count: number;
+    limit?: number;
+  };
   detail: string;
 };
 
