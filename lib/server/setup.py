@@ -61,6 +61,21 @@ _CODE_MEMORY_VERSION_RE = re.compile(
     r'^CODE_MEMORY_VERSION="\$\{ALFRED_CODE_MEMORY_VERSION:-([^}]+)\}"'
 )
 _CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
+_CODE_MEMORY_DISCOVERY_LIMIT = 25
+_CODE_MEMORY_DISCOVERY_IGNORES = {
+    ".archive",
+    ".cache",
+    ".external",
+    ".external-submissions",
+    ".venv",
+    ".worktrees",
+    "build",
+    "dist",
+    "node_modules",
+    "target",
+    "venv",
+}
+_CODE_MEMORY_GRAPH_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
 
 _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
@@ -358,8 +373,14 @@ def code_memory_status() -> dict[str, Any]:
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
-    configured_repos = _code_memory_repos(launcher_env)
-    index_present = _dir_has_entries(index_dir)
+    index_home = _code_memory_home(launcher_env, index_dir)
+    graph_dir = _code_memory_graph_dir(launcher_env, index_home)
+    repo_scope = (
+        _code_memory_repo_scope(launcher_env)
+        if enabled
+        else _disabled_code_memory_repo_scope(launcher_env)
+    )
+    index_present = _code_memory_index_present(graph_dir)
     pin = _code_memory_pin(launcher_env)
 
     if not enabled:
@@ -380,8 +401,10 @@ def code_memory_status() -> dict[str, Any]:
         "version_pin": pin["version"],
         "repo": pin["repo"],
         "index_dir": str(index_dir),
+        "index_home": str(index_home),
+        "graph_dir": str(graph_dir),
         "index_present": index_present,
-        "repos": {"configured": configured_repos, "count": len(configured_repos)},
+        "repos": repo_scope,
         "detail": detail,
     }
 
@@ -716,6 +739,20 @@ def _code_memory_index_dir(env: dict[str, str]) -> Path:
     return _alfred_home(env) / "state" / "code-memory"
 
 
+def _code_memory_home(env: dict[str, str], index_dir: Path) -> Path:
+    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_HOME")
+    if raw.strip():
+        return Path(raw).expanduser()
+    return index_dir
+
+
+def _code_memory_graph_dir(env: dict[str, str], index_home: Path) -> Path:
+    upstream_cache = _code_memory_config(env, "CBM_CACHE_DIR")
+    if upstream_cache:
+        return Path(upstream_cache).expanduser()
+    return index_home / ".cache" / _CODE_MEMORY_BIN_NAME
+
+
 def _code_memory_repos(env: dict[str, str]) -> list[str]:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_REPOS") or _code_memory_config(
         env, "ALFRED_CODE_MAP_REPOS"
@@ -723,12 +760,143 @@ def _code_memory_repos(env: dict[str, str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for piece in raw.split(","):
-        name = piece.strip()
+        name = "".join(piece.split())
         if not name or name in seen:
             continue
         seen.add(name)
         out.append(name)
     return out
+
+
+def _code_memory_workspace_subdir(env: dict[str, str]) -> str:
+    if "ALFRED_WORKSPACE_SUBDIR" in env:
+        return env.get("ALFRED_WORKSPACE_SUBDIR", "").strip()
+    if "WORKSPACE_SUBDIR" in env:
+        return env.get("WORKSPACE_SUBDIR", "").strip()
+    return "product"
+
+
+def _code_memory_workspace(env: dict[str, str]) -> Path:
+    root = _code_memory_workspace_root(env)
+    subdir = _code_memory_workspace_subdir(env)
+    return root / subdir if subdir else root
+
+
+def _code_memory_workspace_root(env: dict[str, str]) -> Path:
+    configured = _code_memory_config(env, "WORKSPACE_ROOT")
+    if configured:
+        return Path(configured).expanduser()
+    home = env.get("HOME", "").strip()
+    if home:
+        return Path(home).expanduser() / "code"
+    try:
+        return Path.home() / "code"
+    except (OSError, RuntimeError):
+        return Path.cwd() / ".alfred-code-memory-workspace-unavailable"
+
+
+def _code_memory_discovery_limit(env: dict[str, str]) -> int:
+    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return _CODE_MEMORY_DISCOVERY_LIMIT
+    return value if value > 0 else _CODE_MEMORY_DISCOVERY_LIMIT
+
+
+def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
+    workspace = _code_memory_workspace(env)
+    limit = _code_memory_discovery_limit(env)
+    found: list[str] = []
+    if not workspace.is_dir():
+        return found
+    queue = [workspace]
+    seen_real_paths: set[Path] = set()
+    while queue:
+        repo = queue.pop(0)
+        try:
+            real_repo = repo.resolve(strict=False)
+        except OSError:
+            real_repo = repo.absolute()
+        if real_repo in seen_real_paths:
+            continue
+        seen_real_paths.add(real_repo)
+        try:
+            entries = list(repo.iterdir())
+        except OSError:
+            continue
+        if _is_code_memory_git_repo(repo):
+            try:
+                relative_parts = repo.relative_to(workspace).parts
+            except ValueError:
+                continue
+            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+                continue
+            found.append(str(repo.relative_to(workspace)))
+            if len(found) >= limit:
+                break
+            continue
+        children = sorted(
+            entry
+            for entry in entries
+            if entry.is_dir() and entry.name not in _CODE_MEMORY_DISCOVERY_IGNORES
+        )
+        for child in children:
+            try:
+                relative_parts = child.relative_to(workspace).parts
+            except ValueError:
+                continue
+            if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+                continue
+            queue.append(child)
+    return found
+
+
+def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
+    workspace = _code_memory_workspace(env)
+    return [name for name in configured if _is_code_memory_git_repo(workspace / name)]
+
+
+def _is_code_memory_git_repo(path: Path) -> bool:
+    try:
+        return path.is_dir() and (path / ".git").exists()
+    except OSError:
+        return False
+
+
+def _code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
+    configured = _code_memory_repos(env)
+    configured_existing = _existing_code_memory_configured_repos(env, configured)
+    discovered: list[str] = [] if configured_existing else _discover_code_memory_repos(env)
+    selected = configured_existing or discovered
+    if configured_existing:
+        source = "configured"
+    elif configured:
+        source = "auto-fallback"
+    else:
+        source = "auto"
+    return {
+        "configured": configured,
+        "configured_existing": configured_existing,
+        "discovered": discovered,
+        "selected": selected,
+        "source": source,
+        "count": len(selected),
+        "limit": _code_memory_discovery_limit(env),
+    }
+
+
+def _disabled_code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
+    configured = _code_memory_repos(env)
+    return {
+        "configured": configured,
+        "configured_existing": [],
+        "discovered": [],
+        "selected": configured,
+        "source": "configured" if configured else "disabled",
+        "count": len(configured),
+        "limit": _code_memory_discovery_limit(env),
+    }
 
 
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
@@ -795,11 +963,22 @@ def _code_memory_pin(env: dict[str, str]) -> dict[str, str]:
     }
 
 
-def _dir_has_entries(path: Path) -> bool:
+def _code_memory_index_present(graph_dir: Path) -> bool:
+    return _has_graph_artifact(graph_dir)
+
+
+def _has_graph_artifact(path: Path) -> bool:
     try:
-        return any(path.iterdir())
+        if path.is_file():
+            return path.suffix.lower() in _CODE_MEMORY_GRAPH_SUFFIXES
+        if not path.is_dir():
+            return False
+        for child in path.rglob("*"):
+            if child.is_file() and child.suffix.lower() in _CODE_MEMORY_GRAPH_SUFFIXES:
+                return True
     except OSError:
         return False
+    return False
 
 
 def bootstrap_status() -> dict[str, Any]:

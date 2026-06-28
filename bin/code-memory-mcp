@@ -121,11 +121,18 @@ CODE_MEMORY_VERSION="${ALFRED_CODE_MEMORY_VERSION:-v0.8.1}"
 CODE_MEMORY_REPO="${ALFRED_CODE_MEMORY_REPO:-DeusData/codebase-memory-mcp}"
 CODE_MEMORY_FETCH_TIMEOUT_S="${ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S:-120}"
 CODE_MEMORY_CONNECT_TIMEOUT_S="${ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S:-10}"
+CODE_MEMORY_DISCOVERY_LIMIT="${ALFRED_CODE_MEMORY_DISCOVERY_LIMIT:-25}"
 
 CACHE_BIN="$ALFRED_HOME/bin/$CODE_MEMORY_BIN_NAME"
 INDEX_DIR="${ALFRED_CODE_MEMORY_INDEX_DIR:-$ALFRED_HOME/state/code-memory}"
+CODE_MEMORY_HOME="${ALFRED_CODE_MEMORY_HOME:-$INDEX_DIR}"
+CODE_MEMORY_CACHE_DIR="${CBM_CACHE_DIR:-$CODE_MEMORY_HOME/.cache/$CODE_MEMORY_BIN_NAME}"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
-WORKSPACE_SUBDIR="${ALFRED_WORKSPACE_SUBDIR:-}"
+if [ "${ALFRED_WORKSPACE_SUBDIR+x}" = x ]; then
+  WORKSPACE_SUBDIR="$ALFRED_WORKSPACE_SUBDIR"
+elif [ "${WORKSPACE_SUBDIR+x}" != x ]; then
+  WORKSPACE_SUBDIR="product"
+fi
 if [ -n "$WORKSPACE_SUBDIR" ]; then
   WORKSPACE="$WORKSPACE_ROOT/$WORKSPACE_SUBDIR"
 else
@@ -261,35 +268,149 @@ resolve_binary() {
   return 1
 }
 
+scope_raw() {
+  printf '%s' "${ALFRED_CODE_MEMORY_REPOS:-${ALFRED_CODE_MAP_REPOS:-}}"
+}
+
+scope_raw_has_entries() {
+  [ -n "$(scope_raw | tr -d '[:space:],')" ]
+}
+
 # In-scope repos for indexing: ALFRED_CODE_MEMORY_REPOS (comma-separated local
 # dir names under WORKSPACE), falling back to ALFRED_CODE_MAP_REPOS so a single
 # scope list drives both the planning code map and the code-memory index.
-scope_repos() {
+configured_scope_repos() {
   local raw="${ALFRED_CODE_MEMORY_REPOS:-${ALFRED_CODE_MAP_REPOS:-}}"
-  printf '%s' "$raw" | tr ',' '\n' | while IFS= read -r name; do
+  printf '%s\n' "$raw" | tr ',' '\n' | while IFS= read -r name; do
     name="$(printf '%s' "$name" | tr -d '[:space:]')"
     [ -n "$name" ] || continue
     [ -d "$WORKSPACE/$name" ] || continue
+    [ -e "$WORKSPACE/$name/.git" ] || continue
     printf '%s\n' "$WORKSPACE/$name"
   done
+  return 0
+}
+
+discovery_limit() {
+  case "$CODE_MEMORY_DISCOVERY_LIMIT" in
+    ''|*[!0-9]*) printf '25' ;;
+    0) printf '25' ;;
+    *) printf '%s' "$CODE_MEMORY_DISCOVERY_LIMIT" ;;
+  esac
+}
+
+discover_scope_repos() {
+  local limit count dir child base real_dir seen_real
+  local -a stack children
+  limit="$(discovery_limit)"
+  count=0
+  [ -d "$WORKSPACE" ] || return 0
+  stack=("$WORKSPACE")
+  seen_real=""
+  while [ "${#stack[@]}" -gt 0 ]; do
+    dir="${stack[0]}"
+    stack=("${stack[@]:1}")
+    real_dir="$(cd "$dir" 2>/dev/null && pwd -P || printf '%s' "$dir")"
+    case "
+$seen_real
+" in
+      *"
+$real_dir
+"*) continue ;;
+    esac
+    seen_real="${seen_real}${real_dir}
+"
+    if [ -e "$dir/.git" ]; then
+      printf '%s\n' "$dir"
+      count=$((count + 1))
+      [ "$count" -ge "$limit" ] && break
+      continue
+    fi
+    children=()
+    while IFS= read -r child; do
+      base="${child##*/}"
+      case "$base" in
+        .archive|.cache|.external|.external-submissions|.venv|.worktrees|build|dist|node_modules|target|venv)
+          continue
+          ;;
+      esac
+      children+=("$child")
+    done < <(find -L "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    if [ "${#children[@]}" -gt 0 ]; then
+      stack+=("${children[@]}")
+    fi
+  done
+  return 0
+}
+
+scope_repos() {
+  local configured
+  if scope_raw_has_entries; then
+    configured="$(configured_scope_repos)"
+    if [ -n "$configured" ]; then
+      printf '%s\n' "$configured"
+      return 0
+    fi
+  fi
+  discover_scope_repos
+  return 0
+}
+
+scope_repo_summary() {
+  local rel repo repos
+  repos=""
+  while IFS= read -r repo; do
+    if [ "$repo" = "$WORKSPACE" ]; then
+      rel="."
+    else
+      rel="${repo#"$WORKSPACE"/}"
+    fi
+    if [ -n "$repos" ]; then
+      repos="$repos, $rel"
+    else
+      repos="$rel"
+    fi
+  done < <(scope_repos)
+  if scope_raw_has_entries; then
+    if [ -n "$(configured_scope_repos)" ]; then
+      printf '%s' "$repos"
+    elif [ -n "$repos" ]; then
+      printf 'configured scope not found; auto-discovered: %s' "$repos"
+    else
+      printf 'configured scope not found; auto-discovered: none found'
+    fi
+  elif [ -n "$repos" ]; then
+    printf 'auto-discovered: %s' "$repos"
+  else
+    printf 'auto-discovered: none found'
+  fi
 }
 
 run_index() {
   local bin="$1" mode="$2" repo had=0
-  mkdir -p "$INDEX_DIR"
+  mkdir -p "$CODE_MEMORY_HOME"
   while IFS= read -r repo; do
     [ -n "$repo" ] || continue
     had=1
     log "${mode}: $repo"
-    # Upstream accepts --index-dir for the on-disk graph and --auto-index /
-    # --refresh for full vs incremental builds. Failures are logged, not fatal,
-    # so one bad repo never blocks the others.
-    "$bin" "$mode" --index-dir "$INDEX_DIR" --repo "$repo" \
+    # Upstream v0.8.x exposes indexing as an MCP CLI tool. It stores the graph
+    # under "$HOME/.cache/codebase-memory-mcp", so pin HOME to Alfred's
+    # configured code-memory home before invoking it. Failures are logged, not
+    # fatal, so one bad repo never blocks the others.
+    HOME="$CODE_MEMORY_HOME" "$bin" cli index_repository \
+      "{\"repo_path\":$(json_string "$repo")}" \
       || log "${mode} failed for $repo (continuing)"
   done < <(scope_repos)
   if [ "$had" -eq 0 ]; then
-    log "no in-scope repos found under $WORKSPACE (set ALFRED_CODE_MEMORY_REPOS)"
+    log "no in-scope repos found under $WORKSPACE (set ALFRED_CODE_MEMORY_REPOS or add git repos)"
   fi
+}
+
+json_string() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '"%s"' "$value"
 }
 
 # Default subcommand. When the scheduler launches us as the refresh agent it
@@ -309,7 +430,8 @@ case "$CMD" in
       log "binary unavailable; code-memory MCP is a no-op this run"
       exit 0
     }
-    exec "$BIN" serve --index-dir "$INDEX_DIR" "$@"
+    mkdir -p "$CODE_MEMORY_HOME"
+    HOME="$CODE_MEMORY_HOME" exec "$BIN" "$@"
     ;;
   index)
     BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 0; }
@@ -327,9 +449,13 @@ case "$CMD" in
       log "binary:  NOT RESOLVED (set ALFRED_CODE_MEMORY_BIN or enable autofetch)"
     fi
     log "version-pin: ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION}"
-    log "index-dir:   $INDEX_DIR"
+    log "index-home:  $CODE_MEMORY_HOME"
+    log "cache-dir:   $CODE_MEMORY_CACHE_DIR"
     log "workspace:   $WORKSPACE"
-    log "repos:       ${ALFRED_CODE_MEMORY_REPOS:-${ALFRED_CODE_MAP_REPOS:-(none configured)}}"
+    log "repos:       $(scope_repo_summary)"
+    ;;
+  __scope-repos)
+    scope_repos
     ;;
   __verify-checksum)
     # Internal, undocumented hook for the unit test: verify-checksum the file in
