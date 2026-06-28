@@ -428,3 +428,50 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     assert payload["demo"] == {"present": False}
     assert payload["capability_plane"]["summary"]["total"] == 3
     assert payload["ready"] is True
+
+
+def test_bootstrap_status_avoids_home_dependent_runtime_imports(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import builtins
+
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    gh_bin = tmp_path / "gh"
+    gh_bin.write_text(
+        '#!/bin/sh\nprintf "Logged in to github.com as octocat\\n" >&2\n',
+        encoding="utf-8",
+    )
+    gh_bin.chmod(0o755)
+    codex_bin = tmp_path / "codex"
+    codex_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    codex_bin.chmod(0o755)
+
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("GH_BIN", str(gh_bin))
+    monkeypatch.setenv("CODEX_BIN", str(codex_bin))
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        blocked = {"agent_runner.paths", "issue_queue", "shipped_board"}
+        if name in blocked:
+            raise RuntimeError(f"{name} import should not be needed")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+    payload = setup_mod.bootstrap_status()
+
+    assert payload["github"]["ok"] is True
+    assert payload["repos"]["selected"] == ["octocat/web"]
+    assert payload["ready"] is True

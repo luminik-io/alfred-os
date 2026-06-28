@@ -104,21 +104,19 @@ def _setup_config_value(key: str, default: str = "") -> str:
 
 
 def _allowed_queue_repos() -> set[str]:
-    from issue_queue import allowed_queue_repos
-
-    return allowed_queue_repos()
+    raw = _setup_config_value(QUEUE_REPOS_ENV)
+    return set(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
 
 
 def _gh_bin() -> str:
-    from shipped_board import _gh_bin as resolve_gh_bin
-
-    return resolve_gh_bin()
+    return _setup_config_value("ALFRED_GH_BIN") or _setup_config_value("GH_BIN") or "gh"
 
 
 def _gh_subprocess_env() -> dict[str, str]:
-    from shipped_board import _gh_subprocess_env as resolve_gh_subprocess_env
-
-    return resolve_gh_subprocess_env()
+    env = dict(os.environ)
+    search = os.pathsep.join((*_engine_search_path(env), env.get("PATH", "")))
+    env["PATH"] = search
+    return env
 
 
 # --------------------------------------------------------------------------- #
@@ -264,7 +262,8 @@ def gh_auth_status() -> dict[str, Any]:
     shows a clear next action ("run gh auth login") instead of an error.
     """
     gh = _gh_bin()
-    if shutil.which(gh) is None and not os.path.isabs(gh):
+    gh_env = _gh_subprocess_env()
+    if shutil.which(gh, path=gh_env.get("PATH")) is None and not os.path.isabs(gh):
         return {
             "ok": False,
             "account": None,
@@ -276,7 +275,7 @@ def gh_auth_status() -> dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=15,
-            env=_gh_subprocess_env(),
+            env=gh_env,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return {
