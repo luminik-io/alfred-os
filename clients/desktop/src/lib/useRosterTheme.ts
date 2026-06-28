@@ -107,6 +107,18 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
   baseUrlRef.current = baseUrl;
   const connectedRef = useRef(connected);
   connectedRef.current = connected;
+  // A same-url disconnect/reconnect can be a different runtime process. Track
+  // that generation synchronously during render so saves guard against the
+  // props that launched them, not refs updated later by effects.
+  const connectionGenerationRef = useRef(0);
+  const connectionSnapshotRef = useRef({ baseUrl, connected });
+  if (
+    connectionSnapshotRef.current.baseUrl !== baseUrl ||
+    connectionSnapshotRef.current.connected !== connected
+  ) {
+    connectionGenerationRef.current += 1;
+    connectionSnapshotRef.current = { baseUrl, connected };
+  }
   // Serialize saves so a fast A -> B switch cannot land out of order. Each call
   // bumps `saveSeqRef`; only the latest seq decides the agreed state. While a
   // POST is in flight, later choices are queued and sent next, so the server's
@@ -123,6 +135,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
         theme: RosterThemeId;
         custom: CustomRosterNames;
         seq: number;
+        generation: number;
         resolve: (saved: boolean) => void;
       }
     >
@@ -165,6 +178,14 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
     },
     [showSaveErrorForCurrentRuntime],
   );
+
+  const requestHydrationReconcile = useCallback((url: string) => {
+    if (!connectedRef.current || baseUrlRef.current !== url) return;
+    hydratedUrlRef.current = null;
+    skippedHydrationUrlRef.current = null;
+    setHydrationError(null);
+    setHydrationRequestSeq((seq) => seq + 1);
+  }, []);
 
   // On connect, read the server's persisted choice so the picker reflects the
   // cast the runtime (and Slack) already use. A failed read keeps the
@@ -255,6 +276,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       theme: RosterThemeId,
       custom: CustomRosterNames,
       seq: number,
+      generation: number,
     ): Promise<boolean> => {
       // Only a custom save carries the cast. A preset switch must omit both
       // maps so the server retains the authored custom cast (it replaces the
@@ -267,17 +289,27 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       inFlightRef.current = true;
       return saveRosterTheme(url, body)
         .then(() => {
+          const latestSeq = latestSeqByUrlRef.current.get(url);
           // The server is now the agreed source of truth; clear any prior
           // failure and record this runtime as synced so a racing GET cannot
           // clobber the choice we just persisted. Skip if a newer save has
           // since been issued: that save owns the agreed state, not this one.
-          if (seq !== latestSeqByUrlRef.current.get(url)) return false;
+          if (seq !== latestSeq) {
+            if (!pendingRef.current.has(url)) {
+              requestHydrationReconcile(url);
+            }
+            return false;
+          }
           clearRuntimeSaveError(url);
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
           if (!connectedRef.current) return false;
           if (url !== baseUrlRef.current) return false;
+          if (generation !== connectionGenerationRef.current) {
+            requestHydrationReconcile(url);
+            return false;
+          }
           hydratedUrlRef.current = url;
           skippedHydrationUrlRef.current = null;
           setRosterThemeState(theme);
@@ -292,6 +324,13 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           // not silently look successful. A superseded save stays quiet; the
           // newer one reports its own outcome.
           if (seq !== latestSeqByUrlRef.current.get(url)) return false;
+          if (
+            connectedRef.current &&
+            baseUrlRef.current === url &&
+            generation !== connectionGenerationRef.current
+          ) {
+            return false;
+          }
           // The optimistic hydration recorded in persist() assumed this save
           // would land. It did not, so the server still holds the old cast.
           // Clear the marker for this runtime (if it is still ours) so an
@@ -323,11 +362,13 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           if (nextUrl !== undefined) {
             const next = pendingRef.current.get(nextUrl)!;
             pendingRef.current.delete(nextUrl);
-            void runSave(nextUrl, next.theme, next.custom, next.seq).then(next.resolve);
+            void runSave(nextUrl, next.theme, next.custom, next.seq, next.generation).then(
+              next.resolve,
+            );
           }
         });
     },
-    [clearRuntimeSaveError, recordRuntimeSaveError],
+    [clearRuntimeSaveError, recordRuntimeSaveError, requestHydrationReconcile],
   );
 
   const persist = useCallback(
@@ -365,6 +406,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       // so the server value is re-read rather than trusted indefinitely.
       hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
+      const generation = connectionGenerationRef.current;
       latestSeqByUrlRef.current.set(baseUrl, seq);
       if (inFlightRef.current) {
         // A save is already running. Queue this choice under its runtime url;
@@ -376,10 +418,10 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           previous.resolve(false);
         }
         return new Promise((resolve) => {
-          pendingRef.current.set(baseUrl, { theme, custom, seq, resolve });
+          pendingRef.current.set(baseUrl, { theme, custom, seq, generation, resolve });
         });
       }
-      return runSave(baseUrl, theme, custom, seq);
+      return runSave(baseUrl, theme, custom, seq, generation);
     },
     [baseUrl, clearRuntimeSaveError, connected, runSave],
   );

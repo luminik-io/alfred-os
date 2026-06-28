@@ -676,11 +676,17 @@ describe("useRosterTheme", () => {
 
   it("supersedes an in-flight same-runtime save when edited offline", async () => {
     let resolveReconnectLoad: (value: RosterThemeResponse) => void = () => {};
+    let resolveReconcileLoad: (value: RosterThemeResponse) => void = () => {};
     loadRosterTheme
       .mockReturnValueOnce(new Promise<RosterThemeResponse>(() => {}))
       .mockReturnValueOnce(
         new Promise<RosterThemeResponse>((resolve) => {
           resolveReconnectLoad = resolve;
+        }),
+      )
+      .mockReturnValueOnce(
+        new Promise<RosterThemeResponse>((resolve) => {
+          resolveReconcileLoad = resolve;
         }),
       );
     let resolveOldSave: (value: RosterThemeResponse) => void = () => {};
@@ -696,8 +702,9 @@ describe("useRosterTheme", () => {
       { initialProps: { connected: true } },
     );
 
+    let oldSaveResult: Promise<boolean> | null = null;
     act(() => {
-      result.current.setRosterTheme("justice-league");
+      oldSaveResult = result.current.setRosterTheme("justice-league");
     });
     rerender({ connected: false });
     act(() => {
@@ -712,11 +719,122 @@ describe("useRosterTheme", () => {
     await act(async () => {
       resolveOldSave(serverState({ theme: "justice-league" }));
     });
+    if (oldSaveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(oldSaveResult).resolves.toBe(false);
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(3);
+    });
     await act(async () => {
       resolveReconnectLoad(serverState({ theme: "batman" }));
     });
+    await act(async () => {
+      resolveReconcileLoad(serverState({ theme: "batman" }));
+    });
 
     expect(result.current.rosterTheme).toBe("batman");
+  });
+
+  it("does not accept a same-url save after disconnect and reconnect", async () => {
+    let resolveSave: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "transformers" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+
+    let saveResult: Promise<boolean> | null = null;
+    act(() => {
+      saveResult = result.current.setRosterTheme("transformers");
+    });
+    rerender({ connected: false });
+    rerender({ connected: true });
+
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+
+    await act(async () => {
+      resolveSave(serverState({ theme: "transformers" }));
+    });
+
+    if (saveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(saveResult).resolves.toBe(false);
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("transformers");
+    });
+  });
+
+  it("re-hydrates after a superseded same-runtime POST lands after reconnect", async () => {
+    let resolveOldSave: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "justice-league" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveOldSave = resolve;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+
+    let oldSaveResult: Promise<boolean> | null = null;
+    act(() => {
+      oldSaveResult = result.current.setRosterTheme("justice-league");
+    });
+    rerender({ connected: false });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    rerender({ connected: true });
+
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+
+    await act(async () => {
+      resolveOldSave(serverState({ theme: "justice-league" }));
+    });
+
+    if (oldSaveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(oldSaveResult).resolves.toBe(false);
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("justice-league");
+    });
   });
 
   // Thread: "Stale Hydration Overwrites Edit". A change made on a runtime
