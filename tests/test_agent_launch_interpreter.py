@@ -457,6 +457,42 @@ def test_agent_launch_follows_pointer_from_explicit_alfredrc(
     assert "AUTO=0" in proc.stdout
 
 
+def test_agent_launch_followed_alfredrc_retargets_runtime_env(
+    tmp_path: Path,
+) -> None:
+    stale_home = tmp_path / "stale-runtime"
+    runtime_home = tmp_path / "runtime"
+    stale_home.mkdir()
+    runtime_home.mkdir()
+    launch_rc = tmp_path / "launch.alfredrc"
+    custom_rc = tmp_path / "custom.alfredrc"
+    launch_rc.write_text(
+        f"ALFREDRC={custom_rc}\nALFRED_HOME={stale_home}\nALFRED_AUTO_PROMOTE=1\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(f"ALFRED_HOME={runtime_home}\n", encoding="utf-8")
+    (stale_home / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n", encoding="utf-8")
+    (runtime_home / ".env").write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    target = tmp_path / "echo-runtime.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=stale_home,
+        extra_env={"ALFREDRC": str(launch_rc), "ALFRED_AUTO_PROMOTE": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={runtime_home}" in proc.stdout
+    assert "AUTO=0" in proc.stdout
+
+
 def test_agent_launch_follows_persisted_alfredrc_pointer(tmp_path: Path, alfred_home: Path) -> None:
     custom_rc = tmp_path / "custom.alfredrc"
     custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")

@@ -143,7 +143,7 @@ PY
 }
 
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" line key value quote_style existing_value
+  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" file_overrides_process_runtime="${5:-}" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -205,7 +205,12 @@ load_env_file() {
         continue
       fi
       if ! memory_auto_promote_stop_control_active "$key" "$value"; then
-        if [ "$file_overrides_existing" = "file_overrides_existing" ] && ! original_env_has_key "$key"; then
+        if [ "$file_overrides_existing" = "file_overrides_existing" ] && {
+          ! original_env_has_key "$key" || {
+            [ "$file_overrides_process_runtime" = "file_overrides_process_runtime" ] &&
+              { [ "$key" = "ALFRED_HOME" ] || [ "$key" = "ALFRED_FLEET_BRAIN_DB" ]; }
+          }
+        }; then
           export "$key=$value"
           continue
         fi
@@ -226,7 +231,7 @@ load_selected_alfredrc() {
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
-    load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing
+    load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing file_overrides_process_runtime
   fi
 }
 
