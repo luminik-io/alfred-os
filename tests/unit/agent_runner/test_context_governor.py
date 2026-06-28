@@ -31,6 +31,20 @@ def test_govern_prompt_context_can_be_disabled(fresh_agent_runner) -> None:
     assert stats.reason == "disabled"
 
 
+def test_blank_governor_env_keeps_default_enabled(fresh_agent_runner) -> None:
+    ar = fresh_agent_runner
+    prompt = "a" * 5_000
+
+    text, stats = ar.govern_prompt_context(
+        prompt,
+        env={"ALFRED_CONTEXT_GOVERNOR": "", "ALFRED_CONTEXT_MAX_CHARS": "4096"},
+    )
+
+    assert stats.applied is True
+    assert stats.reason == "over_budget"
+    assert len(text) <= stats.max_chars
+
+
 def test_govern_prompt_context_preserves_head_tail_and_marks_omission(
     fresh_agent_runner,
 ) -> None:
@@ -54,6 +68,30 @@ def test_govern_prompt_context_preserves_head_tail_and_marks_omission(
     assert "ALFRED_CONTEXT_GOVERNOR" in text
     assert "omitted_chars=" in text
     assert stats.omitted_chars > 0
+
+
+def test_govern_prompt_context_caps_utf8_bytes_for_argv_safety(
+    fresh_agent_runner,
+) -> None:
+    ar = fresh_agent_runner
+    prompt = "HEAD-" + ("🔥" * 40_000) + "-TAIL"
+
+    text, stats = ar.govern_prompt_context(
+        prompt,
+        env={
+            "ALFRED_CONTEXT_MAX_CHARS": "200000",
+            "ALFRED_CONTEXT_MAX_BYTES": "200000",
+            "ALFRED_CONTEXT_HEAD_CHARS": "100000",
+            "ALFRED_CONTEXT_TAIL_CHARS": "100000",
+        },
+    )
+
+    assert stats.applied is True
+    assert stats.max_bytes == 96_000
+    assert stats.final_bytes <= stats.max_bytes
+    assert len(text.encode("utf-8")) <= 96_000
+    assert text.startswith("HEAD-")
+    assert text.endswith("-TAIL")
 
 
 def test_invoke_agent_engine_uses_governed_prompt_and_stamps_result(

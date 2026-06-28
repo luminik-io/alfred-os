@@ -719,6 +719,18 @@ def claude_invoke_streaming(
             stop_reason="error",
             error_message=f"claude CLI not found: {exc}",
         )
+    except OSError as exc:
+        return ClaudeResult(
+            success=False,
+            subtype="error_context_budget",
+            num_turns=0,
+            cost_usd=0.0,
+            session_id=None,
+            result_text=str(exc),
+            raw={"transcript_path": str(transcript), "prompt_bytes": len(prompt.encode("utf-8"))},
+            stop_reason="error",
+            error_message=f"claude_invoke_streaming could not start: {exc}",
+        )
 
     # Loop-fingerprint guard: watch the live stream for an agent stuck
     # repeating the same step (or blowing past the hard step ceiling) and
