@@ -290,7 +290,7 @@ def engine_clis() -> list[dict[str, Any]]:
     the in-browser-capable fallback so the runtime checks work without Tauri.
     Honours ``CLAUDE_BIN`` / ``CODEX_BIN`` overrides via config.
     """
-    search = os.pathsep.join((*_engine_search_path(), os.environ.get("PATH", "")))
+    search = os.pathsep.join((*_engine_search_path(os.environ), os.environ.get("PATH", "")))
     out: list[dict[str, Any]] = []
     for name in _ENGINE_BINS:
         configured = config_value(f"{name.upper()}_BIN")
@@ -451,7 +451,9 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
 
 
 def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
-    search = os.pathsep.join(_engine_search_path() + tuple(env.get("PATH", "").split(os.pathsep)))
+    search = os.pathsep.join(
+        _engine_search_path(env) + tuple(env.get("PATH", "").split(os.pathsep))
+    )
     binary = shutil.which("headroom", path=search)
     enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
     if binary and enabled:
@@ -578,14 +580,20 @@ def _safe_expand_path(raw: str) -> Path | None:
         return None
 
 
-def _engine_search_path() -> tuple[str, ...]:
-    return (
-        os.path.expanduser("~/.local/bin"),
-        os.path.expanduser("~/.claude/local"),
-        "/opt/homebrew/bin",
-        "/opt/homebrew/sbin",
-        "/usr/local/bin",
-    )
+def _default_alfred_home(env: Mapping[str, str]) -> Path:
+    home = _safe_home(env)
+    if home:
+        return home / ".alfred"
+    return Path(".alfred")
+
+
+def _engine_search_path(env: Mapping[str, str]) -> tuple[str, ...]:
+    paths: list[str] = []
+    home = _safe_home(env)
+    if home:
+        paths.extend([str(home / ".local" / "bin"), str(home / ".claude" / "local")])
+    paths.extend(["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin"])
+    return tuple(paths)
 
 
 def _code_memory_launcher_env() -> dict[str, str]:
@@ -593,17 +601,17 @@ def _code_memory_launcher_env() -> dict[str, str]:
 
     env = dict(os.environ)
     if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+        env["ALFRED_HOME"] = str(_default_alfred_home(env))
     home = _safe_home(env)
     if home:
         _load_launcher_env_file(home / ".alfredrc", env)
     if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+        env["ALFRED_HOME"] = str(_default_alfred_home(env))
     alfred_home = _safe_expand_path(env["ALFRED_HOME"])
     if alfred_home:
         _load_launcher_env_file(alfred_home / ".env", env)
     if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+        env["ALFRED_HOME"] = str(_default_alfred_home(env))
     return env
 
 
@@ -643,13 +651,22 @@ def _config_flag(env: dict[str, str], key: str, *, default: bool) -> bool:
 
 
 def _alfred_home(env: dict[str, str]) -> Path:
-    return Path(_code_memory_config(env, "ALFRED_HOME", "~/.alfred")).expanduser()
+    raw = _code_memory_config(env, "ALFRED_HOME")
+    if raw:
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
+    return _default_alfred_home(env)
 
 
 def _code_memory_index_dir(env: dict[str, str]) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_INDEX_DIR")
     if raw.strip():
-        return Path(raw).expanduser()
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
     return _alfred_home(env) / "state" / "code-memory"
 
 
@@ -669,7 +686,7 @@ def _code_memory_repos(env: dict[str, str]) -> list[str]:
 
 
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
-    search = os.pathsep.join((*_engine_search_path(), env.get("PATH", "")))
+    search = os.pathsep.join((*_engine_search_path(env), env.get("PATH", "")))
     explicit = _code_memory_config(env, "ALFRED_CODE_MEMORY_BIN")
     if explicit:
         resolved = _resolve_configured_binary(explicit, search=search)
@@ -703,7 +720,7 @@ def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
 
 
 def _resolve_configured_binary(value: str, *, search: str) -> str | None:
-    path = Path(value).expanduser()
+    path = _safe_expand_path(value) or Path(value)
     if path.is_file() and os.access(path, os.X_OK):
         return str(path)
     found = shutil.which(value, path=search)

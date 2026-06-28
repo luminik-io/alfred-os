@@ -247,6 +247,7 @@ def test_capability_plane_reports_ready_external_layers(
 def test_capability_plane_requires_context_compression_opt_in(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
