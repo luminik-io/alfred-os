@@ -742,7 +742,7 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
     from . import schedule as setup_schedule
 
     launcher_env = _setup_launcher_env()
-    home = _alfred_home(launcher_env)
+    home = _alfred_home()
     env_path = home / ".env"
     token_path = home / "state" / "server-token"
     conf_path = _install_agents_conf_path(home)
