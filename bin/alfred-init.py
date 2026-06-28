@@ -609,6 +609,16 @@ def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[s
     return len(controls)
 
 
+def persist_alfredrc_pointer(state: WizardState) -> Path:
+    """Persist the selected rc path for clean-shell deploy/render reruns."""
+    pointer = state.alfred_home / "launchd" / "alfredrc.path"
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(f"{state.alfredrc}\n", encoding="utf-8")
+    with contextlib.suppress(OSError):
+        pointer.chmod(0o600)
+    return pointer
+
+
 # ---------------------------------------------------------------------------
 # Agent discovery - scan bin/*.py for known role runners.
 # ---------------------------------------------------------------------------
@@ -1565,6 +1575,8 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     env_kvs = env_assignments_for(state)
     upsert_alfredrc(state.alfredrc, env_kvs)
     ok(f"updated {state.alfredrc} with {len(env_kvs)} keys")
+    pointer = persist_alfredrc_pointer(state)
+    ok(f"persisted selected rc path to {pointer}")
     mirrored = mirror_memory_stop_controls_to_launch_rc(state, env_kvs)
     if mirrored:
         ok(f"mirrored {mirrored} memory stop-control key(s) into {Path.home() / '.alfredrc'}")

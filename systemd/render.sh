@@ -83,8 +83,88 @@ load_env_file() {
   done < "$file"
 }
 
+discover_alfredrc_from_launchd() {
+  local dir="$HOME/Library/LaunchAgents"
+  [[ -d "$dir" ]] || return 0
+  python3 - "$dir" <<'PY' 2>/dev/null || true
+import pathlib
+import plistlib
+import sys
+
+for path in sorted(pathlib.Path(sys.argv[1]).glob("*.plist")):
+    try:
+        data = plistlib.loads(path.read_bytes())
+    except Exception:
+        continue
+    env = data.get("EnvironmentVariables") if isinstance(data, dict) else None
+    value = env.get("ALFREDRC") if isinstance(env, dict) else None
+    if isinstance(value, str) and value.strip():
+        print(value.strip())
+        raise SystemExit
+PY
+}
+
+discover_alfredrc_from_systemd() {
+  local dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+  [[ -d "$dir" ]] || return 0
+  python3 - "$dir" <<'PY' 2>/dev/null || true
+import pathlib
+import shlex
+import sys
+
+for path in sorted(pathlib.Path(sys.argv[1]).glob("*.service")):
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        continue
+    for raw in lines:
+        line = raw.strip()
+        if not line.startswith("Environment="):
+            continue
+        rest = line.removeprefix("Environment=").strip()
+        try:
+            parts = shlex.split(rest)
+        except ValueError:
+            parts = rest.split()
+        for part in parts:
+            if part.startswith("ALFREDRC="):
+                value = part.partition("=")[2].strip()
+                if value:
+                    print(value)
+                    raise SystemExit
+PY
+}
+
+discover_persisted_alfredrc() {
+  local candidate line discovered runtime_home="${ALFRED_HOME:-$HOME/.alfred}"
+  for candidate in "$runtime_home/launchd/alfredrc.path" "$HOME/.alfred/launchd/alfredrc.path"; do
+    if [[ -f "$candidate" ]]; then
+      IFS= read -r line < "$candidate" || true
+      if [[ -n "$line" ]]; then
+        printf '%s\n' "$line"
+        return 0
+      fi
+    fi
+  done
+  discovered="$(discover_alfredrc_from_launchd)"
+  if [[ -n "$discovered" ]]; then
+    printf '%s\n' "$discovered"
+    return 0
+  fi
+  discovered="$(discover_alfredrc_from_systemd)"
+  if [[ -n "$discovered" ]]; then
+    printf '%s\n' "$discovered"
+  fi
+}
+
 load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}"
+  local selected_alfredrc="${ALFREDRC:-}"
+  if [[ -z "$selected_alfredrc" ]]; then
+    selected_alfredrc="$(discover_persisted_alfredrc)"
+  fi
+  if [[ -z "$selected_alfredrc" ]]; then
+    selected_alfredrc="$HOME/.alfredrc"
+  fi
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
   load_env_file "$ALFREDRC"
@@ -219,14 +299,18 @@ with open(timer_template) as f:
     timer_txt = f.read()
 
 
-def env_line(key, value):
+def env_value(value):
     # systemd splits Environment=KEY=VAL on whitespace, treating each token
     # as its own KEY=VAL assignment. Quote values containing spaces so they
     # survive as a single env var. Embedded `"` are unlikely in agents.conf
     # today but escape just in case.
-    if " " in value or "\t" in value:
-        value = '"' + value.replace('"', '\\"') + '"'
-    return f"Environment={key}={value}"
+    if " " in value or "\t" in value or '"' in value:
+        return '"' + value.replace('"', '\\"') + '"'
+    return value
+
+
+def env_line(key, value):
+    return f"Environment={key}={env_value(value)}"
 
 
 role_block = ""
@@ -239,12 +323,12 @@ mapping = {
     "__LABEL__": label,
     "__SCRIPT__": script,
     "__SCHEDULE_BLOCK__": schedule_block,
-    "__PATH__": path_value,
+    "__PATH__": env_value(path_value),
     "__JAVA_BLOCK__": java_block,
     "__ALFRED_BIN__": alfred_bin,
-    "__ALFRED_HOME__": alfred_home,
-    "__ALFREDRC__": alfredrc,
-    "__WORKSPACE_ROOT__": workspace_root,
+    "__ALFRED_HOME__": env_value(alfred_home),
+    "__ALFREDRC__": env_value(alfredrc),
+    "__WORKSPACE_ROOT__": env_value(workspace_root),
     "__AGENT_SHORT__": agent_short,
     "__GH_ORG_BLOCK__": gh_org_block,
     "__HOME__": home_dir,

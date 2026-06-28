@@ -1009,6 +1009,16 @@ def test_custom_alfredrc_pointer_is_persisted_without_memory_stop_controls(
     assert parsed["ALFREDRC"] == str(state.alfredrc)
 
 
+def test_selected_alfredrc_pointer_file_is_persisted(tmp_path, init_mod):
+    state = _state_with(init_mod, tmp_path, roles=("lucius",))
+    state.alfredrc = tmp_path / "custom.alfredrc"
+
+    pointer = init_mod.persist_alfredrc_pointer(state)
+
+    assert pointer == state.alfred_home / "launchd" / "alfredrc.path"
+    assert pointer.read_text(encoding="utf-8") == f"{state.alfredrc}\n"
+
+
 def test_mirror_memory_stop_controls_skips_default_alfredrc(monkeypatch, tmp_path, init_mod):
     home = tmp_path / "home"
     home.mkdir()

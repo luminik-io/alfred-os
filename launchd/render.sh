@@ -72,8 +72,88 @@ load_env_file() {
   done < "$file"
 }
 
+discover_alfredrc_from_launchd() {
+  local dir="$HOME/Library/LaunchAgents"
+  [[ -d "$dir" ]] || return 0
+  python3 - "$dir" <<'PY' 2>/dev/null || true
+import pathlib
+import plistlib
+import sys
+
+for path in sorted(pathlib.Path(sys.argv[1]).glob("*.plist")):
+    try:
+        data = plistlib.loads(path.read_bytes())
+    except Exception:
+        continue
+    env = data.get("EnvironmentVariables") if isinstance(data, dict) else None
+    value = env.get("ALFREDRC") if isinstance(env, dict) else None
+    if isinstance(value, str) and value.strip():
+        print(value.strip())
+        raise SystemExit
+PY
+}
+
+discover_alfredrc_from_systemd() {
+  local dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
+  [[ -d "$dir" ]] || return 0
+  python3 - "$dir" <<'PY' 2>/dev/null || true
+import pathlib
+import shlex
+import sys
+
+for path in sorted(pathlib.Path(sys.argv[1]).glob("*.service")):
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        continue
+    for raw in lines:
+        line = raw.strip()
+        if not line.startswith("Environment="):
+            continue
+        rest = line.removeprefix("Environment=").strip()
+        try:
+            parts = shlex.split(rest)
+        except ValueError:
+            parts = rest.split()
+        for part in parts:
+            if part.startswith("ALFREDRC="):
+                value = part.partition("=")[2].strip()
+                if value:
+                    print(value)
+                    raise SystemExit
+PY
+}
+
+discover_persisted_alfredrc() {
+  local candidate line discovered runtime_home="${ALFRED_HOME:-$HOME/.alfred}"
+  for candidate in "$runtime_home/launchd/alfredrc.path" "$HOME/.alfred/launchd/alfredrc.path"; do
+    if [[ -f "$candidate" ]]; then
+      IFS= read -r line < "$candidate" || true
+      if [[ -n "$line" ]]; then
+        printf '%s\n' "$line"
+        return 0
+      fi
+    fi
+  done
+  discovered="$(discover_alfredrc_from_launchd)"
+  if [[ -n "$discovered" ]]; then
+    printf '%s\n' "$discovered"
+    return 0
+  fi
+  discovered="$(discover_alfredrc_from_systemd)"
+  if [[ -n "$discovered" ]]; then
+    printf '%s\n' "$discovered"
+  fi
+}
+
 load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}"
+  local selected_alfredrc="${ALFREDRC:-}"
+  if [[ -z "$selected_alfredrc" ]]; then
+    selected_alfredrc="$(discover_persisted_alfredrc)"
+  fi
+  if [[ -z "$selected_alfredrc" ]]; then
+    selected_alfredrc="$HOME/.alfredrc"
+  fi
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
   load_env_file "$ALFREDRC"
