@@ -99,6 +99,45 @@ def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyP
     assert repos == ["api", "web", "mobile"]
 
 
+def test_capabilities_command_does_not_import_agent_runner(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env.pop("HOME", None)
+    env["ALFRED_HOME"] = str(tmp_path / ".alfred")
+    env["CODEX_HOME"] = str(tmp_path / "codex")
+    env["CLAUDE_HOME"] = str(tmp_path / "claude")
+    env["PYTHONPATH"] = str(LIB)
+    code = f"""
+import builtins
+import importlib.util
+import pathlib
+import sys
+from importlib.machinery import SourceFileLoader
+
+real_import = builtins.__import__
+
+def guarded_import(name, *args, **kwargs):
+    if name == "agent_runner" or name.startswith("agent_runner."):
+        raise RuntimeError("agent_runner import should not be needed")
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = guarded_import
+pathlib.Path.home = staticmethod(
+    lambda: (_ for _ in ()).throw(RuntimeError("no home"))
+)
+loader = SourceFileLoader("alfred_cli_no_agent_runner", {str(BIN)!r})
+spec = importlib.util.spec_from_loader(loader.name, loader)
+module = importlib.util.module_from_spec(spec)
+sys.modules[loader.name] = module
+spec.loader.exec_module(module)
+raise SystemExit(module.main(["capabilities", "--json"]))
+"""
+
+    res = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+
+    assert res.returncode == 0, res.stderr
+    assert json.loads(res.stdout)["summary"]["total"] == 3
+
+
 def test_clear_lock_clears_dead_lock(
     cli_module, tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:

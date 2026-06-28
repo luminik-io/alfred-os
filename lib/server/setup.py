@@ -104,8 +104,12 @@ def _setup_config_value(key: str, default: str = "") -> str:
 
 
 def _allowed_queue_repos() -> set[str]:
+    primary = _setup_config_value(QUEUE_REPOS_ENV)
+    if primary:
+        return set(normalize_repo_slugs(re.split(r"[\s,]+", primary)))
+
     repos: set[str] = set()
-    for key in _REPO_ENV_KEYS:
+    for key in (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV):
         raw = _setup_config_value(key)
         repos.update(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
     return repos

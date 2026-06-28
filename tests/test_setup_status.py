@@ -171,6 +171,19 @@ def test_selected_repos_preserves_shipped_and_bridge_fallbacks(
     assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
 
 
+def test_selected_repos_prefers_primary_queue_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/frontend")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme/api")
+
+    assert setup_mod.selected_repos() == ["octocat/web"]
+
+
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -467,6 +480,8 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
     monkeypatch.setenv("CODEX_BIN", str(codex_bin))
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/frontend")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme/api")
     monkeypatch.setattr(
         setup_mod.Path,
         "home",

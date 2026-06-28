@@ -1668,6 +1668,7 @@ def test_conversation_control_handles_local_command(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("ALFRED_OPERATOR_SLACK_USER_ID", raising=False)
     state = tmp_path / "state"
     state.mkdir()
     captured: dict[str, object] = {}
@@ -1712,6 +1713,7 @@ def test_conversation_control_allows_planning_fallthrough(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("ALFRED_OPERATOR_SLACK_USER_ID", raising=False)
     state = tmp_path / "state"
     state.mkdir()
 

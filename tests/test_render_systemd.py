@@ -26,6 +26,15 @@ SERVICE_TEMPLATE = REPO_ROOT / "systemd" / "_template.service"
 TIMER_TEMPLATE = REPO_ROOT / "systemd" / "_template.timer"
 
 
+def _render_env(tmp_path: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
+    env = dict(os.environ)
+    for key in ("ALFRED_HOME", "WORKSPACE_ROOT"):
+        env.pop(key, None)
+    env["HOME"] = str(tmp_path / "fakehome")
+    env.update(extra or {})
+    return env
+
+
 def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -> Path:
     """Run systemd/render.sh against a temp tree. Returns the output dir.
 
@@ -46,7 +55,7 @@ def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -
     out_dir = tmp_path / "out"
     # A throwaway HOME keeps the %h substitution deterministic and stops
     # render.sh from picking up the developer's real ~/.alfredrc.
-    full_env = {**os.environ, "HOME": str(tmp_path / "fakehome"), **(env or {})}
+    full_env = _render_env(tmp_path, env)
     res = subprocess.run(
         ["bash", str(systemd_dir / "render.sh"), str(out_dir)],
         capture_output=True,
@@ -163,7 +172,7 @@ def test_render_unknown_schedule_fails(tmp_path):
         ["bash", str(systemd_dir / "render.sh"), str(tmp_path / "out")],
         capture_output=True,
         text=True,
-        env={**os.environ, "HOME": str(tmp_path / "fakehome")},
+        env=_render_env(tmp_path),
     )
     # render_one returns non-zero for an unknown schedule; the per-row error
     # is printed to stderr. The overall script keeps going (the while-loop
