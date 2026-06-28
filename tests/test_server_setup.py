@@ -254,20 +254,21 @@ def test_bootstrap_status_uses_active_serve_home_for_board_repo_selection(
     assert status["ready"] is True
 
 
-def test_persist_selected_repos_writes_launcher_home_and_rc_override(
+def test_persist_selected_repos_writes_active_runtime_home_and_preserves_queue_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     home = tmp_path / "runtime"
+    launcher_home = tmp_path / "launcher-runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
 
     rc = tmp_path / ".alfredrc"
     rc.write_text(
-        f"export ALFRED_HOME={home}\nexport ALFRED_QUEUE_REPOS=old/repo\n",
+        f"export ALFRED_HOME={launcher_home}\nexport ALFRED_QUEUE_REPOS=old/repo\n",
         encoding="utf-8",
     )
     home.mkdir(parents=True)
@@ -277,18 +278,45 @@ def test_persist_selected_repos_writes_launcher_home_and_rc_override(
     env_path = home / ".env"
     assert result["env_path"] == str(env_path)
     env_text = env_path.read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
 
     rc_text = rc.read_text(encoding="utf-8")
-    assert "export ALFRED_QUEUE_REPOS=acme/web" in rc_text
+    assert "export ALFRED_QUEUE_REPOS=old/repo" in rc_text
     assert "export ALFRED_SHIPPED_REPOS=acme/web" in rc_text
     assert "export ALFRED_BRIDGE_REPOS=acme/web" in rc_text
     assert setup_mod.selected_repos() == ["acme/web"]
 
 
-def test_persist_selected_repos_writes_rc_override_for_stale_launch_env(
+def test_persist_selected_repos_seeds_queue_for_new_install(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+
+    result = setup_mod.persist_selected_repos(["Acme/Web"])
+
+    env_path = home / ".env"
+    assert result["env_path"] == str(env_path)
+    assert result["keys"] == [
+        "ALFRED_QUEUE_REPOS",
+        "ALFRED_SHIPPED_REPOS",
+        "ALFRED_BRIDGE_REPOS",
+    ]
+    env_text = env_path.read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+
+
+def test_persist_selected_repos_updates_board_scope_without_widening_stale_queue_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -303,7 +331,7 @@ def test_persist_selected_repos_writes_rc_override_for_stale_launch_env(
     setup_mod.persist_selected_repos(["Acme/Web"])
 
     rc_text = (tmp_path / ".alfredrc").read_text(encoding="utf-8")
-    assert "export ALFRED_QUEUE_REPOS=acme/web" in rc_text
+    assert "export ALFRED_QUEUE_REPOS=acme/web" not in rc_text
     assert "export ALFRED_SHIPPED_REPOS=acme/web" in rc_text
     assert "export ALFRED_BRIDGE_REPOS=acme/web" in rc_text
 
@@ -312,6 +340,6 @@ def test_persist_selected_repos_writes_rc_override_for_stale_launch_env(
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "old/repo")
 
     launcher_env = setup_mod._setup_launcher_env()
-    assert launcher_env["ALFRED_QUEUE_REPOS"] == "acme/web"
+    assert launcher_env["ALFRED_QUEUE_REPOS"] == "old/repo"
     assert launcher_env["ALFRED_SHIPPED_REPOS"] == "acme/web"
     assert launcher_env["ALFRED_BRIDGE_REPOS"] == "acme/web"

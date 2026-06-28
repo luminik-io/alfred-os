@@ -138,7 +138,7 @@ def normalize_repo_slugs(values: Any) -> list[str]:
 
 
 def selected_repos(env: dict[str, str] | None = None) -> list[str]:
-    """The repos currently scoped to Alfred, from the config the fleet reads.
+    """The repos currently scoped to the connected Alfred runtime.
 
     Reads the queue allowlist (``allowed_queue_repos``) so the Set up surface
     shows the same scope queue/hold/close actually enforce. Sorted for a stable
@@ -147,9 +147,9 @@ def selected_repos(env: dict[str, str] | None = None) -> list[str]:
     if env is not None:
         return sorted(_repos_from_env(env))
 
-    launcher_env = _setup_launcher_env()
-    repos = _repos_from_env(launcher_env)
-    if repos or any(_has_config_value(launcher_env, key) for key in _REPO_ENV_KEYS):
+    runtime_env = _setup_runtime_env()
+    repos = _repos_from_env(runtime_env)
+    if repos or any(_has_config_value(runtime_env, key) for key in _REPO_ENV_KEYS):
         return sorted(repos)
     return sorted(allowed_queue_repos())
 
@@ -162,7 +162,7 @@ def setup_board_repos(env: dict[str, str] | None = None) -> list[str]:
     must therefore key off the board-visible repo knobs, not the broader queue
     allowlist.
     """
-    resolved = env or _setup_launcher_env()
+    resolved = env or _setup_runtime_env()
     return sorted(_repos_from_env(resolved, _BOARD_REPO_ENV_KEYS))
 
 
@@ -170,7 +170,7 @@ def setup_board_repos(env: dict[str, str] | None = None) -> list[str]:
 # .env writer
 # --------------------------------------------------------------------------- #
 def _env_path(env: dict[str, str] | None = None) -> Path:
-    resolved = env or _setup_launcher_env()
+    resolved = env or _setup_runtime_env()
     return _alfred_home(resolved) / ".env"
 
 
@@ -180,7 +180,7 @@ def _rc_path() -> Path:
 
 def _alfred_home(env: dict[str, str] | None = None) -> Path:
     if env is None:
-        return Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
+        return Path(os.environ.get("ALFRED_HOME") or "~/.alfred").expanduser()
     return Path(
         _code_memory_config(env, "ALFRED_HOME", os.path.expanduser("~/.alfred"))
     ).expanduser()
@@ -280,21 +280,48 @@ def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
     config so the client can show it back transparently.
     """
     clean = normalize_repo_slugs(repos)
-    value = _format_repo_value(clean)
-    env_path = write_env_values(dict.fromkeys(_REPO_ENV_KEYS, value))
-    for key in _REPO_ENV_KEYS:
+    values = _repo_scope_values_for_save(clean)
+    env_path = write_env_values(values)
+    for key in values:
         # Mirror into the live process so the new scope is effective now. An
         # empty selection clears the override so the resolver falls back to the
         # .env value (also empty), which is the honest "nothing scoped" state.
-        if value:
-            os.environ[key] = value
+        if values[key]:
+            os.environ[key] = values[key]
         else:
             os.environ.pop(key, None)
     return {
         "repos": clean,
         "env_path": str(env_path),
-        "keys": list(_REPO_ENV_KEYS),
+        "keys": list(values),
     }
+
+
+def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
+    """Repo keys to persist for a setup repo save.
+
+    The onboarding repo picker owns the board-visible scope. For new installs it
+    also seeds the queue allowlist so queue/hold/done works immediately. Once an
+    operator has an explicit queue allowlist, keep that as a narrower mutation
+    boundary unless they clear all repos or the selected set already matches it.
+    """
+
+    value = _format_repo_value(repos)
+    values = {
+        SHIPPED_REPOS_ENV: value,
+        BRIDGE_REPOS_ENV: value,
+    }
+    existing_queue = _existing_queue_repos_for_save()
+    selected = set(repos)
+    if not value or not existing_queue or existing_queue == selected:
+        values = {QUEUE_REPOS_ENV: value, **values}
+    return values
+
+
+def _existing_queue_repos_for_save() -> set[str]:
+    repos = _repos_from_env(_setup_runtime_env(), (QUEUE_REPOS_ENV,))
+    repos.update(_repos_from_env(_setup_launcher_env(), (QUEUE_REPOS_ENV,)))
+    return repos
 
 
 # --------------------------------------------------------------------------- #

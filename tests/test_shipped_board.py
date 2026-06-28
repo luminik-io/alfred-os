@@ -405,6 +405,27 @@ def test_resolve_repos_reads_env_file(monkeypatch, tmp_path):
     assert sb.resolve_repos() == ["z/z"]
 
 
+def test_resolve_repos_uses_connected_runtime_over_launcher_rc(monkeypatch, tmp_path):
+    active_home = tmp_path / "active"
+    launcher_home = tmp_path / "launcher"
+    home = tmp_path / "home"
+    home.mkdir()
+    active_home.mkdir()
+    launcher_home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(active_home))
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    monkeypatch.delenv("GH_ORG", raising=False)
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={launcher_home}\nALFRED_SHIPPED_REPOS=old/repo\n",
+        encoding="utf-8",
+    )
+    (active_home / ".env").write_text("ALFRED_SHIPPED_REPOS=new/repo\n", encoding="utf-8")
+
+    assert sb.resolve_repos() == ["new/repo"]
+
+
 def test_gh_subprocess_env_augments_path(monkeypatch):
     # A bare-PATH host (launchd default) must still reach the Homebrew gh/git.
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
