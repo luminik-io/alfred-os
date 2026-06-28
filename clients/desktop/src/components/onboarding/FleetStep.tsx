@@ -18,6 +18,7 @@ export function FleetStep({
   value,
   customNames,
   saveError,
+  blockedError = null,
   disabled = false,
   onChange,
   onSaveCustom,
@@ -26,6 +27,7 @@ export function FleetStep({
   value: RosterThemeId;
   customNames: CustomRosterNames;
   saveError: string | null;
+  blockedError?: string | null;
   disabled?: boolean;
   onChange: (next: RosterThemeId) => void;
   onSaveCustom: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
@@ -132,7 +134,7 @@ export function FleetStep({
       <CustomThemeEditor
         open={customOpen}
         value={customNames}
-        blockedError={disabled && saveError ? saveError : null}
+        blockedError={disabled ? (blockedError ?? saveError) : null}
         onOpenChange={setCustomOpen}
         onSave={onSaveCustom}
         onRetryBlocked={onRetry}

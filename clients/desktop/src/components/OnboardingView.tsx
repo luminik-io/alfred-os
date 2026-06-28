@@ -474,6 +474,9 @@ export function OnboardingView({
   const githubConnected = Boolean(status?.github.ok);
   const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
   const reposSelected = (status?.repos.count ?? 0) > 0;
+  const fleetEditorBlockedError =
+    rosterHydrationError ??
+    (rosterHydrating ? "Wait for Alfred to load the saved fleet names before changing them." : null);
 
   const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
 
@@ -938,6 +941,7 @@ export function OnboardingView({
                 value={rosterTheme}
                 customNames={customNames}
                 saveError={rosterSaveError ?? rosterHydrationError}
+                blockedError={fleetEditorBlockedError}
                 disabled={fleetSavePending || fleetRosterBlocked || !canMutate}
                 onChange={handleRosterThemeChange}
                 onSaveCustom={handleCustomNamesChange}
