@@ -29,6 +29,19 @@
 # no-op (exit 0) so attaching the MCP server is always safe.
 
 set -uo pipefail
+ORIGINAL_ENV_KEYS="$(env | awk -F= '{print $1}')"
+
+env_key_was_original() {
+  local key="$1"
+  case "
+$ORIGINAL_ENV_KEYS
+" in
+    *"
+$key
+"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # --- pinned upstream release ------------------------------------------------
 # The pinned version and the per-platform sha256 digests below MUST move
@@ -62,31 +75,8 @@ pinned_sha256() {
 
 log() { printf '[code-memory-mcp] %s\n' "$*" >&2; }
 
-capture_inherited_env_keys() {
-  local line key value
-  env | while IFS='=' read -r key value || [ -n "${key:-}" ]; do
-    case "$key" in
-      ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
-    esac
-    [ -n "${value:-}" ] || continue
-    printf '%s\n' "$key"
-  done
-}
-
-INHERITED_ENV_KEYS="$(capture_inherited_env_keys)"
-
-is_inherited_env_key() {
-  local key="$1"
-  case "$(printf '\n%s\n' "$INHERITED_ENV_KEYS")" in
-    *"
-$key
-"*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" line key value quote_style
+  local file="$1" mode="${2:-}" line key value quote_style
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -121,12 +111,23 @@ load_env_file() {
     case "$key" in
       ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
     esac
-    if is_inherited_env_key "$key"; then
-      continue
-    fi
-    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
-      continue
-    fi
+    case "$mode" in
+      no_clobber)
+        if [ -n "${!key+x}" ]; then
+          continue
+        fi
+        ;;
+      code_memory_override)
+        case "$key" in
+          ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
+            env_key_was_original "$key" && continue
+            ;;
+          *)
+            continue
+            ;;
+        esac
+        ;;
+    esac
     quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
     if [ "$quote_style" != "single" ]; then
@@ -150,6 +151,10 @@ load_env_file "$HOME/.alfredrc" no_clobber
 : "${ALFRED_HOME:=$HOME/.alfred}"
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 load_env_file "$ALFRED_HOME/.env" no_clobber
+# Code-memory settings are setup-owned runtime state. Load them again so the
+# active runtime .env beats stale rc values, while explicit process overrides
+# keep winning.
+load_env_file "$ALFRED_HOME/.env" code_memory_override
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 export ALFRED_HOME
 

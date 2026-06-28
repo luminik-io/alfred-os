@@ -507,5 +507,67 @@ def test_launcher_keeps_process_home_when_rc_points_elsewhere(tmp_path: Path) ->
     assert f"{runtime_a}/state/code-memory" not in res.stderr
 
 
+def test_launcher_runtime_env_overrides_same_home_code_memory_rc(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/old\n",
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text(
+        "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/new\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert "repos:       org/new" in res.stderr
+    assert "org/old" not in res.stderr
+
+
+def test_launcher_preserves_process_code_memory_over_runtime_env(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/old\n",
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text(
+        "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/new\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_CODE_MEMORY_REPOS"] = "org/process"
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert "repos:       org/process" in res.stderr
+    assert "org/new" not in res.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

@@ -244,6 +244,44 @@ def test_agent_launch_real_env_repo_scope_wins_over_env_file(
     assert "REPOS=org/process" in proc.stdout
 
 
+def test_agent_launch_env_file_code_memory_settings_override_alfredrc(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_CODE_MEMORY_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_CODE_MEMORY_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-code-memory.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/new" in proc.stdout
+
+
+def test_agent_launch_real_env_code_memory_setting_wins_over_env_file(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_CODE_MEMORY_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_CODE_MEMORY_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-code-memory.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_CODE_MEMORY_REPOS": "org/process"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/process" in proc.stdout
+
+
 def test_agent_launch_expands_tilde_alfred_home_before_env_file(tmp_path: Path) -> None:
     """ALFRED_HOME=~/runtime must load the runtime .env, matching setup/status."""
 

@@ -40,6 +40,19 @@ _REPO_SCOPE_ENV_KEYS = {
     "ALFRED_SHIPPED_REPOS",
     "ALFRED_BRIDGE_REPOS",
 }
+_CODE_MEMORY_ENV_KEYS = {
+    "ALFRED_CODE_MEMORY_AUTOFETCH",
+    "ALFRED_CODE_MEMORY_BIN",
+    "ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S",
+    "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S",
+    "ALFRED_CODE_MEMORY_INDEX_DIR",
+    "ALFRED_CODE_MEMORY_MCP",
+    "ALFRED_CODE_MEMORY_REPO",
+    "ALFRED_CODE_MEMORY_REPOS",
+    "ALFRED_CODE_MEMORY_VERSION",
+    "ALFRED_CODE_MAP_REPOS",
+}
+_SETUP_MANAGED_RUNTIME_ENV_KEYS = _REPO_SCOPE_ENV_KEYS | _CODE_MEMORY_ENV_KEYS
 
 ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 """Public runtime root. State, worktrees, transcripts, lib, bin live here."""
@@ -235,7 +248,7 @@ def launcher_env() -> dict[str, str]:
         Path(env["ALFRED_HOME"]) / ".env",
         env,
         no_clobber=True,
-        clobber_keys=_REPO_SCOPE_ENV_KEYS,
+        clobber_keys=_SETUP_MANAGED_RUNTIME_ENV_KEYS,
         preserve_keys=inherited_keys,
     )
     if not env.get("WORKSPACE_ROOT", "").strip():

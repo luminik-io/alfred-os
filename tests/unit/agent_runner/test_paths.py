@@ -120,6 +120,48 @@ def test_launcher_env_preserves_real_env_repo_scope_over_env_file(
     assert env["ALFRED_SHIPPED_REPOS"] == "org/process"
 
 
+def test_launcher_env_lets_env_file_code_memory_settings_override_rc(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    home.mkdir(parents=True)
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_CODE_MEMORY_REPOS=org/old\n",
+        encoding="utf-8",
+    )
+    (home / ".env").write_text("ALFRED_CODE_MEMORY_REPOS=org/new\n", encoding="utf-8")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/new"
+
+
+def test_launcher_env_preserves_real_env_code_memory_setting_over_env_file(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "org/process")
+    home.mkdir(parents=True)
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_CODE_MEMORY_REPOS=org/old\n",
+        encoding="utf-8",
+    )
+    (home / ".env").write_text("ALFRED_CODE_MEMORY_REPOS=org/new\n", encoding="utf-8")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/process"
+
+
 def test_launcher_env_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_scope(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
