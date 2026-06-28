@@ -41,15 +41,7 @@ _REPO_SCOPE_ENV_KEYS = {
     "ALFRED_BRIDGE_REPOS",
 }
 _CODE_MEMORY_ENV_KEYS = {
-    "ALFRED_CODE_MEMORY_AUTOFETCH",
-    "ALFRED_CODE_MEMORY_BIN",
-    "ALFRED_CODE_MEMORY_CONNECT_TIMEOUT_S",
-    "ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S",
-    "ALFRED_CODE_MEMORY_INDEX_DIR",
-    "ALFRED_CODE_MEMORY_MCP",
-    "ALFRED_CODE_MEMORY_REPO",
-    "ALFRED_CODE_MEMORY_REPOS",
-    "ALFRED_CODE_MEMORY_VERSION",
+    "ALFRED_CODE_MEMORY_*",
     "ALFRED_CODE_MAP_REPOS",
 }
 _SETUP_MANAGED_RUNTIME_ENV_KEYS = _REPO_SCOPE_ENV_KEYS | _CODE_MEMORY_ENV_KEYS
@@ -291,13 +283,9 @@ def launcher_env() -> dict[str, str]:
     env["ALFREDRC"] = str(rc_path)
     rc_env: dict[str, str] = {}
     load_env_file(rc_path, rc_env)
-    process_home = env.get("ALFRED_HOME", "").strip()
-    blocked_rc_keys: set[str] | None = None
-    if process_home and not direct_selected_alfredrc:
-        effective_home = Path(process_home).expanduser()
-        rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
-        if not _same_runtime_home(effective_home, rc_home):
-            blocked_rc_keys = _SETUP_MANAGED_RUNTIME_ENV_KEYS
+    blocked_rc_keys = _blocked_setup_runtime_keys_for_rc(
+        env, rc_env, direct_selected_alfredrc, inherited_keys
+    )
     if rc_env:
         rc_clobber_keys = {"ALFREDRC"}
         if direct_selected_alfredrc:
@@ -312,6 +300,11 @@ def launcher_env() -> dict[str, str]:
     if env.get("ALFREDRC", "").strip() and env["ALFREDRC"] != str(rc_path):
         rc_path = _selected_alfredrc_path(env, home)
         env["ALFREDRC"] = str(rc_path)
+        pointed_rc_env: dict[str, str] = {}
+        load_env_file(rc_path, pointed_rc_env)
+        blocked_rc_keys = _blocked_setup_runtime_keys_for_rc(
+            env, pointed_rc_env, direct_selected_alfredrc, inherited_keys
+        )
         load_env_file(
             rc_path,
             env,
@@ -322,6 +315,8 @@ def launcher_env() -> dict[str, str]:
             }
             | _SETUP_MANAGED_RUNTIME_ENV_KEYS,
             preserve_keys=inherited_keys,
+            skip_keys=blocked_rc_keys,
+            file_overrides_existing=True,
         )
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
@@ -346,6 +341,30 @@ def _selected_alfredrc_path(env: dict[str, str], home: Path) -> Path:
     return home / ".alfredrc"
 
 
+def _blocked_setup_runtime_keys_for_rc(
+    env: dict[str, str],
+    rc_env: dict[str, str],
+    direct_selected_alfredrc: bool,
+    inherited_keys: set[str],
+) -> set[str] | None:
+    if "ALFRED_HOME" not in inherited_keys:
+        return None
+    process_home = env.get("ALFRED_HOME", "").strip()
+    if not process_home or direct_selected_alfredrc:
+        return None
+    effective_home = Path(process_home).expanduser()
+    rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
+    if _same_runtime_home(effective_home, rc_home):
+        return None
+    return _SETUP_MANAGED_RUNTIME_ENV_KEYS
+
+
+def _env_key_matches(key: str, patterns: set[str]) -> bool:
+    if key in patterns:
+        return True
+    return "ALFRED_CODE_MEMORY_*" in patterns and key.startswith("ALFRED_CODE_MEMORY_")
+
+
 def launcher_config_value(key: str, default: str = "") -> str:
     """Resolve one config key using ``agent-launch`` precedence."""
 
@@ -360,6 +379,7 @@ def load_env_file(
     clobber_keys: set[str] | None = None,
     preserve_keys: set[str] | None = None,
     skip_keys: set[str] | None = None,
+    file_overrides_existing: bool = False,
 ) -> None:
     """Load a dotenv/shell-rc file into ``env`` with ``agent-launch`` semantics."""
 
@@ -379,9 +399,11 @@ def load_env_file(
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             continue
-        if skip_keys is not None and key in skip_keys:
+        if skip_keys is not None and _env_key_matches(key, skip_keys):
             continue
-        can_clobber = clobber_keys is not None and key in clobber_keys
+        can_clobber = file_overrides_existing or (
+            clobber_keys is not None and _env_key_matches(key, clobber_keys)
+        )
         protected = preserve_keys is not None and key in preserve_keys
         if no_clobber and key in env and (not can_clobber or protected):
             continue

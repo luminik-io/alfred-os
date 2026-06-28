@@ -192,6 +192,38 @@ def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, 
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/custom-memory"
 
 
+def test_launcher_env_pointed_alfredrc_overrides_prior_rc_non_setup_keys(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_GH_BIN", raising=False)
+    monkeypatch.delenv("CLAUDE_BIN", raising=False)
+    (home / ".alfredrc").write_text(
+        f"ALFREDRC={custom_rc}\nALFRED_GH_BIN=/stale/gh\nCLAUDE_BIN=/stale/claude\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_GH_BIN=/custom/gh\nCLAUDE_BIN=/custom/claude\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_GH_BIN"] == "/custom/gh"
+    assert env["CLAUDE_BIN"] == "/custom/claude"
+
+
 def test_launcher_env_preserves_process_memory_scope_over_pointed_alfredrc(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
@@ -224,6 +256,45 @@ def test_launcher_env_preserves_process_memory_scope_over_pointed_alfredrc(
     assert env["ALFREDRC"] == str(custom_rc)
     assert env["ALFRED_HOME"] == str(runtime)
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/process"
+
+
+def test_launcher_env_skips_stale_pointed_alfredrc_setup_keys_for_process_home(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    stale_runtime = tmp_path / "stale-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    stale_runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_DISCOVERY_LIMIT", raising=False)
+    monkeypatch.delenv("ALFRED_GH_BIN", raising=False)
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={stale_runtime}\n"
+        "ALFRED_QUEUE_REPOS=org/stale\n"
+        f"ALFRED_CODE_MEMORY_HOME={stale_runtime / 'memory'}\n"
+        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT=7\n"
+        "ALFRED_GH_BIN=/custom/gh\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert "ALFRED_QUEUE_REPOS" not in env
+    assert "ALFRED_CODE_MEMORY_HOME" not in env
+    assert "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT" not in env
+    assert env["ALFRED_GH_BIN"] == "/custom/gh"
 
 
 def test_launcher_env_lets_env_file_repo_scope_override_rc(
@@ -287,6 +358,36 @@ def test_launcher_env_lets_env_file_code_memory_settings_override_rc(
     env = paths_mod.launcher_env()
 
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/new"
+
+
+def test_launcher_env_lets_env_file_override_all_code_memory_settings(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "runtime"
+    old_memory = tmp_path / "old-memory"
+    new_memory = tmp_path / "new-memory"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_DISCOVERY_LIMIT", raising=False)
+    home.mkdir(parents=True)
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\n"
+        f"ALFRED_CODE_MEMORY_HOME={old_memory}\n"
+        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT=3\n",
+        encoding="utf-8",
+    )
+    (home / ".env").write_text(
+        f"ALFRED_CODE_MEMORY_HOME={new_memory}\nALFRED_CODE_MEMORY_DISCOVERY_LIMIT=9\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_CODE_MEMORY_HOME"] == str(new_memory)
+    assert env["ALFRED_CODE_MEMORY_DISCOVERY_LIMIT"] == "9"
 
 
 def test_launcher_env_preserves_real_env_code_memory_setting_over_env_file(
