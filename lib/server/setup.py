@@ -1124,7 +1124,7 @@ def bootstrap_status() -> dict[str, Any]:
     queue_repos = _setup_queue_repos_for_status()
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status(runtime_env)
-    capability_plane = capability_status(code_memory)
+    capability_plane = capability_status(code_memory, launcher_env=runtime_env)
     return {
         "github": gh,
         "engines": engines,
@@ -1304,15 +1304,15 @@ def _inventory_item(
 def _install_agents_conf_path(home: Path) -> Path | None:
     from . import schedule as setup_schedule
 
-    resolved = setup_schedule.agents_conf_path()
-    if resolved is not None:
-        return resolved
     for conf in (
         home / "launchd" / "agents.conf",
         home / "infra" / "agents" / "launchd" / "agents.conf",
     ):
         if conf.is_file():
             return conf
+    resolved = setup_schedule.agents_conf_path()
+    if resolved is not None:
+        return resolved
     return None
 
 

@@ -761,6 +761,40 @@ def test_agent_launch_empty_alfred_home_uses_default_home_for_rc_scope(tmp_path:
     assert "REPOS=org/from-rc" in proc.stdout
 
 
+def test_agent_launch_empty_alfred_home_loads_rc_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
+    target = tmp_path / "echo-home.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME=${ALFRED_HOME:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = ""
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME={runtime}" in proc.stdout
+    assert "REPOS=org/runtime" in proc.stdout
+
+
 def test_agent_launch_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_scope(
     tmp_path: Path,
 ) -> None:

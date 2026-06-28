@@ -347,7 +347,8 @@ export function OnboardingView({
 
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
-      if (!isCurrentRequest()) {
+      const pollBelongsToCurrentRuntime = isCurrentRequest();
+      if (!pollBelongsToCurrentRuntime) {
         interruptStaleGithubAuthRequest(requestAuthId);
         return;
       }
