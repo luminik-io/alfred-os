@@ -233,12 +233,14 @@ discover_persisted_alfredrc() {
   done
   discovered="$(discover_alfredrc_from_launchd)"
   if [[ -n "$discovered" ]]; then
-    printf '%s\n' "$discovered"
+    expand_user_path "$discovered"
+    printf '\n'
     return 0
   fi
   discovered="$(discover_alfredrc_from_systemd)"
   if [[ -n "$discovered" ]]; then
-    printf '%s\n' "$discovered"
+    expand_user_path "$discovered"
+    printf '\n'
   fi
 }
 

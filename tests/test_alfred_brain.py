@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sqlite3
 import sys
 from datetime import UTC
@@ -179,6 +180,56 @@ def test_cli_auto_promote_uses_persisted_alfred_home_for_default_brain(
     assert built_db_paths == [str(runtime / "fleet-brain.db")]
     assert received_envs[-1] is not None
     assert received_envs[-1]["ALFRED_HOME"] == str(runtime)
+    assert json.loads(capsys.readouterr().out)["enabled"] is False
+
+
+def test_cli_auto_promote_applies_persisted_env_to_process_dependencies(
+    cli_mod: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\n"
+        "ALFRED_AUTO_PROMOTE=0\n"
+        "ALFRED_REDIS_MEMORY_URL=http://memory.custom\n"
+        "ALFRED_AMS_TOKEN=custom-token\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ALFRED_REDIS_MEMORY_URL", raising=False)
+    monkeypatch.delenv("ALFRED_AMS_TOKEN", raising=False)
+
+    class FakeBrain:
+        @classmethod
+        def from_env(cls, env: dict[str, str]):
+            assert env["ALFRED_REDIS_MEMORY_URL"] == "http://memory.custom"
+            return cls()
+
+        def auto_promote_candidates(
+            self,
+            *,
+            threshold: float | None = None,
+            max_per_run: int | None = None,
+            env: dict[str, str] | None = None,
+        ) -> dict[str, object]:
+            assert env is not None
+            assert os.environ["ALFRED_REDIS_MEMORY_URL"] == "http://memory.custom"
+            assert os.environ["ALFRED_AMS_TOKEN"] == "custom-token"
+            return {"enabled": False, "promoted": [], "considered": 0}
+
+    monkeypatch.setattr(cli_mod, "FleetBrain", FakeBrain)
+
+    rc = cli_mod.main(["auto-promote", "--json"])
+
+    assert rc == 0
     assert json.loads(capsys.readouterr().out)["enabled"] is False
 
 

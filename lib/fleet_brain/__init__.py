@@ -353,7 +353,7 @@ def direct_auto_promote_env() -> dict[str, str]:
     _load_auto_promote_env_file(
         selected_rc,
         env,
-        allow_alfredrc_pointer="ALFREDRC" not in os.environ,
+        allow_alfredrc_pointer=True,
         protected_keys=process_keys,
     )
     pointed_rc = Path(env.get("ALFREDRC") or str(selected_rc)).expanduser()

@@ -589,12 +589,21 @@ def cmd_harvest(args: argparse.Namespace) -> int:
 
 def cmd_auto_promote(args: argparse.Namespace) -> int:
     env_src = direct_auto_promote_env()
-    brain = _build_brain(args, env_src)
-    summary = brain.auto_promote_candidates(
-        threshold=args.threshold,
-        max_per_run=args.max_per_run,
-        env=env_src,
-    )
+    previous_env = {key: os.environ.get(key) for key in env_src}
+    os.environ.update(env_src)
+    try:
+        brain = _build_brain(args, env_src)
+        summary = brain.auto_promote_candidates(
+            threshold=args.threshold,
+            max_per_run=args.max_per_run,
+            env=env_src,
+        )
+    finally:
+        for key, previous in previous_env.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
     if args.json:
         print(json.dumps(summary, indent=2, sort_keys=True))
         return 0

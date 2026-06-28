@@ -21,7 +21,7 @@ sys.path.insert(0, str(_REPO / "lib"))
 
 from datetime import UTC, datetime  # noqa: E402
 
-from fleet_brain import FleetBrain, Lesson, new_id  # noqa: E402
+from fleet_brain import FleetBrain, Lesson, direct_auto_promote_env, new_id  # noqa: E402
 
 ARM = {"ALFRED_AUTO_PROMOTE": "1"}
 ARM_NO_JUDGE = {"ALFRED_AUTO_PROMOTE": "1", "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0"}
@@ -120,6 +120,38 @@ def _status(brain: FleetBrain, cid: str) -> str:
     row = brain.store.get_memory_candidate(cid)
     assert row is not None
     return row.status
+
+
+def test_direct_auto_promote_env_follows_explicit_alfredrc_pointer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    bootstrap_rc = tmp_path / "bootstrap.alfredrc"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    bootstrap_rc.write_text(
+        f"ALFREDRC={custom_rc}\nALFRED_AUTO_PROMOTE=1\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(bootstrap_rc))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE_KILL", raising=False)
+
+    env = direct_auto_promote_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_AUTO_PROMOTE"] == "0"
+    assert env["ALFRED_AUTO_PROMOTE_KILL"] == "1"
 
 
 # --- arm / kill switch -----------------------------------------------------

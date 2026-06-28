@@ -93,6 +93,10 @@ memory_auto_promote_stop_control_active() {
   local key="$1" token
   token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
   [ -n "$token" ] || return 1
+  # All fail-closed auto-promote controls live here. In particular, malformed
+  # nonblank ALFRED_AUTO_PROMOTE_LLM_JUDGE values must override stale truthy
+  # values from .alfredrc or scheduler env so the LLM judge gate cannot be
+  # bypassed by a typo in the canonical runtime .env.
   case "$key" in
     ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
       memory_auto_promote_value_is_enabled "$token" && return 1
