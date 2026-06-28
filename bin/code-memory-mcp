@@ -100,7 +100,7 @@ CODE_MEMORY_DISCOVERY_LIMIT="${ALFRED_CODE_MEMORY_DISCOVERY_LIMIT:-25}"
 CACHE_BIN="$ALFRED_HOME/bin/$CODE_MEMORY_BIN_NAME"
 INDEX_DIR="${ALFRED_CODE_MEMORY_INDEX_DIR:-$ALFRED_HOME/state/code-memory}"
 CODE_MEMORY_HOME="${ALFRED_CODE_MEMORY_HOME:-$INDEX_DIR}"
-CODE_MEMORY_CACHE_DIR="$CODE_MEMORY_HOME/.cache/$CODE_MEMORY_BIN_NAME"
+CODE_MEMORY_CACHE_DIR="${CBM_CACHE_DIR:-$CODE_MEMORY_HOME/.cache/$CODE_MEMORY_BIN_NAME}"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
 if [ "${ALFRED_WORKSPACE_SUBDIR+x}" = x ]; then
   WORKSPACE_SUBDIR="$ALFRED_WORKSPACE_SUBDIR"
@@ -259,6 +259,7 @@ configured_scope_repos() {
     name="$(printf '%s' "$name" | tr -d '[:space:]')"
     [ -n "$name" ] || continue
     [ -d "$WORKSPACE/$name" ] || continue
+    [ -e "$WORKSPACE/$name/.git" ] || continue
     printf '%s\n' "$WORKSPACE/$name"
   done
   return 0
@@ -309,7 +310,9 @@ $real_dir
       esac
       children+=("$child")
     done < <(find -L "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
-    stack+=("${children[@]}")
+    if [ "${#children[@]}" -gt 0 ]; then
+      stack+=("${children[@]}")
+    fi
   done
   return 0
 }

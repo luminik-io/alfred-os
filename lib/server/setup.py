@@ -320,7 +320,7 @@ def code_memory_status() -> dict[str, Any]:
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
     index_home = _code_memory_home(launcher_env, index_dir)
-    graph_dir = _code_memory_graph_dir(index_home)
+    graph_dir = _code_memory_graph_dir(launcher_env, index_home)
     repo_scope = (
         _code_memory_repo_scope(launcher_env)
         if enabled
@@ -431,7 +431,10 @@ def _code_memory_home(env: dict[str, str], index_dir: Path) -> Path:
     return index_dir
 
 
-def _code_memory_graph_dir(index_home: Path) -> Path:
+def _code_memory_graph_dir(env: dict[str, str], index_home: Path) -> Path:
+    upstream_cache = _code_memory_config(env, "CBM_CACHE_DIR")
+    if upstream_cache:
+        return Path(upstream_cache).expanduser()
     return index_home / ".cache" / _CODE_MEMORY_BIN_NAME
 
 
@@ -494,8 +497,7 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
             entries = list(repo.iterdir())
         except OSError:
             continue
-        names = {entry.name for entry in entries}
-        if ".git" in names:
+        if _is_code_memory_git_repo(repo):
             try:
                 relative_parts = repo.relative_to(workspace).parts
             except ValueError:
@@ -524,7 +526,14 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
 
 def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
     workspace = _code_memory_workspace(env)
-    return [name for name in configured if (workspace / name).is_dir()]
+    return [name for name in configured if _is_code_memory_git_repo(workspace / name)]
+
+
+def _is_code_memory_git_repo(path: Path) -> bool:
+    try:
+        return path.is_dir() and (path / ".git").exists()
+    except OSError:
+        return False
 
 
 def _code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:

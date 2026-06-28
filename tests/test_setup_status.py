@@ -78,8 +78,8 @@ def test_bootstrap_status_reports_configured_code_memory(
     index_dir.mkdir()
     (index_dir / "graph.db").write_text("ok", encoding="utf-8")
     workspace = tmp_path / "workspace"
-    (workspace / "api").mkdir(parents=True)
-    (workspace / "web").mkdir(parents=True)
+    (workspace / "api" / ".git").mkdir(parents=True)
+    (workspace / "web" / ".git").mkdir(parents=True)
 
     monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
     monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
@@ -133,6 +133,34 @@ def test_bootstrap_status_checks_code_memory_home_cache_for_index(
     assert code_memory["index_dir"] == str(index_dir)
     assert code_memory["index_home"] == str(code_home)
     assert code_memory["graph_dir"] == str(graph_dir)
+    assert code_memory["index_present"] is True
+    assert code_memory["detail"] == "Code-memory binary and index are present."
+
+
+def test_bootstrap_status_checks_upstream_cbm_cache_dir_for_index(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    index_dir = tmp_path / "legacy-index"
+    code_home = tmp_path / "code-memory-home"
+    cbm_cache = tmp_path / "upstream-cache"
+    cbm_cache.mkdir(parents=True)
+    (cbm_cache / "graph.db").write_text("ok", encoding="utf-8")
+
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", str(code_home))
+    monkeypatch.setenv("CBM_CACHE_DIR", str(cbm_cache))
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["index_dir"] == str(index_dir)
+    assert code_memory["index_home"] == str(code_home)
+    assert code_memory["graph_dir"] == str(cbm_cache)
     assert code_memory["index_present"] is True
     assert code_memory["detail"] == "Code-memory binary and index are present."
 
@@ -395,6 +423,31 @@ def test_bootstrap_status_falls_back_when_configured_code_memory_repos_are_stale
 
     assert code_memory["repos"] == {
         "configured": ["old-alfred"],
+        "configured_existing": [],
+        "discovered": ["api"],
+        "selected": ["api"],
+        "source": "auto-fallback",
+        "count": 1,
+        "limit": 25,
+    }
+
+
+def test_bootstrap_status_falls_back_when_configured_code_memory_dirs_are_not_git_repos(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    (workspace / "docs").mkdir(parents=True)
+    (workspace / "api" / ".git").mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "docs")
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["repos"] == {
+        "configured": ["docs"],
         "configured_existing": [],
         "discovered": ["api"],
         "selected": ["api"],

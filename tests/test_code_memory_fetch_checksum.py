@@ -262,6 +262,30 @@ def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:
     assert repos == ["web", "api"]
 
 
+def test_scope_repos_falls_back_when_configured_dirs_are_not_git_repos(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "docs").mkdir(parents=True)
+    (workspace / "api" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+        ALFRED_CODE_MEMORY_REPOS="docs",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
+    assert repos == ["api"]
+
+
 def test_scope_repos_discovers_top_level_repos_before_nested_repos(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "alpha" / "extra" / ".git").mkdir(parents=True)
@@ -319,11 +343,13 @@ def test_index_invokes_upstream_cli_index_repository(tmp_path: Path) -> None:
     repo = workspace / "api"
     (repo / ".git").mkdir(parents=True)
     code_home = tmp_path / "code-memory-home"
+    cbm_cache = tmp_path / "upstream-cache"
     log = tmp_path / "upstream.log"
     fake_bin = tmp_path / "codebase-memory-mcp"
     fake_bin.write_text(
         "#!/bin/sh\n"
         'printf "HOME=%s\\n" "$HOME" >> "$CODE_MEMORY_TEST_LOG"\n'
+        'printf "CBM_CACHE_DIR=%s\\n" "${CBM_CACHE_DIR:-}" >> "$CODE_MEMORY_TEST_LOG"\n'
         'printf "ARG1=%s\\nARG2=%s\\nARG3=%s\\n" "$1" "$2" "$3" >> "$CODE_MEMORY_TEST_LOG"\n',
         encoding="utf-8",
     )
@@ -335,6 +361,7 @@ def test_index_invokes_upstream_cli_index_repository(tmp_path: Path) -> None:
         ALFRED_CODE_MEMORY_HOME=str(code_home),
         ALFRED_CODE_MEMORY_REPOS="api",
         ALFRED_CODE_MAP_REPOS="",
+        CBM_CACHE_DIR=str(cbm_cache),
         CODE_MEMORY_TEST_LOG=str(log),
         WORKSPACE_ROOT=str(workspace),
         WORKSPACE_SUBDIR="",
@@ -350,6 +377,7 @@ def test_index_invokes_upstream_cli_index_repository(tmp_path: Path) -> None:
     assert res.returncode == 0, res.stderr
     text = log.read_text(encoding="utf-8")
     assert f"HOME={code_home}" in text
+    assert f"CBM_CACHE_DIR={cbm_cache}" in text
     assert "ARG1=cli" in text
     assert "ARG2=index_repository" in text
     assert f'"repo_path":"{repo}"' in text
