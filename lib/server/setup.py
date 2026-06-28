@@ -115,18 +115,21 @@ def _setup_config_value(key: str, default: str = "") -> str:
     return _runtime_config_value(key, default)
 
 
-def _runtime_config_value(key: str, default: str = "") -> str:
-    value = os.environ.get(key, "").strip()
-    if value:
-        return value
-    raw_home = os.environ.get("ALFRED_HOME", "").strip()
+def _runtime_config_env() -> dict[str, str]:
+    env = dict(os.environ)
+    protected = {key for key, value in os.environ.items() if value.strip()}
+    raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
     else:
-        runtime_home = _default_alfred_home(os.environ)
-    runtime_env = dict(os.environ)
-    _load_launcher_env_file(runtime_home / ".env", runtime_env)
-    return runtime_env.get(key, "").strip() or default
+        runtime_home = _default_alfred_home(env)
+        env["ALFRED_HOME"] = str(runtime_home)
+    _load_launcher_env_file(runtime_home / ".env", env, protected_keys=protected)
+    return env
+
+
+def _runtime_config_value(key: str, default: str = "") -> str:
+    return _runtime_config_env().get(key, "").strip() or default
 
 
 def _queue_config_value(key: str, default: str = "") -> str:
@@ -432,12 +435,12 @@ def capability_status(
     explicit use, and which optional packages are still missing.
     """
 
-    launcher_env = launcher_env or _code_memory_launcher_env()
+    runtime_env = launcher_env or _runtime_config_env()
     code_memory = code_memory or code_memory_status()
     capabilities = [
         _code_graph_capability(code_memory),
-        _context_compression_capability(launcher_env),
-        _engineering_skills_capability(launcher_env),
+        _context_compression_capability(runtime_env),
+        _engineering_skills_capability(runtime_env),
     ]
     counts = {
         "ready": sum(1 for item in capabilities if item["state"] == "ready"),

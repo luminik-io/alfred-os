@@ -566,6 +566,48 @@ def test_capability_plane_reads_context_compression_from_runtime_env_file(
     assert context["enabled"] is False
 
 
+def test_capability_plane_ignores_legacy_alfredrc_for_non_code_memory_rows(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    stale_codex = tmp_path / "stale-codex"
+    home.mkdir()
+    runtime.mkdir()
+    (stale_codex / "skills" / "gstack").mkdir(parents=True)
+    (home / ".alfredrc").write_text(
+        f"ALFRED_CONTEXT_COMPRESSION=1\nCODEX_HOME={stale_codex}\n",
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text("ALFRED_CONTEXT_COMPRESSION=0\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.delenv("CODEX_HOME", raising=False)
+    monkeypatch.delenv("CLAUDE_HOME", raising=False)
+    monkeypatch.setattr(
+        setup_mod.shutil,
+        "which",
+        lambda name, **_kwargs: "/opt/homebrew/bin/headroom" if name == "headroom" else None,
+    )
+    code_memory = {
+        "enabled": True,
+        "autofetch": True,
+        "binary": {"resolved": False},
+        "index_present": False,
+        "repos": {"configured": [], "count": 0},
+        "detail": "Code-memory binary is not installed yet.",
+    }
+
+    payload = setup_mod.capability_status(code_memory)
+    by_key = {item["key"]: item for item in payload["capabilities"]}
+
+    assert by_key["context_compression"]["state"] == "available"
+    assert by_key["context_compression"]["enabled"] is False
+    assert by_key["engineering_skills"]["state"] == "missing"
+    assert by_key["engineering_skills"]["detected"]["paths"] == []
+
+
 def test_capability_plane_uses_explicit_skill_homes_without_resolving_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
