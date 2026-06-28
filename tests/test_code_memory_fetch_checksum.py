@@ -237,5 +237,78 @@ def test_scope_repos_uses_workspace_subdir_fallback(tmp_path: Path) -> None:
     assert repos == ["api"]
 
 
+def test_index_invokes_upstream_cli_index_repository(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    repo = workspace / "api"
+    (repo / ".git").mkdir(parents=True)
+    code_home = tmp_path / "code-memory-home"
+    log = tmp_path / "upstream.log"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text(
+        "#!/bin/sh\n"
+        'printf "HOME=%s\\n" "$HOME" >> "$CODE_MEMORY_TEST_LOG"\n'
+        'printf "ARG1=%s\\nARG2=%s\\nARG3=%s\\n" "$1" "$2" "$3" >> "$CODE_MEMORY_TEST_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_HOME=str(code_home),
+        ALFRED_CODE_MEMORY_REPOS="api",
+        ALFRED_CODE_MAP_REPOS="",
+        CODE_MEMORY_TEST_LOG=str(log),
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "index"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    text = log.read_text(encoding="utf-8")
+    assert f"HOME={code_home}" in text
+    assert "ARG1=cli" in text
+    assert "ARG2=index_repository" in text
+    assert f'"repo_path":"{repo}"' in text
+
+
+def test_serve_runs_upstream_stdio_server_with_code_memory_home(tmp_path: Path) -> None:
+    code_home = tmp_path / "code-memory-home"
+    log = tmp_path / "serve.log"
+    fake_bin = tmp_path / "codebase-memory-mcp"
+    fake_bin.write_text(
+        "#!/bin/sh\n"
+        'printf "HOME=%s\\n" "$HOME" >> "$CODE_MEMORY_TEST_LOG"\n'
+        'printf "ARGS=%s\\n" "$*" >> "$CODE_MEMORY_TEST_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_bin.chmod(0o755)
+    env = _launcher_env(
+        tmp_path,
+        ALFRED_CODE_MEMORY_BIN=str(fake_bin),
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_HOME=str(code_home),
+        CODE_MEMORY_TEST_LOG=str(log),
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "serve", "--probe"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    text = log.read_text(encoding="utf-8")
+    assert f"HOME={code_home}" in text
+    assert "ARGS=--probe" in text
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

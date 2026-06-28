@@ -99,6 +99,8 @@ CODE_MEMORY_DISCOVERY_LIMIT="${ALFRED_CODE_MEMORY_DISCOVERY_LIMIT:-25}"
 
 CACHE_BIN="$ALFRED_HOME/bin/$CODE_MEMORY_BIN_NAME"
 INDEX_DIR="${ALFRED_CODE_MEMORY_INDEX_DIR:-$ALFRED_HOME/state/code-memory}"
+CODE_MEMORY_HOME="${ALFRED_CODE_MEMORY_HOME:-$INDEX_DIR}"
+CODE_MEMORY_CACHE_DIR="$CODE_MEMORY_HOME/.cache/$CODE_MEMORY_BIN_NAME"
 WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
 if [ "${ALFRED_WORKSPACE_SUBDIR+x}" = x ]; then
   WORKSPACE_SUBDIR="$ALFRED_WORKSPACE_SUBDIR"
@@ -349,20 +351,29 @@ scope_repo_summary() {
 
 run_index() {
   local bin="$1" mode="$2" repo had=0
-  mkdir -p "$INDEX_DIR"
+  mkdir -p "$CODE_MEMORY_HOME"
   while IFS= read -r repo; do
     [ -n "$repo" ] || continue
     had=1
     log "${mode}: $repo"
-    # Upstream accepts --index-dir for the on-disk graph and --auto-index /
-    # --refresh for full vs incremental builds. Failures are logged, not fatal,
-    # so one bad repo never blocks the others.
-    "$bin" "$mode" --index-dir "$INDEX_DIR" --repo "$repo" \
+    # Upstream v0.8.x exposes indexing as an MCP CLI tool. It stores the graph
+    # under "$HOME/.cache/codebase-memory-mcp", so pin HOME to Alfred's
+    # configured code-memory home before invoking it. Failures are logged, not
+    # fatal, so one bad repo never blocks the others.
+    HOME="$CODE_MEMORY_HOME" "$bin" cli index_repository \
+      "{\"repo_path\":$(json_string "$repo")}" \
       || log "${mode} failed for $repo (continuing)"
   done < <(scope_repos)
   if [ "$had" -eq 0 ]; then
     log "no in-scope repos found under $WORKSPACE (set ALFRED_CODE_MEMORY_REPOS or add git repos)"
   fi
+}
+
+json_string() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '"%s"' "$value"
 }
 
 # Default subcommand. When the scheduler launches us as the refresh agent it
@@ -382,7 +393,8 @@ case "$CMD" in
       log "binary unavailable; code-memory MCP is a no-op this run"
       exit 0
     }
-    exec "$BIN" serve --index-dir "$INDEX_DIR" "$@"
+    mkdir -p "$CODE_MEMORY_HOME"
+    HOME="$CODE_MEMORY_HOME" exec "$BIN" "$@"
     ;;
   index)
     BIN="$(resolve_binary)" || { log "binary unavailable; cannot index"; exit 0; }
@@ -400,7 +412,8 @@ case "$CMD" in
       log "binary:  NOT RESOLVED (set ALFRED_CODE_MEMORY_BIN or enable autofetch)"
     fi
     log "version-pin: ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION}"
-    log "index-dir:   $INDEX_DIR"
+    log "index-home:  $CODE_MEMORY_HOME"
+    log "cache-dir:   $CODE_MEMORY_CACHE_DIR"
     log "workspace:   $WORKSPACE"
     log "repos:       $(scope_repo_summary)"
     ;;
