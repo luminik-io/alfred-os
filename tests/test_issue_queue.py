@@ -104,6 +104,15 @@ def test_allowed_queue_repos_accepts_fallback_env(monkeypatch):
     assert iq.allowed_queue_repos() == {"org/api", "org/web", "org/extra"}
 
 
+def test_allowed_queue_repos_keeps_explicit_queue_scope(monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", "/nonexistent-alfred-home")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "org/queue")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "org/board")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "org/bridge")
+
+    assert iq.allowed_queue_repos() == {"org/queue"}
+
+
 def test_allowed_queue_repos_reads_active_home_env(tmp_path: Path, monkeypatch):
     home = tmp_path / "runtime"
     launcher_home = tmp_path / "launcher-runtime"

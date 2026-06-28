@@ -233,9 +233,12 @@ export function OnboardingView({
   }, [baseUrl, setInterruptedGithubAuthFlow]);
 
   useEffect(() => {
+    const wasConnected = connectedRef.current;
+    if (wasConnected !== connected) {
+      connectionGenerationRef.current += 1;
+    }
     connectedRef.current = connected;
     if (!connected) {
-      connectionGenerationRef.current += 1;
       setInterruptedGithubAuthFlow("GitHub sign-in was interrupted. Reconnect, then start it again.");
     }
   }, [connected, setInterruptedGithubAuthFlow]);
