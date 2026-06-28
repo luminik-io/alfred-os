@@ -53,8 +53,23 @@ memory_auto_promote_stop_control_active() {
         *) return 0 ;;
       esac
       ;;
+    ALFRED_AUTO_PROMOTE_LLM_JUDGE)
+      case "$token" in
+        1|true|yes|on|enabled) return 1 ;;
+        *) return 0 ;;
+      esac
+      ;;
   esac
   return 1
+}
+
+expand_user_path() {
+  local path="$1"
+  case "$path" in
+    "~") printf '%s' "$HOME" ;;
+    "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    *) printf '%s' "$path" ;;
+  esac
 }
 
 load_env_file() {
@@ -124,12 +139,13 @@ load_env_file() {
 
 load_selected_alfredrc() {
   local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}"
+  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
   load_env_file "$selected_alfredrc"
   if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
-    selected_alfredrc="$ALFREDRC"
-    load_env_file "$ALFREDRC"
+    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
+    load_env_file "$selected_alfredrc"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
   fi

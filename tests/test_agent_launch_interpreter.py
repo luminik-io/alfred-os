@@ -132,6 +132,7 @@ def _run_env(
     env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
     env.pop("ALFRED_AUTO_PROMOTE", None)
     env.pop("ALFRED_AUTO_PROMOTE_KILL", None)
+    env.pop("ALFRED_AUTO_PROMOTE_LLM_JUDGE", None)
     env["HOME"] = str(alfred_home.parent)
     if extra_env:
         env.update(extra_env)
@@ -278,6 +279,46 @@ def test_agent_launch_env_file_stop_controls_override_stale_process_env(
     assert "KILL=1" in proc.stdout
 
 
+def test_agent_launch_env_file_judge_stop_control_overrides_stale_alfredrc(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=1\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n", encoding="utf-8")
+    target = tmp_path / "echo-memory-judge.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "JUDGE=${ALFRED_AUTO_PROMOTE_LLM_JUDGE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "JUDGE=treu" in proc.stdout
+
+
+def test_agent_launch_preserves_existing_judge_stop_control_over_env_enable(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=0\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=1\n", encoding="utf-8")
+    target = tmp_path / "echo-memory-judge.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "JUDGE=${ALFRED_AUTO_PROMOTE_LLM_JUDGE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "JUDGE=0" in proc.stdout
+
+
 def test_agent_launch_preserves_existing_memory_stop_control_over_env_enable(
     tmp_path: Path, alfred_home: Path
 ) -> None:
@@ -328,6 +369,28 @@ def test_agent_launch_follows_persisted_alfredrc_pointer(tmp_path: Path, alfred_
     custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
     (alfred_home.parent / ".alfredrc").write_text(
         f"ALFREDRC={custom_rc}\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-auto-promote.sh"
+    target.write_text(
+        '#!/usr/bin/env bash\necho "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "AUTO=0" in proc.stdout
+
+
+def test_agent_launch_expands_home_relative_persisted_alfredrc_pointer(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    custom_rc = alfred_home.parent / "custom.alfredrc"
+    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    (alfred_home.parent / ".alfredrc").write_text(
+        "ALFREDRC=~/custom.alfredrc\n",
         encoding="utf-8",
     )
     target = tmp_path / "echo-auto-promote.sh"
