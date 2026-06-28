@@ -20,7 +20,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 load_env_file() {
-  local file="$1" line key value
+  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" line key value
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -42,6 +42,11 @@ load_env_file() {
     esac
     value="${value//\$\{HOME\}/$HOME}"
     value="${value//\$HOME/$HOME}"
+    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
+      if [ "$key" != "ALFREDRC" ] || [ "$allow_alfredrc_pointer" != "allow_alfredrc_pointer" ]; then
+        continue
+      fi
+    fi
     export "$key=$value"
   done < "$file"
 }
@@ -130,7 +135,10 @@ discover_persisted_alfredrc() {
 }
 
 load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-}"
+  local selected_alfredrc="${ALFREDRC:-}" allow_alfredrc_pointer=""
+  if [ -z "${ALFREDRC:-}" ]; then
+    allow_alfredrc_pointer="allow_alfredrc_pointer"
+  fi
   if [ -z "$selected_alfredrc" ]; then
     selected_alfredrc="$(discover_persisted_alfredrc)"
   fi
@@ -140,12 +148,12 @@ load_selected_alfredrc() {
   selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
-  load_env_file "$ALFREDRC"
+  load_env_file "$ALFREDRC" no_clobber "$allow_alfredrc_pointer"
   if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
-    load_env_file "$selected_alfredrc"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
+    load_env_file "$selected_alfredrc" no_clobber
   fi
 }
 

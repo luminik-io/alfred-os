@@ -344,6 +344,68 @@ def test_agent_launch_preserves_existing_memory_stop_control_over_env_enable(
     assert "KILL=1" in proc.stdout
 
 
+def test_agent_launch_preserves_process_stop_controls_over_alfredrc_enable(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "ALFRED_AUTO_PROMOTE=1\nALFRED_AUTO_PROMOTE_KILL=0\nALFRED_AUTO_PROMOTE_LLM_JUDGE=1\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-memory-stop.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n'
+        'echo "KILL=${ALFRED_AUTO_PROMOTE_KILL:-unset}"\n'
+        'echo "JUDGE=${ALFRED_AUTO_PROMOTE_LLM_JUDGE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={
+            "ALFRED_AUTO_PROMOTE": "0",
+            "ALFRED_AUTO_PROMOTE_KILL": "1",
+            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0",
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "AUTO=0" in proc.stdout
+    assert "KILL=1" in proc.stdout
+    assert "JUDGE=0" in proc.stdout
+
+
+def test_agent_launch_preserves_process_layout_over_alfredrc(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    rc_home = tmp_path / "rc-runtime"
+    (alfred_home.parent / ".alfredrc").write_text(
+        f"ALFRED_HOME={rc_home}\nWORKSPACE_ROOT={tmp_path / 'rc-workspace'}\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-layout.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "WORKSPACE=${WORKSPACE_ROOT:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    workspace = tmp_path / "process-workspace"
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"WORKSPACE_ROOT": str(workspace)},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={alfred_home}" in proc.stdout
+    assert f"WORKSPACE={workspace}" in proc.stdout
+
+
 def test_agent_launch_honors_custom_alfredrc_path(tmp_path: Path, alfred_home: Path) -> None:
     custom_rc = tmp_path / "custom.alfredrc"
     custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")

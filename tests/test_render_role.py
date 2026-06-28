@@ -31,6 +31,8 @@ def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -
     out_dir = tmp_path / "out"
     full_env = os.environ.copy()
     full_env.pop("ALFREDRC", None)
+    full_env.pop("ALFRED_HOME", None)
+    full_env.pop("WORKSPACE_ROOT", None)
     full_env.update(env or {})
     res = subprocess.run(
         ["bash", str(work / "render.sh"), str(out_dir)],
@@ -161,6 +163,36 @@ def test_render_expands_home_relative_persisted_alfredrc_pointer(tmp_path):
     assert env["ALFREDRC"] == str(custom_rc)
     assert env["ALFRED_HOME"] == str(custom_home)
     assert env["WORKSPACE_ROOT"] == str(workspace)
+
+
+def test_render_preserves_process_layout_over_alfredrc(tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
+    rc_home = tmp_path / "rc-runtime"
+    rc_workspace = tmp_path / "rc-workspace"
+    process_home = tmp_path / "process-runtime"
+    process_workspace = tmp_path / "process-workspace"
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={rc_home}\nWORKSPACE_ROOT={rc_workspace}\n",
+        encoding="utf-8",
+    )
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(
+        tmp_path,
+        conf,
+        env={
+            "HOME": str(home),
+            "ALFREDRC": "",
+            "ALFRED_HOME": str(process_home),
+            "WORKSPACE_ROOT": str(process_workspace),
+        },
+    )
+
+    plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
+    env = plist_data["EnvironmentVariables"]
+    assert env["ALFRED_HOME"] == str(process_home)
+    assert env["WORKSPACE_ROOT"] == str(process_workspace)
 
 
 def test_render_follows_runtime_alfredrc_pointer_file(tmp_path):

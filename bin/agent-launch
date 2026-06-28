@@ -73,7 +73,7 @@ expand_user_path() {
 }
 
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" line key value quote_style existing_value
+  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -125,6 +125,10 @@ load_env_file() {
     # earlier-loaded file) wins. Keeps .env a gap-filler, not an override,
     # except for fail-closed memory stop controls.
     if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
+      if [ "$key" = "ALFREDRC" ] && [ "$allow_alfredrc_pointer" = "allow_alfredrc_pointer" ]; then
+        export "$key=$value"
+        continue
+      fi
       existing_value="${!key}"
       if memory_auto_promote_stop_control_active "$key" "$existing_value"; then
         continue
@@ -138,16 +142,19 @@ load_env_file() {
 }
 
 load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}"
+  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" allow_alfredrc_pointer=""
+  if [ -z "${ALFREDRC:-}" ]; then
+    allow_alfredrc_pointer="allow_alfredrc_pointer"
+  fi
   selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
-  load_env_file "$selected_alfredrc"
+  load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer"
   if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
-    load_env_file "$selected_alfredrc"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
+    load_env_file "$selected_alfredrc" no_clobber
   fi
 }
 
