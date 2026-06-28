@@ -277,6 +277,52 @@ def test_setup_config_prefers_process_env_over_runtime_env_file(
     assert setup_mod._repo_list_owners() == ["env-org"]
 
 
+def test_setup_config_reads_runtime_env_file_but_not_legacy_alfredrc(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        "\n".join(
+            [
+                "CLAUDE_BIN=/stale/claude",
+                "CODEX_BIN=/stale/codex",
+                "GH_BIN=/stale/gh",
+                "GH_ORG=stale-org",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text(
+        "\n".join(
+            [
+                "CODEX_BIN=/runtime/codex",
+                "GH_ORG=runtime-org",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("CLAUDE_BIN", raising=False)
+    monkeypatch.delenv("CODEX_BIN", raising=False)
+    monkeypatch.delenv("GH_BIN", raising=False)
+    monkeypatch.delenv("GH_ORG", raising=False)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *args, **kwargs: None)
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+
+    engines = {item["name"]: item for item in setup_mod.engine_clis()}
+
+    assert setup_mod._setup_config_value("CODEX_BIN") == "/runtime/codex"
+    assert setup_mod._setup_config_value("CLAUDE_BIN") == ""
+    assert setup_mod._gh_bin() == "gh"
+    assert engines["codex"]["path"] == "/runtime/codex"
+    assert engines["claude"]["path"] is None
+    assert setup_mod._repo_list_owners() == ["runtime-org"]
+
+
 def test_gh_subprocess_env_drops_empty_path_entries(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
