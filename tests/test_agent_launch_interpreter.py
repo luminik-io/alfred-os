@@ -734,6 +734,33 @@ def test_agent_launch_expands_user_relative_alfredrc_path(
     assert f"RC={Path(user_info.pw_dir) / 'custom.alfredrc'}" in proc.stdout
 
 
+def test_agent_launch_empty_alfred_home_uses_default_home_for_rc_scope(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    default_runtime = home / ".alfred"
+    home.mkdir()
+    default_runtime.mkdir()
+    (home / ".alfredrc").write_text("ALFRED_QUEUE_REPOS=org/from-rc\n", encoding="utf-8")
+    target = tmp_path / "echo-repos.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = ""
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/from-rc" in proc.stdout
+
+
 def test_agent_launch_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_scope(
     tmp_path: Path,
 ) -> None:

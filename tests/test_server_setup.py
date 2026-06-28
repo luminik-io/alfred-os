@@ -111,6 +111,31 @@ def test_install_inventory_uses_active_serve_home_for_agents_conf(
     assert inventory["scheduled_runs"] == 1
 
 
+def test_install_inventory_reuses_scheduler_agents_conf_resolver(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "active-runtime"
+    repo = tmp_path / "alfred-checkout"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_REPO", str(repo))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    conf = repo / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["agents_conf_path"] == str(conf)
+    assert inventory["agents_conf_present"] is True
+    assert inventory["scheduled_runs"] == 1
+
+
 def test_install_inventory_does_not_mix_launcher_config_into_active_default_home(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -1302,6 +1302,11 @@ def _inventory_item(
 
 
 def _install_agents_conf_path(home: Path) -> Path | None:
+    from . import schedule as setup_schedule
+
+    resolved = setup_schedule.agents_conf_path()
+    if resolved is not None:
+        return resolved
     for conf in (
         home / "launchd" / "agents.conf",
         home / "infra" / "agents" / "launchd" / "agents.conf",
