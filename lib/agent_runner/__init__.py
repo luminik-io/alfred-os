@@ -98,6 +98,11 @@ from .config import (
     reported_subtype,
     set_dry_run,
 )
+from .context_governor import (
+    ContextGovernance,
+    context_governor_enabled,
+    govern_prompt_context,
+)
 
 # --------------------------------------------------------------------------
 # Disk-pressure probe (ENOSPC guard)
@@ -388,6 +393,9 @@ __all__ = [
     "optional_env_int",
     "reported_subtype",
     "set_dry_run",
+    "ContextGovernance",
+    "context_governor_enabled",
+    "govern_prompt_context",
     # reliability
     "BreakerStatus",
     "CircuitBreaker",

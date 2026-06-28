@@ -149,6 +149,35 @@ def test_claude_invoke_streaming_writes_transcript(fresh_agent_runner, monkeypat
     assert transcript.read_text(encoding="utf-8") == stream
 
 
+def test_claude_invoke_streaming_surfaces_popen_oserror(fresh_agent_runner, monkeypatch):
+    ar = fresh_agent_runner
+    from pathlib import Path
+
+    import agent_runner.process as proc
+
+    def fake_popen(*_args, **_kwargs):
+        raise OSError(7, "Argument list too long")
+
+    monkeypatch.setattr(proc.subprocess, "Popen", fake_popen)
+
+    res = ar.claude_invoke_streaming(
+        prompt="x" * 97_000,
+        workdir=Path("/tmp"),
+        allowed_tools="Read",
+        agent="testagent",
+        firing_id="20260524-123456-argv",
+        timeout=42,
+        max_turns=None,
+        resume_session=None,
+        model=None,
+    )
+
+    assert res.success is False
+    assert res.subtype == "error_context_budget"
+    assert res.raw["prompt_bytes"] == 97_000
+    assert "Argument list too long" in (res.error_message or "")
+
+
 def test_claude_invoke_timeout_returns_error_timeout(fresh_agent_runner, monkeypatch):
     ar = fresh_agent_runner
     from pathlib import Path
