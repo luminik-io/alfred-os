@@ -35,6 +35,11 @@ from pathlib import Path
 # --------------------------------------------------------------------------
 HOME: Path = Path(os.path.expanduser("~"))
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_REPO_SCOPE_ENV_KEYS = {
+    "ALFRED_QUEUE_REPOS",
+    "ALFRED_SHIPPED_REPOS",
+    "ALFRED_BRIDGE_REPOS",
+}
 
 ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 """Public runtime root. State, worktrees, transcripts, lib, bin live here."""
@@ -209,10 +214,29 @@ def launcher_env() -> dict[str, str]:
 
     home = Path(os.path.expanduser("~"))
     env = dict(os.environ)
-    load_env_file(home / ".alfredrc", env)
+    inherited_keys = set(env)
+    rc_path = home / ".alfredrc"
+    rc_env: dict[str, str] = {}
+    load_env_file(rc_path, rc_env)
+    process_home = env.get("ALFRED_HOME", "").strip()
+    if process_home:
+        effective_home = Path(process_home).expanduser()
+        rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
+        if _same_runtime_home(effective_home, rc_home):
+            load_env_file(rc_path, env, no_clobber=True)
+    elif rc_env:
+        load_env_file(rc_path, env, no_clobber=True)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    load_env_file(Path(env["ALFRED_HOME"]) / ".env", env, no_clobber=True)
+    else:
+        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
+    load_env_file(
+        Path(env["ALFRED_HOME"]) / ".env",
+        env,
+        no_clobber=True,
+        clobber_keys=_REPO_SCOPE_ENV_KEYS,
+        preserve_keys=inherited_keys,
+    )
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
     return env
@@ -224,7 +248,14 @@ def launcher_config_value(key: str, default: str = "") -> str:
     return launcher_env().get(key, "").strip() or default
 
 
-def load_env_file(path: Path, env: dict[str, str], *, no_clobber: bool = False) -> None:
+def load_env_file(
+    path: Path,
+    env: dict[str, str],
+    *,
+    no_clobber: bool = False,
+    clobber_keys: set[str] | None = None,
+    preserve_keys: set[str] | None = None,
+) -> None:
     """Load a dotenv/shell-rc file into ``env`` with ``agent-launch`` semantics."""
 
     try:
@@ -243,7 +274,9 @@ def load_env_file(path: Path, env: dict[str, str], *, no_clobber: bool = False) 
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
             continue
-        if no_clobber and key in env:
+        can_clobber = clobber_keys is not None and key in clobber_keys
+        protected = preserve_keys is not None and key in preserve_keys
+        if no_clobber and key in env and (not can_clobber or protected):
             continue
         value = raw_value.strip()
         single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"

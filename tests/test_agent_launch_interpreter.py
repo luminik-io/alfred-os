@@ -134,6 +134,9 @@ def _run_env(
     env.pop("ALFRED_AUTO_PROMOTE", None)
     env.pop("ALFRED_AUTO_PROMOTE_KILL", None)
     env.pop("ALFRED_AUTO_PROMOTE_LLM_JUDGE", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+    env.pop("ALFRED_SHIPPED_REPOS", None)
+    env.pop("ALFRED_BRIDGE_REPOS", None)
     env["HOME"] = str(alfred_home.parent)
     if extra_env:
         env.update(extra_env)
@@ -201,6 +204,44 @@ def test_agent_launch_alfredrc_wins_over_env_file(tmp_path: Path, alfred_home: P
 
     assert proc.returncode == 0, proc.stderr
     assert "TOKEN=sk-ant-oat01-fromrc" in proc.stdout
+
+
+def test_agent_launch_env_file_repo_scope_overrides_alfredrc(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_SHIPPED_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_SHIPPED_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-repos.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_SHIPPED_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/new" in proc.stdout
+
+
+def test_agent_launch_real_env_repo_scope_wins_over_env_file(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_SHIPPED_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_SHIPPED_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-repos.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_SHIPPED_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_SHIPPED_REPOS": "org/process"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/process" in proc.stdout
 
 
 def test_agent_launch_expands_tilde_alfred_home_before_env_file(tmp_path: Path) -> None:

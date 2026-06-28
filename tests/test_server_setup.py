@@ -334,6 +334,50 @@ def test_persist_selected_repos_writes_active_home_without_importing_stale_launc
     assert setup_mod.setup_board_repos() == ["acme/web"]
 
 
+def test_persist_selected_repos_does_not_create_untargeted_rc_for_custom_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+
+    assert not (tmp_path / ".alfredrc").exists()
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+
+
+def test_persist_selected_repos_does_not_sync_to_rc_that_omits_custom_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+    rc = tmp_path / ".alfredrc"
+    rc.write_text("export ALFRED_SHIPPED_REPOS=old/repo\n", encoding="utf-8")
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+
+    rc_text = rc.read_text(encoding="utf-8")
+    assert "export ALFRED_SHIPPED_REPOS=old/repo" in rc_text
+    assert "export ALFRED_SHIPPED_REPOS=acme/web" not in rc_text
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+
+
 def test_selected_repos_skips_stale_launcher_queue_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -458,7 +502,8 @@ def test_persist_selected_repos_rewrites_exported_runtime_env_as_plain_env(
     setup_mod.persist_selected_repos(["Acme/Web"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
     assert "export ALFRED_QUEUE_REPOS" not in env_text
@@ -466,7 +511,7 @@ def test_persist_selected_repos_rewrites_exported_runtime_env_as_plain_env(
     assert "export ALFRED_BRIDGE_REPOS" not in env_text
 
 
-def test_persist_selected_repos_updates_setup_seeded_queue_scope_with_board_scope(
+def test_persist_selected_repos_preserves_process_queue_scope_with_board_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -480,14 +525,17 @@ def test_persist_selected_repos_updates_setup_seeded_queue_scope_with_board_scop
 
     setup_mod.persist_selected_repos(["Acme/Web"])
 
+    assert not (tmp_path / ".alfredrc").exists()
     env_text = (home / ".env").read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
-    assert "ALFRED_QUEUE_REPOS=old/repo" not in env_text
+    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
-    assert os.environ["ALFRED_QUEUE_REPOS"] == "acme/web"
-    assert os.environ["ALFRED_SHIPPED_REPOS"] == "acme/web"
-    assert os.environ["ALFRED_BRIDGE_REPOS"] == "acme/web"
+
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
     assert setup_mod.setup_board_repos() == ["acme/web"]
     assert setup_mod.selected_repos() == ["acme/web"]
 

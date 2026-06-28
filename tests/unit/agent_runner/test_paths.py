@@ -74,8 +74,50 @@ def test_launcher_env_matches_agent_launch_tilde_home(fresh_agent_runner, monkey
 
     env = paths_mod.launcher_env()
 
-    assert env["ALFRED_HOME"] == "~/runtime"
-    assert "ALFRED_QUEUE_REPOS" not in env
+    assert env["ALFRED_HOME"] == str(tmp_path / "runtime")
+    assert env["ALFRED_QUEUE_REPOS"] == "org/expanded"
+
+
+def test_launcher_env_lets_env_file_repo_scope_override_rc(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    home.mkdir(parents=True)
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_SHIPPED_REPOS=org/old\n",
+        encoding="utf-8",
+    )
+    (home / ".env").write_text("ALFRED_SHIPPED_REPOS=org/new\n", encoding="utf-8")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_SHIPPED_REPOS"] == "org/new"
+
+
+def test_launcher_env_preserves_real_env_repo_scope_over_env_file(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "org/process")
+    home.mkdir(parents=True)
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_SHIPPED_REPOS=org/old\n",
+        encoding="utf-8",
+    )
+    (home / ".env").write_text("ALFRED_SHIPPED_REPOS=org/new\n", encoding="utf-8")
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_SHIPPED_REPOS"] == "org/process"
 
 
 def test_today_str_uses_utc_not_local_time(fresh_agent_runner, monkeypatch):

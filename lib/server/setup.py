@@ -372,11 +372,17 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
     current_board = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
     selected = set(repos)
     explicit_empty_queue = queue_scope_present and not existing_queue
+    process_queue_present = QUEUE_REPOS_ENV in os.environ
     preserve_existing_queue = (
         bool(value)
         and queue_scope_present
-        and set(existing_queue) != selected
-        and (explicit_empty_queue or set(existing_queue) != current_board)
+        and (
+            process_queue_present
+            or (
+                set(existing_queue) != selected
+                and (explicit_empty_queue or set(existing_queue) != current_board)
+            )
+        )
     )
     if preserve_existing_queue:
         values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
