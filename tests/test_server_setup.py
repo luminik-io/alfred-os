@@ -111,7 +111,7 @@ def test_install_inventory_uses_active_serve_home_for_agents_conf(
     assert inventory["scheduled_runs"] == 1
 
 
-def test_install_inventory_reuses_schedule_resolver_for_checkout_agents_conf(
+def test_install_inventory_does_not_reuse_checkout_agents_conf_for_runtime_home(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -131,9 +131,9 @@ def test_install_inventory_reuses_schedule_resolver_for_checkout_agents_conf(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["agents_conf_path"] == str(conf)
-    assert inventory["agents_conf_present"] is True
-    assert inventory["scheduled_runs"] == 1
+    assert inventory["agents_conf_path"] is None
+    assert inventory["agents_conf_present"] is False
+    assert inventory["scheduled_runs"] == 0
 
 
 def test_install_inventory_prefers_runtime_home_agents_conf_over_repo_resolver(
@@ -165,6 +165,42 @@ def test_install_inventory_prefers_runtime_home_agents_conf_over_repo_resolver(
     assert inventory["agents_conf_path"] == str(home_conf)
     assert inventory["agents_conf_present"] is True
     assert inventory["scheduled_runs"] == 1
+
+
+def test_install_inventory_reports_explicit_alfredrc_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_SHIPPED_REPOS=acme/api\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(custom_rc))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    status = setup_mod.bootstrap_status()
+    inventory = status["install"]
+
+    assert status["repos"]["selected"] == ["acme/api"]
+    assert inventory["alfred_home"] == str(runtime)
+    assert inventory["env_path"] == str(runtime / ".env")
+    assert inventory["env_present"] is False
+    assert inventory["selected_repos_env_present"] is True
+    by_key = {item["key"]: item for item in inventory["items"]}
+    assert by_key["env"]["path"] == str(custom_rc)
+    assert by_key["env"]["ok"] is True
+    assert by_key["repos"]["path"] == str(custom_rc)
 
 
 def test_install_inventory_does_not_mix_launcher_config_into_active_default_home(

@@ -785,23 +785,11 @@ def _join_search_path(paths: tuple[str, ...], inherited_path: str) -> str:
 
 
 def _code_memory_launcher_env() -> dict[str, str]:
-    """Return the env shape ``bin/code-memory-mcp`` sees after its loaders run."""
+    """Return setup-visible code-memory config for the connected runtime."""
 
-    env = dict(os.environ)
-    protected = {key for key, value in os.environ.items() if value.strip()}
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = str(_default_alfred_home(env))
-    home = _safe_home(env)
-    if home:
-        _load_launcher_env_file(home / ".alfredrc", env, protected_keys=protected)
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = str(_default_alfred_home(env))
-    alfred_home = _safe_expand_path(env["ALFRED_HOME"])
-    if alfred_home:
-        current_keys = {key for key, value in env.items() if value.strip()}
-        _load_launcher_env_file(alfred_home / ".env", env, protected_keys=current_keys)
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = str(_default_alfred_home(env))
+    env = _runtime_config_env()
+    if not env.get("WORKSPACE_ROOT", "").strip():
+        env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
     return env
 
 
@@ -1313,11 +1301,6 @@ def _install_agents_conf_path(home: Path) -> Path | None:
     ):
         if conf.is_file():
             return conf
-    from .schedule import agents_conf_path
-
-    resolved = agents_conf_path()
-    if resolved and resolved.is_file():
-        return resolved
     return None
 
 

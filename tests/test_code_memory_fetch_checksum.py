@@ -666,6 +666,37 @@ def test_launcher_respects_explicit_alfredrc_for_code_memory(tmp_path: Path) -> 
     assert "repos:       org/custom" in res.stderr
 
 
+def test_launcher_strips_alfredrc_comments_before_code_memory_filter(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = home / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        "ALFRED_HOME=$HOME/runtime # active runtime\n"
+        "ALFRED_CODE_MEMORY_AUTOFETCH=0\n"
+        "ALFRED_CODE_MEMORY_REPOS=org/commented\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(runtime)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+    env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
+    assert "repos:       org/commented" in res.stderr
+
+
 def test_launcher_follows_alfredrc_pointer_for_code_memory(tmp_path: Path) -> None:
     home = tmp_path / "home"
     runtime = tmp_path / "runtime"
