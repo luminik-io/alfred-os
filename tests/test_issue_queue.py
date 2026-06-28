@@ -176,6 +176,25 @@ def test_allowed_queue_repos_honors_empty_active_board_scope(tmp_path: Path, mon
     assert iq.allowed_queue_repos() == set()
 
 
+def test_allowed_queue_repos_does_not_promote_launcher_board_scope_to_queue(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_SHIPPED_REPOS=org/board\n",
+        encoding="utf-8",
+    )
+    home.mkdir(parents=True)
+
+    assert iq.allowed_queue_repos() == set()
+
+
 def test_allowed_queue_repos_ignores_launcher_rc_for_different_runtime_home(
     tmp_path: Path, monkeypatch
 ):

@@ -120,15 +120,11 @@ def allowed_queue_repos() -> set[str]:
     so it must be scoped at least as tightly as the Slack issue bridge. Require
     an explicit allowlist and never infer from arbitrary GitHub access.
     """
-    runtime_repo_scope_present = any(_runtime_config_entry(name)[0] for name in _ALLOWLIST_ENV)
-    queue_present, _ = _queue_config_entry(
-        "ALFRED_QUEUE_REPOS",
-        allow_launcher=not runtime_repo_scope_present,
-    )
+    queue_present, _ = _runtime_config_entry("ALFRED_QUEUE_REPOS")
     env_names = ("ALFRED_QUEUE_REPOS",) if queue_present else _ALLOWLIST_ENV
     repos: set[str] = set()
     for env_name in env_names:
-        _, raw = _queue_config_entry(env_name, allow_launcher=not runtime_repo_scope_present)
+        _, raw = _runtime_config_entry(env_name)
         for item in re.split(r"[\s,]+", raw):
             repo = item.strip().lower()
             if repo:

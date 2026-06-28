@@ -1115,6 +1115,7 @@ def bootstrap_status() -> dict[str, Any]:
     engines = engine_clis()
     runtime_env = _runtime_config_env()
     repos = setup_board_repos(runtime_env)
+    queue_repos = _setup_queue_repos_for_status()
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status(runtime_env)
     capability_plane = capability_status(code_memory)
@@ -1129,10 +1130,20 @@ def bootstrap_status() -> dict[str, Any]:
             "count": len(repos),
             "keys": list(_REPO_ENV_KEYS),
         },
+        "queue": {
+            "ready": bool(queue_repos),
+            "count": len(queue_repos),
+        },
         "demo": {"present": any(load_demo_cards().values())},
         "install": install_inventory(repos=repos, env=runtime_env),
-        "ready": bool(gh["ok"] and any_engine and repos),
+        "ready": bool(gh["ok"] and any_engine and repos and queue_repos),
     }
+
+
+def _setup_queue_repos_for_status() -> set[str]:
+    from issue_queue import allowed_queue_repos
+
+    return allowed_queue_repos()
 
 
 def install_inventory(
