@@ -126,7 +126,7 @@ load_selected_alfredrc() {
   local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}"
   ALFREDRC="$selected_alfredrc"
   export ALFREDRC
-  load_env_file "$ALFREDRC"
+  load_env_file "$selected_alfredrc"
   if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
     selected_alfredrc="$ALFREDRC"
     load_env_file "$ALFREDRC"

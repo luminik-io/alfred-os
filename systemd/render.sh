@@ -299,7 +299,7 @@ with open(timer_template) as f:
     timer_txt = f.read()
 
 
-def env_value(value):
+def systemd_token(value):
     # systemd splits Environment=KEY=VAL on whitespace, treating each token
     # as its own KEY=VAL assignment. Quote values containing spaces so they
     # survive as a single env var. Embedded `"` are unlikely in agents.conf
@@ -310,7 +310,7 @@ def env_value(value):
 
 
 def env_line(key, value):
-    return f"Environment={key}={env_value(value)}"
+    return f"Environment={key}={systemd_token(value)}"
 
 
 role_block = ""
@@ -321,15 +321,16 @@ gh_org_block = env_line("GH_ORG", gh_org) if gh_org else ""
 
 mapping = {
     "__LABEL__": label,
-    "__SCRIPT__": script,
+    "__SCRIPT__": systemd_token(script),
+    "__EXECSTART__": f"{systemd_token(f'{alfred_bin}/agent-launch')} {systemd_token(script)}",
     "__SCHEDULE_BLOCK__": schedule_block,
-    "__PATH__": env_value(path_value),
+    "__PATH__": systemd_token(path_value),
     "__JAVA_BLOCK__": java_block,
     "__ALFRED_BIN__": alfred_bin,
-    "__AGENT_LAUNCH__": env_value(f"{alfred_bin}/agent-launch"),
-    "__ALFRED_HOME__": env_value(alfred_home),
-    "__ALFREDRC__": env_value(alfredrc),
-    "__WORKSPACE_ROOT__": env_value(workspace_root),
+    "__AGENT_LAUNCH__": systemd_token(f"{alfred_bin}/agent-launch"),
+    "__ALFRED_HOME__": systemd_token(alfred_home),
+    "__ALFREDRC_ENV__": env_line("ALFREDRC", alfredrc),
+    "__WORKSPACE_ROOT__": systemd_token(workspace_root),
     "__AGENT_SHORT__": agent_short,
     "__GH_ORG_BLOCK__": gh_org_block,
     "__HOME__": home_dir,

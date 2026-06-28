@@ -241,6 +241,10 @@ def _env_flag_recognized_or_blank(name: str, env: Mapping[str, str] | None = Non
     }
 
 
+def _llm_judge_flag_allows_auto_promote(env: Mapping[str, str] | None = None) -> bool:
+    return _env_flag_recognized_or_blank("ALFRED_AUTO_PROMOTE_LLM_JUDGE", env)
+
+
 def _env_token(raw: object) -> str:
     """Normalize env flag values, accepting shell-style trailing comments."""
     value = str(raw).strip()
@@ -776,7 +780,7 @@ class FleetBrain:
         deployment config."""
         if _env_kill_switch_on("ALFRED_AUTO_PROMOTE_KILL", env):
             return False
-        if not _env_flag_recognized_or_blank("ALFRED_AUTO_PROMOTE_LLM_JUDGE", env):
+        if not _llm_judge_flag_allows_auto_promote(env):
             return False
         return _env_flag_default_on("ALFRED_AUTO_PROMOTE", env)
 

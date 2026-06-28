@@ -402,6 +402,10 @@ fn merged_alfred_env() -> HashMap<String, String> {
         );
         if let Some(pointed_alfredrc) = alfredrc_path(home.as_deref(), &env) {
             if pointed_alfredrc != alfredrc {
+                env.insert(
+                    "ALFREDRC".to_string(),
+                    pointed_alfredrc.to_string_lossy().into_owned(),
+                );
                 load_config_file(
                     &mut env,
                     &pointed_alfredrc,
@@ -442,8 +446,21 @@ fn alfredrc_path(home: Option<&Path>, env: &HashMap<String, String>) -> Option<P
     env.get("ALFREDRC")
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
+        .map(|value| expand_home_path(value, home))
         .or_else(|| home.map(|home| home.join(".alfredrc")))
+}
+
+fn expand_home_path(value: &str, home: Option<&Path>) -> PathBuf {
+    if value == "~" {
+        if let Some(home) = home {
+            return home.to_path_buf();
+        }
+    } else if let Some(rest) = value.strip_prefix("~/") {
+        if let Some(home) = home {
+            return home.join(rest);
+        }
+    }
+    PathBuf::from(value)
 }
 
 fn load_config_file(
@@ -2335,6 +2352,47 @@ mod tests {
         restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
         restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
+    }
+
+    #[test]
+    fn native_subprocess_env_expands_persisted_alfredrc_home_pointer() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
+
+        let root = temp_root("alfred-persisted-alfredrc-home-pointer");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        let custom_rc = home.join("custom.alfredrc");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create runtime");
+        std::fs::write(home.join(".alfredrc"), "ALFREDRC=~/custom.alfredrc\n")
+            .expect("write home alfredrc pointer");
+        std::fs::write(
+            &custom_rc,
+            format!("ALFRED_HOME='{}'\n", runtime.to_string_lossy()),
+        )
+        .expect("write custom alfredrc");
+
+        std::env::set_var("HOME", &home);
+        std::env::remove_var("ALFRED_HOME");
+        std::env::remove_var("ALFREDRC");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFREDRC"),
+            Some(&custom_rc.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            env.get("ALFRED_HOME"),
+            Some(&runtime.to_string_lossy().to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
     }
 
     #[test]
