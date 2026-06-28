@@ -221,6 +221,15 @@ export function OnboardingView({
     },
     [setInterruptedGithubAuthFlow],
   );
+  const interruptStaleGithubAuthRequest = useCallback(
+    (requestId: number) => {
+      resetStaleGithubAuthFlow(
+        requestId,
+        "GitHub sign-in was interrupted. Start it again for this runtime.",
+      );
+    },
+    [resetStaleGithubAuthFlow],
+  );
 
   useEffect(() => {
     if (baseUrlRef.current !== baseUrl) {
@@ -315,10 +324,7 @@ export function OnboardingView({
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
       if (!isCurrentRequest()) {
-        resetStaleGithubAuthFlow(
-          requestAuthId,
-          "GitHub sign-in was interrupted. Start it again for this runtime.",
-        );
+        interruptStaleGithubAuthRequest(requestAuthId);
         return;
       }
       if (!result) {
@@ -354,10 +360,7 @@ export function OnboardingView({
       );
 
       if (!isCurrentRequest()) {
-        resetStaleGithubAuthFlow(
-          requestAuthId,
-          "GitHub sign-in was interrupted. Start it again for this runtime.",
-        );
+        interruptStaleGithubAuthRequest(requestAuthId);
         return;
       }
       if (poll.status) {
@@ -382,10 +385,7 @@ export function OnboardingView({
       }
     } catch (err) {
       if (!isCurrentRequest()) {
-        resetStaleGithubAuthFlow(
-          requestAuthId,
-          "GitHub sign-in was interrupted. Start it again for this runtime.",
-        );
+        interruptStaleGithubAuthRequest(requestAuthId);
         return;
       }
       setGithubAuthFlow({
@@ -399,7 +399,7 @@ export function OnboardingView({
         setStatusLoading(false);
       }
     }
-  }, [baseUrl, canRun, connected, onRunLocalAction, resetStaleGithubAuthFlow]);
+  }, [baseUrl, canRun, connected, interruptStaleGithubAuthRequest, onRunLocalAction]);
 
   useEffect(() => {
     void refreshStatus();
