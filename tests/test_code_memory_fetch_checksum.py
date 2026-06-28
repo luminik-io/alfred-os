@@ -703,7 +703,10 @@ def test_launcher_follows_alfredrc_pointer_for_code_memory(tmp_path: Path) -> No
     custom_rc = tmp_path / "custom.alfredrc"
     home.mkdir()
     runtime.mkdir()
-    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    (home / ".alfredrc").write_text(
+        f"ALFREDRC={custom_rc}\nALFRED_CODE_MEMORY_REPOS=org/stale\n",
+        encoding="utf-8",
+    )
     custom_rc.write_text(
         f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/pointed\n",
         encoding="utf-8",
@@ -725,6 +728,7 @@ def test_launcher_follows_alfredrc_pointer_for_code_memory(tmp_path: Path) -> No
     assert f"rc:          {custom_rc}" in res.stderr
     assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
     assert "repos:       org/pointed" in res.stderr
+    assert "org/stale" not in res.stderr
 
 
 if __name__ == "__main__":

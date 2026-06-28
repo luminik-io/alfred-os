@@ -167,10 +167,18 @@ load_env_file() {
         if [ -n "${!key+x}" ]; then
           if [ "$key" = "ALFREDRC" ]; then
             :
-          elif [ "${ALFREDRC_FILE_OVERRIDES_RUNTIME:-0}" = "1" ] && {
-            [ "$key" = "ALFRED_HOME" ] || [ "$key" = "ALFRED_FLEET_BRAIN_DB" ];
-          }; then
-            :
+          elif [ "${ALFREDRC_FILE_OVERRIDES_RUNTIME:-0}" = "1" ]; then
+            case "$key" in
+              ALFRED_HOME|ALFRED_FLEET_BRAIN_DB)
+                :
+                ;;
+              ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
+                env_key_was_original "$key" && continue
+                ;;
+              *)
+                continue
+                ;;
+            esac
           else
             continue
           fi
