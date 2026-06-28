@@ -42,10 +42,10 @@ it at a binary you installed yourself.
   resolved.
 - **Indexing.** The launcher indexes the repos in your scope list into
   `$ALFRED_HOME/state/code-memory`. If no scope list is configured, Alfred
-  auto-discovers git repos under `WORKSPACE_ROOT`, skipping archive, worktree,
-  build, and dependency directories. A scheduled `code-memory-refresh` agent
-  keeps the index current; it does an incremental `refresh` on each run so the
-  graph tracks git changes without a full rebuild.
+  auto-discovers git repos under `WORKSPACE_ROOT/product` by default, skipping
+  archive, worktree, build, and dependency directories. A scheduled
+  `code-memory-refresh` agent keeps the index current; it does an incremental
+  `refresh` on each run so the graph tracks git changes without a full rebuild.
 
 ## Install and index
 
@@ -73,7 +73,7 @@ All knobs are environment variables; set them in `~/.alfredrc` or
 | `ALFRED_CODE_MEMORY_MCP` | `1` (on) | Attach the code-memory MCP to firings. Set `0` to disable. |
 | `ALFRED_CODE_MEMORY_REPOS` | (falls back to `ALFRED_CODE_MAP_REPOS`, then auto-discovery) | Comma-separated repo dir names under your workspace to index. |
 | `ALFRED_CODE_MEMORY_DISCOVERY_LIMIT` | `25` | Max git repos auto-discovered when no explicit code-memory/code-map scope is configured. |
-| `ALFRED_WORKSPACE_SUBDIR` | (falls back to `WORKSPACE_SUBDIR`) | Optional subdirectory under `WORKSPACE_ROOT` to scan for code-memory repos. |
+| `ALFRED_WORKSPACE_SUBDIR` | (falls back to `WORKSPACE_SUBDIR`, then `product`) | Optional subdirectory under `WORKSPACE_ROOT` to scan for code-memory repos. Set it to an empty value to scan `WORKSPACE_ROOT` directly. |
 | `ALFRED_CODE_MEMORY_BIN` | (unset) | Explicit path to the `codebase-memory-mcp` binary. Skips PATH + autofetch. |
 | `ALFRED_CODE_MEMORY_VERSION` | pinned (`v0.8.1`) | Upstream release tag to fetch. |
 | `ALFRED_CODE_MEMORY_REPO` | `DeusData/codebase-memory-mcp` | Upstream GitHub repo for release assets. |

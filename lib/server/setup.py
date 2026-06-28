@@ -422,7 +422,7 @@ def _code_memory_repos(env: dict[str, str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for piece in raw.split(","):
-        name = piece.strip()
+        name = "".join(piece.split())
         if not name or name in seen:
             continue
         seen.add(name)
@@ -430,11 +430,17 @@ def _code_memory_repos(env: dict[str, str]) -> list[str]:
     return out
 
 
+def _code_memory_workspace_subdir(env: dict[str, str]) -> str:
+    if "ALFRED_WORKSPACE_SUBDIR" in env:
+        return env.get("ALFRED_WORKSPACE_SUBDIR", "").strip()
+    if "WORKSPACE_SUBDIR" in env:
+        return env.get("WORKSPACE_SUBDIR", "").strip()
+    return "product"
+
+
 def _code_memory_workspace(env: dict[str, str]) -> Path:
     root = Path(_code_memory_config(env, "WORKSPACE_ROOT", str(Path.home() / "code"))).expanduser()
-    subdir = _code_memory_config(env, "ALFRED_WORKSPACE_SUBDIR") or _code_memory_config(
-        env, "WORKSPACE_SUBDIR"
-    )
+    subdir = _code_memory_workspace_subdir(env)
     return root / subdir if subdir else root
 
 

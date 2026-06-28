@@ -34,9 +34,13 @@ export function EngineStep({
   const codeMemoryReady = Boolean(
     codeMemory?.enabled && codeMemory.binary.resolved && codeMemory.index_present,
   );
-  const scopedCodeRepos = codeMemory?.repos.selected ?? codeMemory?.repos.configured ?? [];
+  const codeMemoryRepos = codeMemory?.repos;
+  const scopedCodeRepos = codeMemoryRepos?.selected ?? codeMemoryRepos?.configured ?? [];
   const codeRepoScopeLabel =
-    codeMemory?.repos.source === "configured" ? "Configured repos" : "Auto-discovered repos";
+    codeMemoryRepos?.source === "configured" ||
+    (!codeMemoryRepos?.source && (codeMemoryRepos?.configured?.length ?? 0) > 0)
+      ? "Configured repos"
+      : "Auto-discovered repos";
   const codeMemoryTone = !codeMemory?.enabled
     ? "off"
     : codeMemoryReady

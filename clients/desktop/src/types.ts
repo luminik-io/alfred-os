@@ -483,7 +483,7 @@ export type SetupCodeMemory = {
   repo: string;
   index_dir: string;
   index_present: boolean;
-  repos: {
+  repos?: {
     configured: string[];
     configured_existing?: string[];
     discovered?: string[];

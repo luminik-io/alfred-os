@@ -144,6 +144,7 @@ def test_scope_repos_auto_discovers_git_repos_when_unconfigured(tmp_path: Path) 
     env = _launcher_env(
         tmp_path,
         WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
         ALFRED_CODE_MEMORY_REPOS="",
         ALFRED_CODE_MAP_REPOS="",
     )
@@ -160,6 +161,31 @@ def test_scope_repos_auto_discovers_git_repos_when_unconfigured(tmp_path: Path) 
     assert repos == ["product/api", "tools/alfred-os", "worktree"]
 
 
+def test_scope_repos_defaults_to_product_subdir(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "product" / "api" / ".git").mkdir(parents=True)
+    (workspace / "tools" / "alfred-os" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_CODE_MEMORY_REPOS="",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [
+        Path(line).relative_to(workspace / "product").as_posix() for line in res.stdout.splitlines()
+    ]
+    assert repos == ["api"]
+
+
 def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "api" / ".git").mkdir(parents=True)
@@ -168,6 +194,7 @@ def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:
     env = _launcher_env(
         tmp_path,
         WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
         ALFRED_CODE_MEMORY_REPOS="web, missing, api",
         ALFRED_CODE_MAP_REPOS="",
     )
@@ -192,7 +219,6 @@ def test_scope_repos_uses_workspace_subdir_fallback(tmp_path: Path) -> None:
         tmp_path,
         WORKSPACE_ROOT=str(workspace),
         WORKSPACE_SUBDIR="product",
-        ALFRED_WORKSPACE_SUBDIR="",
         ALFRED_CODE_MEMORY_REPOS="",
         ALFRED_CODE_MAP_REPOS="",
     )
