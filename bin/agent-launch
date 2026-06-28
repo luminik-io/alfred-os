@@ -224,7 +224,7 @@ rc_targets_effective_home() {
 }
 
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" file_overrides_process_runtime="${5:-}" setup_runtime_overrides="${6:-}" source_kind="${7:-}" line key value quote_style existing_value
+  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" file_overrides_process_runtime="${5:-}" setup_runtime_overrides="${6:-}" source_kind="${7:-}" preserve_alfred_home="${8:-}" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -297,6 +297,9 @@ load_env_file() {
           export "$key=$value"
           continue
         fi
+        if [ "$preserve_alfred_home" = "preserve_alfred_home" ] && [ "$key" = "ALFRED_HOME" ]; then
+          continue
+        fi
         if [ "$file_overrides_existing" = "file_overrides_existing" ] && {
           ! original_env_has_key "$key" || {
             [ "$file_overrides_process_runtime" = "file_overrides_process_runtime" ] &&
@@ -335,6 +338,10 @@ load_selected_alfredrc() {
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
+    if [ "$direct_selected_alfredrc" != "direct_selected_alfredrc" ] && [ -z "${ALFRED_HOME:-}" ]; then
+      ALFRED_HOME="$HOME/.alfred"
+      export ALFRED_HOME
+    fi
     if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
       RC_TARGETS_EFFECTIVE_HOME=1
     else
@@ -343,7 +350,7 @@ load_selected_alfredrc() {
     if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
       load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing file_overrides_process_runtime "" alfredrc
     else
-      load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing "" "" alfredrc
+      load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing "" "" alfredrc preserve_alfred_home
     fi
   fi
 }

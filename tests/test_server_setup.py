@@ -585,7 +585,7 @@ def test_persist_selected_repos_writes_active_home_without_importing_stale_launc
     )
     home.mkdir(parents=True)
 
-    result = setup_mod.persist_selected_repos(["Acme/Web"])
+    result = setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
 
     env_path = home / ".env"
     assert result["env_path"] == str(env_path)
@@ -603,7 +603,7 @@ def test_persist_selected_repos_writes_active_home_without_importing_stale_launc
     assert setup_mod.setup_board_repos() == ["acme/web"]
 
 
-def test_persist_selected_repos_does_not_create_untargeted_rc_for_custom_home(
+def test_persist_selected_repos_board_only_save_does_not_create_queue_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -615,11 +615,15 @@ def test_persist_selected_repos_does_not_create_untargeted_rc_for_custom_home(
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
     home.mkdir(parents=True)
 
-    setup_mod.persist_selected_repos(["Acme/Web"])
+    result = setup_mod.persist_selected_repos(["Acme/Web"])
 
     assert not (tmp_path / ".alfredrc").exists()
+    assert result["keys"] == [
+        "ALFRED_SHIPPED_REPOS",
+        "ALFRED_BRIDGE_REPOS",
+    ]
     env_text = (home / ".env").read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_QUEUE_REPOS=" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
 
@@ -730,7 +734,7 @@ def test_persist_selected_repos_seeds_queue_for_new_install(
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
     home.mkdir(parents=True)
 
-    result = setup_mod.persist_selected_repos(["Acme/Web"])
+    result = setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
 
     env_path = home / ".env"
     assert result["env_path"] == str(env_path)
@@ -768,7 +772,7 @@ def test_persist_selected_repos_rewrites_exported_runtime_env_as_plain_env(
         encoding="utf-8",
     )
 
-    setup_mod.persist_selected_repos(["Acme/Web"])
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
     assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
@@ -791,7 +795,7 @@ def test_persist_selected_repos_updates_process_queue_scope_with_board_scope(
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "old/repo")
     home.mkdir(parents=True)
 
-    setup_mod.persist_selected_repos(["Acme/Web"])
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
 
     assert not (tmp_path / ".alfredrc").exists()
     env_text = (home / ".env").read_text(encoding="utf-8")
@@ -820,8 +824,8 @@ def test_persist_selected_repos_replaces_previous_ui_save_queue_scope(
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
     home.mkdir(parents=True)
 
-    setup_mod.persist_selected_repos(["Acme/Web"])
-    setup_mod.persist_selected_repos(["Acme/API"])
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
+    setup_mod.persist_selected_repos(["Acme/API"], queue_repos=["Acme/API"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
     assert "ALFRED_QUEUE_REPOS=acme/api" in env_text
@@ -873,7 +877,7 @@ def test_persist_selected_repos_updates_process_queue_that_matches_persisted_boa
         encoding="utf-8",
     )
 
-    setup_mod.persist_selected_repos(["Acme/Web"])
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
     assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
@@ -901,7 +905,7 @@ def test_persist_selected_repos_updates_process_queue_that_matches_live_board(
         encoding="utf-8",
     )
 
-    setup_mod.persist_selected_repos(["Acme/Web"])
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
     assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
@@ -1007,7 +1011,7 @@ def test_persist_selected_repos_ignores_stale_rc_queue_scope_when_runtime_has_bo
     setup_mod.persist_selected_repos(["Prod/API", "Prod/Mobile"])
 
     env_text = (home / ".env").read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=prod/api,prod/mobile" in env_text
+    assert "ALFRED_QUEUE_REPOS=" not in env_text
     assert "ALFRED_QUEUE_REPOS=prod/safe" not in env_text
     assert "ALFRED_SHIPPED_REPOS=prod/api,prod/mobile" in env_text
     assert "ALFRED_BRIDGE_REPOS=prod/api,prod/mobile" in env_text

@@ -356,17 +356,22 @@ def _write_env_file_values(path: Path, values: dict[str, str], *, export: bool =
         os.chmod(path, 0o600)
 
 
-def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
+def persist_selected_repos(
+    repos: list[str],
+    *,
+    queue_repos: list[str] | None = None,
+) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
-    Writes the queue + shipped allowlist keys to ``.env`` AND updates
-    ``os.environ`` so the change takes effect for this running server without a
-    restart (``config_value`` prefers the process env, and a fresh board /
-    queue call then sees the new scope immediately). Returns the persisted
-    config so the client can show it back transparently.
+    Writes the board allowlist keys to ``.env`` and updates ``os.environ`` so
+    the change takes effect for this running server without a restart
+    (``config_value`` prefers the process env, and a fresh board call then sees
+    the new scope immediately). Queue mutation scope is only written when the
+    caller supplies ``queue_repos`` explicitly.
     """
     clean = normalize_repo_slugs(repos)
-    values = _repo_scope_values_for_save(clean)
+    clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
+    values = _repo_scope_values_for_save(clean, queue_repos=clean_queue)
     env_path = write_env_values(values)
     for key in values:
         # Mirror into the live process so the new scope is effective now. An
@@ -383,13 +388,17 @@ def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
     }
 
 
-def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
+def _repo_scope_values_for_save(
+    repos: list[str],
+    *,
+    queue_repos: list[str] | None = None,
+) -> dict[str, str]:
     """Repo keys to persist for a setup repo save.
 
-    The onboarding repo picker owns the board-visible scope. For new installs it
-    also seeds the queue allowlist so queue/hold/done works immediately. Once an
-    operator has an explicit queue allowlist, keep that as a narrower mutation
-    boundary unless they clear all repos or the selected set already matches it.
+    The onboarding repo picker owns the board-visible scope. Queue scope is a
+    mutation boundary, so it only changes when the caller supplies
+    ``queue_repos`` explicitly. Without that, preserve any existing queue scope
+    and never widen an absent queue allowlist as a side effect of a board save.
     """
 
     value = _format_repo_value(repos)
@@ -397,23 +406,13 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
     }
+    if queue_repos is not None:
+        return {QUEUE_REPOS_ENV: _format_repo_value(queue_repos), **values}
+
     runtime_env = _runtime_config_env()
     queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
-    current_board = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
-    selected = set(repos)
-    explicit_empty_queue = queue_scope_present and not existing_queue
-    preserve_existing_queue = (
-        bool(value)
-        and queue_scope_present
-        and (
-            set(existing_queue) != selected
-            and (explicit_empty_queue or set(existing_queue) != current_board)
-        )
-    )
-    if preserve_existing_queue:
+    if queue_scope_present:
         values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
-    else:
-        values = {QUEUE_REPOS_ENV: value, **values}
     return values
 
 

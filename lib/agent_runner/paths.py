@@ -300,11 +300,16 @@ def launcher_env() -> dict[str, str]:
     if env.get("ALFREDRC", "").strip() and env["ALFREDRC"] != str(rc_path):
         rc_path = _selected_alfredrc_path(env, home)
         env["ALFREDRC"] = str(rc_path)
+        if not direct_selected_alfredrc and not env.get("ALFRED_HOME", "").strip():
+            env["ALFRED_HOME"] = str(home / ".alfred")
         pointed_rc_env: dict[str, str] = {}
         load_env_file(rc_path, pointed_rc_env)
         blocked_rc_keys = _blocked_setup_runtime_keys_for_rc(
             env, pointed_rc_env, direct_selected_alfredrc, inherited_keys
         )
+        pointed_preserve_keys = set(inherited_keys)
+        if not direct_selected_alfredrc:
+            pointed_preserve_keys.add("ALFRED_HOME")
         load_env_file(
             rc_path,
             env,
@@ -314,7 +319,7 @@ def launcher_env() -> dict[str, str]:
                 "ALFRED_FLEET_BRAIN_DB",
             }
             | _SETUP_MANAGED_RUNTIME_ENV_KEYS,
-            preserve_keys=inherited_keys,
+            preserve_keys=pointed_preserve_keys,
             skip_keys=blocked_rc_keys,
             file_overrides_existing=True,
         )

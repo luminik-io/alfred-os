@@ -155,7 +155,9 @@ def test_launcher_env_strips_inline_comments_like_shell_launcher(
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/memory"
 
 
-def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, tmp_path):
+def test_launcher_env_follows_alfredrc_pointer_without_retargeting_runtime(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
     import agent_runner.paths as paths_mod
 
     home = tmp_path / "home"
@@ -187,7 +189,7 @@ def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, 
     env = paths_mod.launcher_env()
 
     assert env["ALFREDRC"] == str(custom_rc)
-    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_HOME"] == str(stale_runtime)
     assert env["ALFRED_QUEUE_REPOS"] == "org/custom"
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/custom-memory"
 
@@ -219,9 +221,46 @@ def test_launcher_env_pointed_alfredrc_overrides_prior_rc_non_setup_keys(
     env = paths_mod.launcher_env()
 
     assert env["ALFREDRC"] == str(custom_rc)
-    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_HOME"] == str(home / ".alfred")
     assert env["ALFRED_GH_BIN"] == "/custom/gh"
     assert env["CLAUDE_BIN"] == "/custom/claude"
+
+
+def test_launcher_env_indirect_pointed_rc_cannot_move_default_runtime(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    default_runtime = home / ".alfred"
+    pointed_runtime = tmp_path / "pointed-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    default_runtime.mkdir()
+    pointed_runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={pointed_runtime}\nALFRED_QUEUE_REPOS=org/pointed\n",
+        encoding="utf-8",
+    )
+    (default_runtime / ".env").write_text(
+        "ALFRED_QUEUE_REPOS=org/default\n",
+        encoding="utf-8",
+    )
+    (pointed_runtime / ".env").write_text(
+        "ALFRED_QUEUE_REPOS=org/pointed-env\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(default_runtime)
+    assert env["ALFRED_QUEUE_REPOS"] == "org/default"
 
 
 def test_launcher_env_preserves_process_memory_scope_over_pointed_alfredrc(
@@ -254,7 +293,7 @@ def test_launcher_env_preserves_process_memory_scope_over_pointed_alfredrc(
     env = paths_mod.launcher_env()
 
     assert env["ALFREDRC"] == str(custom_rc)
-    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_HOME"] == str(stale_runtime)
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/process"
 
 

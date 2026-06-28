@@ -789,7 +789,7 @@ export async function saveSetupRepos(
   baseUrl: string,
   repos: string[],
 ): Promise<SetupSelectReposResponse> {
-  return writeAlfredJson(baseUrl, "/api/setup/repos", { repos });
+  return writeAlfredJson(baseUrl, "/api/setup/repos", { repos, queue_repos: repos });
 }
 
 export async function loadSetupPlaybooks(

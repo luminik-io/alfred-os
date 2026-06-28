@@ -643,9 +643,10 @@ def register_routes(app: FastAPI) -> None:
     async def api_setup_select_repos(request: Request) -> JSONResponse:
         """Persist the repos Alfred may work in.
 
-        Body: ``{"repos": ["owner/repo", ...]}``. Writes the queue + shipped
-        allowlist keys to ``$ALFRED_HOME/.env`` and mirrors them into the live
-        process so the new scope is effective without a restart.
+        Body: ``{"repos": ["owner/repo", ...], "queue_repos": [...]}``. Writes
+        the board allowlist keys to ``$ALFRED_HOME/.env`` and mirrors them into
+        the live process so the new scope is effective without a restart. The
+        queue mutation allowlist changes only when ``queue_repos`` is present.
         """
         if not _same_origin_post(request) or not _authorized_mutation(request):
             return JSONResponse({"error": "forbidden"}, status_code=403)
@@ -658,10 +659,19 @@ def register_routes(app: FastAPI) -> None:
                 {"error": "repos must be a list of owner/repo slugs"},
                 status_code=400,
             )
+        raw_queue_repos = body.get("queue_repos")
+        if raw_queue_repos is not None and not isinstance(raw_queue_repos, list):
+            return JSONResponse(
+                {"error": "queue_repos must be a list of owner/repo slugs"},
+                status_code=400,
+            )
         from server import setup as setup_mod
 
         try:
-            result = setup_mod.persist_selected_repos(raw_repos)
+            result = setup_mod.persist_selected_repos(
+                raw_repos,
+                queue_repos=raw_queue_repos,
+            )
         except (OSError, ValueError):
             logger.exception("api_setup_select_repos: failed to persist repo selection")
             return JSONResponse(
