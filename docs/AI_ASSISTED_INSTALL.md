@@ -70,8 +70,9 @@ Rules:
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
 - Use the full engineering fleet: Drake, Batman, Lucius, Ra's al Ghul, Bane,
-  Nightwing, Robin, Huntress, Gordon, automerge, cleanup, code-map refresh,
-  briefs, recaps, shipped summaries, and fleet doctor where available.
+  Nightwing, Robin, Huntress, Gordon, automerge, cleanup, memory harvest,
+  memory auto-promote, code-map refresh, briefs, recaps, shipped summaries, and
+  fleet doctor where available.
 - Keep Batman configured even for a one-repo install. It will only act when
   cross-repo or parent-plan work exists and remains runner-gated until
   `alfred enable batman`.
@@ -310,7 +311,8 @@ bash bin/doctor.sh
 
 Expected:
 
-- `alfred agents` lists the full engineering fleet, including gated agents.
+- `alfred agents` lists the full engineering fleet, including gated agents and
+  the memory harvest / auto-promote jobs.
 - `alfred auth status` shows Claude Code account routing and Codex status if
   Codex is installed.
 - `doctor.sh` reports the configured agents as pass, or names the exact missing

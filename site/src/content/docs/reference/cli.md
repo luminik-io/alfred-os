@@ -59,10 +59,11 @@ alfred-init
 
 `--agents` accepts `all`, `starter`, or comma-separated codenames. `all` is the
 default full engineering fleet. `starter` is an explicit small lab setup with
-Drake, Lucius, Ra's al Ghul, and agent-cleanup. `--repos` scopes every enabled
-repo-operating agent to explicit repos and is required for safe non-interactive
-setup when more than one repo is visible. The repo owner must match `GH_ORG`;
-shipped agents store bare repo names and build `GH_ORG/repo` when they fire.
+Drake, Lucius, Ra's al Ghul, agent-cleanup, memory-harvest, and
+memory-auto-promote. `--repos` scopes every enabled repo-operating agent to
+explicit repos and is required for safe non-interactive setup when more than one
+repo is visible. The repo owner must match `GH_ORG`; shipped agents store bare
+repo names and build `GH_ORG/repo` when they fire.
 
 ## `bin/alfred-batman-setup.py`
 

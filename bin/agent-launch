@@ -9,7 +9,8 @@
 #
 # Config lives in two files, loaded in this order:
 #
-#   1. ~/.alfredrc          - optional shell rc the operator may also source
+#   1. ${ALFREDRC:-~/.alfredrc}
+#                           - optional shell rc the operator may also source
 #                             interactively (export KEY=value).
 #   2. ${ALFRED_HOME}/.env  - the canonical runtime store. This is the same
 #                             file the Set up surface, alfred-setup-token,
@@ -21,8 +22,9 @@
 #                             scheduled firing instead of silently 401ing.
 #
 # Already-exported variables (real environment, or set by an earlier file) are
-# never clobbered, so a value in .alfredrc or the scheduler unit still wins
-# over the same key in .env.
+# not clobbered, so a value in .alfredrc or the scheduler unit still wins over
+# the same key in .env. Memory auto-promote stop controls are the exception:
+# an emergency opt-out or kill switch in .env must override stale enables.
 
 set -euo pipefail
 
@@ -34,8 +36,114 @@ fi
 SCRIPT="$1"
 shift
 
+strip_inline_comment() {
+  local value="$1" ch quote="" escaped=0 i previous=""
+  for ((i = 0; i < ${#value}; i++)); do
+    ch="${value:i:1}"
+    if [ "$escaped" -eq 1 ]; then
+      escaped=0
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "\\" ] && [ "$quote" != "'" ]; then
+      escaped=1
+      previous="$ch"
+      continue
+    fi
+    if [ -n "$quote" ]; then
+      if [ "$ch" = "$quote" ]; then
+        quote=""
+      fi
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "'" ] || [ "$ch" = '"' ]; then
+      quote="$ch"
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "#" ] && [ -n "$previous" ] && [[ "$previous" =~ [[:space:]] ]]; then
+      printf '%s' "${value:0:i}"
+      return
+    fi
+    previous="$ch"
+  done
+  printf '%s' "$value"
+}
+
+trim_env_value() {
+  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+memory_auto_promote_value_is_enabled() {
+  case "$1" in
+    1|true|yes|on|enabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+memory_auto_promote_value_is_disabled() {
+  case "$1" in
+    0|false|no|off|disabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+memory_auto_promote_stop_control_active() {
+  local key="$1" token
+  token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
+  [ -n "$token" ] || return 1
+  # All fail-closed auto-promote controls live here. In particular, malformed
+  # nonblank ALFRED_AUTO_PROMOTE_LLM_JUDGE values must override stale truthy
+  # values from .alfredrc or scheduler env so the LLM judge gate cannot be
+  # bypassed by a typo in the canonical runtime .env.
+  case "$key" in
+    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
+      memory_auto_promote_value_is_enabled "$token" && return 1
+      return 0
+      ;;
+    ALFRED_AUTO_PROMOTE_KILL)
+      memory_auto_promote_value_is_disabled "$token" && return 1
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+ORIGINAL_ENV_KEYS=":$(env | sed 's/=.*//' | tr '\n' ':')"
+
+original_env_has_key() {
+  case "$ORIGINAL_ENV_KEYS" in
+    *:"$1":*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+expand_user_path() {
+  local path="$1" expanded=""
+  case "$path" in
+    "~") printf '%s' "$HOME" ;;
+    "~"/*) printf '%s/%s' "$HOME" "${path#\~/}" ;;
+    "~"*)
+      expanded="$(python3 - "$path" <<'PY' 2>/dev/null || true
+import os
+import sys
+
+print(os.path.expanduser(sys.argv[1]))
+PY
+)"
+      if [ -n "$expanded" ]; then
+        printf '%s' "$expanded"
+      else
+        printf '%s' "$path"
+      fi
+      ;;
+    *) printf '%s' "$path" ;;
+  esac
+}
+
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" line key value quote_style
+  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" file_overrides_process_runtime="${5:-}" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -77,22 +185,64 @@ load_env_file() {
         continue
         ;;
     esac
-    # In no-clobber mode, an already-exported value (real environment or an
-    # earlier-loaded file) wins. Keeps .env a gap-filler, not an override.
-    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
-      continue
-    fi
+    value="$(trim_env_value "$(strip_inline_comment "$value")")"
     quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
     if [ "$quote_style" != "single" ]; then
       value="${value//\$\{HOME\}/$HOME}"
       value="${value//\$HOME/$HOME}"
     fi
+    # In no-clobber mode, an already-exported value (real environment or an
+    # earlier-loaded file) wins. Keeps .env a gap-filler, not an override,
+    # except for fail-closed memory stop controls.
+    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
+      if [ "$key" = "ALFREDRC" ] && [ "$allow_alfredrc_pointer" = "allow_alfredrc_pointer" ]; then
+        export "$key=$value"
+        continue
+      fi
+      existing_value="${!key}"
+      if memory_auto_promote_stop_control_active "$key" "$existing_value"; then
+        continue
+      fi
+      if ! memory_auto_promote_stop_control_active "$key" "$value"; then
+        if [ "$file_overrides_existing" = "file_overrides_existing" ] && {
+          ! original_env_has_key "$key" || {
+            [ "$file_overrides_process_runtime" = "file_overrides_process_runtime" ] &&
+              { [ "$key" = "ALFRED_HOME" ] || [ "$key" = "ALFRED_FLEET_BRAIN_DB" ]; }
+          }
+        }; then
+          export "$key=$value"
+          continue
+        fi
+        continue
+      fi
+    fi
     export "$key=$value"
   done < "$file"
 }
 
-load_env_file "$HOME/.alfredrc"
+load_selected_alfredrc() {
+  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" allow_alfredrc_pointer="allow_alfredrc_pointer" direct_selected_alfredrc=""
+  if original_env_has_key "ALFREDRC" && [ -n "${ALFREDRC:-}" ]; then
+    direct_selected_alfredrc="direct_selected_alfredrc"
+  fi
+  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
+  ALFREDRC="$selected_alfredrc"
+  export ALFREDRC
+  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+    load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer" file_overrides_existing file_overrides_process_runtime
+  else
+    load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer"
+  fi
+  if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
+    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
+    ALFREDRC="$selected_alfredrc"
+    export ALFREDRC
+    load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing file_overrides_process_runtime
+  fi
+}
+
+load_selected_alfredrc
 
 : "${ALFRED_HOME:=$HOME/.alfred}"
 
@@ -102,7 +252,7 @@ load_env_file "$ALFRED_HOME/.env" no_clobber
 
 : "${WORKSPACE_ROOT:=$HOME/code}"
 
-export ALFRED_HOME WORKSPACE_ROOT
+export ALFRED_HOME WORKSPACE_ROOT ALFREDRC
 
 case "$SCRIPT" in
   */*) TARGET="$SCRIPT" ;;

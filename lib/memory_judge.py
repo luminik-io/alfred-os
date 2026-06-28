@@ -113,16 +113,26 @@ class JudgeVerdict:
 def judge_enabled(env: Mapping[str, str] | None = None) -> bool:
     """True unless explicitly disabled.
 
-    The judge defaults ON when auto-promotion is armed (the operator's ask:
-    have the model decide). Set ``ALFRED_AUTO_PROMOTE_LLM_JUDGE`` to a falsy
-    value (``0``/``false``/``no``/``off``) to fall back to the pure heuristic
-    gate. Note this is only consulted from inside ``auto_promote_candidates``,
-    which is itself already gated behind ``ALFRED_AUTO_PROMOTE``."""
+    The judge defaults ON because the operator's ask is to have the model
+    decide. Set ``ALFRED_AUTO_PROMOTE_LLM_JUDGE`` to a falsy value
+    (``0``/``false``/``no``/``off``/``disabled``) to fall back to the pure
+    heuristic gate. Malformed nonblank values fail closed. Note this is only
+    consulted when ``auto_promote_candidates`` is enabled."""
     src = env if env is not None else os.environ
     raw = src.get("ALFRED_AUTO_PROMOTE_LLM_JUDGE")
-    if raw is None or not str(raw).strip():
-        return True  # default ON when armed
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+    value = _env_token(raw)
+    if raw is None or not value:
+        return True  # default ON for autonomous memory
+    return value in {"1", "true", "yes", "on", "enabled"}
+
+
+def _env_token(raw: object) -> str:
+    value = str(raw).strip()
+    for index, ch in enumerate(value):
+        if ch == "#" and index > 0 and value[index - 1].isspace():
+            value = value[:index].rstrip()
+            break
+    return value.strip().lower()
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -219,12 +229,13 @@ def parse_verdict(raw: str | None) -> JudgeVerdict | None:
     )
 
 
-def default_judge() -> JudgeInvoker:
+def default_judge(env: Mapping[str, str] | None = None) -> JudgeInvoker:
     """Resolve the real CLI judge lazily (claude -p, read-only).
 
     Imported lazily so this module stays importable on a brain-only host and
     so tests that inject a stub never import the heavy runner. Returns ``None``
     (never raises) on any dispatch failure, so the caller fails soft."""
+    env_src = env if env is not None else os.environ
 
     def _invoke(prompt: str) -> str | None:
         try:
@@ -234,11 +245,11 @@ def default_judge() -> JudgeInvoker:
         try:
             result = claude_invoke(
                 prompt,
-                workdir=Path(os.environ.get("ALFRED_HOME", ".")),
+                workdir=Path(env_src.get("ALFRED_HOME", ".")),
                 # Read-only judgment: no tools needed.
                 allowed_tools="",
                 max_turns=1,
-                timeout=int(os.environ.get("ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT", "120")),
+                timeout=int(env_src.get("ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT", "120")),
             )
         except Exception:
             return None
@@ -255,10 +266,11 @@ def judge_candidate(
     body: str,
     evidence: Any,
     judge: JudgeInvoker | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> JudgeVerdict | None:
     """Run the LLM judge on one candidate. Never raises; returns None on any
     failure so the caller falls back to the heuristic gate."""
-    invoke = judge or default_judge()
+    invoke = judge or default_judge(env)
     prompt = build_judge_prompt(topic=topic, body=body, evidence=evidence)
     try:
         raw = invoke(prompt)

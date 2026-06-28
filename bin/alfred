@@ -185,6 +185,16 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
         "role": "agent cleanup",
     },
     "cleanup": {"script": "agent-cleanup.py", "schedule": "cron:3:00", "role": "agent cleanup"},
+    "memory-harvest": {
+        "script": "memory-harvest.py",
+        "schedule": "cron:8:05",
+        "role": "memory harvest",
+    },
+    "memory-auto-promote": {
+        "script": "memory-auto-promote.py",
+        "schedule": "cron:8:20",
+        "role": "memory auto-promote",
+    },
     "code-map-refresh": {
         "script": "code-map-refresh.py",
         "schedule": "interval:21600",

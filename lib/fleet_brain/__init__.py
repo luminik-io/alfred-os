@@ -113,6 +113,7 @@ __all__ = [
     "WorkerStatus",
     "default_db_path",
     "densify_enabled",
+    "direct_auto_promote_env",
     "edges_for_file_touch",
     "new_id",
     "owners_for_path",
@@ -151,8 +152,10 @@ _NON_ACTIONABLE_FAILURE_SUBTYPES = {
 }
 
 # Auto-promotion defaults. Every one is env-tunable so a deployment can tune
-# the gate without a code change, and all of it is OFF until ALFRED_AUTO_PROMOTE
-# is explicitly set (see ``FleetBrain.auto_promote_enabled``).
+# the gate without a code change. Auto-promotion is ON by default when the flag
+# is unset/blank or a recognized truthy value: the LLM judge is the primary
+# save/skip decision, while ``ALFRED_AUTO_PROMOTE=0``, malformed nonblank
+# values, and ``ALFRED_AUTO_PROMOTE_KILL=1`` fail closed.
 # The threshold is a LIGHT pre-filter, not the decision: any evidenced
 # candidate (candidates default to confidence 0.5) must reach the LLM judge,
 # which makes the real save/skip call. Memory has to capture AND save
@@ -173,6 +176,14 @@ AUTO_PROMOTE_NO_JUDGE_THRESHOLD = 0.9
 # never re-judge the row, so a held candidate cannot starve the per-run judge
 # budget or re-post the same alert every run.
 _AUTO_HELD_MARKER = "[held-for-review]"
+_TRUTHY_ENV_TOKENS = {"1", "true", "yes", "on", "enabled"}
+_FALSY_ENV_TOKENS = {"0", "false", "no", "off", "disabled"}
+_RECOGNIZED_ENV_TOKENS = _TRUTHY_ENV_TOKENS | _FALSY_ENV_TOKENS
+_AUTO_PROMOTE_STOP_KEYS = {
+    "ALFRED_AUTO_PROMOTE",
+    "ALFRED_AUTO_PROMOTE_KILL",
+    "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+}
 
 # Promoted lessons are written to Redis AMS under a deterministic id derived
 # from the candidate. This makes the write idempotent (a re-promote upserts the
@@ -194,10 +205,180 @@ class MemoryPromotionError(RuntimeError):
     """
 
 
-def _env_flag_on(name: str, env: Mapping[str, str] | None = None) -> bool:
-    """True only for an explicit truthy token (1/true/yes/on)."""
+def _env_kill_switch_on(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """Default off, but treat malformed nonblank values as enabled."""
     src = env if env is not None else os.environ
-    return str(src.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+    raw = src.get(name)
+    value = _env_token(raw)
+    if raw is None or not value:
+        return False
+    return value not in _FALSY_ENV_TOKENS
+
+
+def _env_flag_default_on(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """Default to ON, but fail closed for any unrecognized nonblank value."""
+    src = env if env is not None else os.environ
+    raw = src.get(name)
+    value = _env_token(raw)
+    if raw is None or not value:
+        return True
+    if value in _TRUTHY_ENV_TOKENS:
+        return True
+    if value in _FALSY_ENV_TOKENS:
+        return False
+    return False
+
+
+def _env_flag_recognized_or_blank(name: str, env: Mapping[str, str] | None = None) -> bool:
+    """True when a flag is absent, blank, or a recognized truthy/falsy token."""
+    src = env if env is not None else os.environ
+    raw = src.get(name)
+    value = _env_token(raw)
+    if raw is None or not value:
+        return True
+    return value in _RECOGNIZED_ENV_TOKENS
+
+
+def _llm_judge_flag_allows_auto_promote(env: Mapping[str, str] | None = None) -> bool:
+    return _env_flag_recognized_or_blank("ALFRED_AUTO_PROMOTE_LLM_JUDGE", env)
+
+
+def _auto_promote_switches_allow_learning(env: Mapping[str, str] | None = None) -> bool:
+    if _env_kill_switch_on("ALFRED_AUTO_PROMOTE_KILL", env):
+        return False
+    if not _llm_judge_flag_allows_auto_promote(env):
+        return False
+    return _env_flag_default_on("ALFRED_AUTO_PROMOTE", env)
+
+
+def _strip_shell_inline_comment(value: str) -> str:
+    """Strip shell-style inline comments while preserving quoted hashes."""
+    quote: str | None = None
+    escaped = False
+    for index, ch in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            continue
+        if ch == "#" and index > 0 and value[index - 1].isspace():
+            return value[:index].rstrip()
+    return value
+
+
+def _env_token(raw: object) -> str:
+    """Normalize env flag values, accepting shell-style trailing comments."""
+    value = _strip_shell_inline_comment(str(raw)).strip()
+    return value.strip().lower()
+
+
+def _auto_promote_stop_control_active(name: str, raw: object) -> bool:
+    if name not in _AUTO_PROMOTE_STOP_KEYS:
+        return False
+    value = _env_token(raw)
+    if not value:
+        return False
+    if name in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
+        return value not in _TRUTHY_ENV_TOKENS
+    if name == "ALFRED_AUTO_PROMOTE_KILL":
+        return value not in _FALSY_ENV_TOKENS
+    return False
+
+
+def _decode_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
+        return value[1:-1].replace("'\"'\"'", "'")
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1]
+    return value
+
+
+def _expand_home(value: str) -> str:
+    return value.replace("${HOME}", str(Path.home())).replace("$HOME", str(Path.home()))
+
+
+def _load_auto_promote_env_file(
+    path: Path,
+    env: dict[str, str],
+    *,
+    allow_alfredrc_pointer: bool = False,
+    override_existing: bool = False,
+    protected_keys: set[str] | None = None,
+    protected_key_overrides: set[str] | None = None,
+) -> None:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    protected = protected_keys or set()
+    protected_overrides = protected_key_overrides or set()
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        key, _, raw_value = line.partition("=")
+        key = key.strip()
+        if not key or key[0].isdigit() or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            continue
+        raw_value = _strip_shell_inline_comment(raw_value).strip()
+        value = _decode_env_value(raw_value)
+        if not (raw_value.startswith("'") and raw_value.endswith("'")):
+            value = _expand_home(value)
+        if key in env:
+            if key == "ALFREDRC" and allow_alfredrc_pointer:
+                env[key] = value
+                continue
+            if _auto_promote_stop_control_active(key, env[key]):
+                continue
+            if not _auto_promote_stop_control_active(key, value) and (
+                not override_existing or (key in protected and key not in protected_overrides)
+            ):
+                continue
+        env[key] = value
+
+
+def direct_auto_promote_env() -> dict[str, str]:
+    env = dict(os.environ)
+    process_keys = set(os.environ)
+    selected_rc = Path(env.get("ALFREDRC") or "~/.alfredrc").expanduser()
+    direct_selected_rc = bool(os.environ.get("ALFREDRC", "").strip())
+    env["ALFREDRC"] = str(selected_rc)
+    _load_auto_promote_env_file(
+        selected_rc,
+        env,
+        allow_alfredrc_pointer=True,
+        override_existing=direct_selected_rc,
+        protected_keys=process_keys,
+        protected_key_overrides=(
+            {"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"} if direct_selected_rc else set()
+        ),
+    )
+    pointed_rc = Path(env.get("ALFREDRC") or str(selected_rc)).expanduser()
+    if pointed_rc != selected_rc:
+        env["ALFREDRC"] = str(pointed_rc)
+        _load_auto_promote_env_file(
+            pointed_rc,
+            env,
+            override_existing=True,
+            protected_keys=process_keys,
+            protected_key_overrides={"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"},
+        )
+    env.setdefault("ALFRED_HOME", str(Path("~/.alfred").expanduser()))
+    _load_auto_promote_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
+    return env
+
+
+_direct_auto_promote_env = direct_auto_promote_env
 
 
 def _env_float(name: str, default: float, env: Mapping[str, str] | None = None) -> float:
@@ -607,7 +788,7 @@ class FleetBrain:
         )
         return self.store.insert_memory_candidate(candidate)
 
-    def _lesson_provider(self) -> Any:
+    def _lesson_provider(self, env: Mapping[str, str] | None = None) -> Any:
         """Build the Redis AMS provider, the promoted-lesson backend.
 
         Imported lazily to avoid an import cycle: the provider imports
@@ -615,7 +796,7 @@ class FleetBrain:
         """
         from memory.redis_agent_memory import RedisAgentMemoryProvider
 
-        return RedisAgentMemoryProvider.from_env()
+        return RedisAgentMemoryProvider.from_env(env=env)
 
     def promote_memory_candidate(
         self,
@@ -625,6 +806,7 @@ class FleetBrain:
         review_note: str = "",
         reviewed_at: datetime | None = None,
         lesson_writer: Any | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> Lesson:
         """Promote a candidate into a trusted lesson, written to Redis AMS.
 
@@ -656,7 +838,7 @@ class FleetBrain:
         # ams_write_error) rather than a raw exception / CLI traceback.
         try:
             if lesson_writer is None:
-                lesson_writer = self._lesson_provider()
+                lesson_writer = self._lesson_provider(env=env)
             lesson = lesson_writer.reflect(
                 codename=candidate.codename,
                 repo=candidate.repo,
@@ -715,15 +897,23 @@ class FleetBrain:
         return self.store.update_memory_candidate(updated)
 
     def auto_promote_enabled(self, env: Mapping[str, str] | None = None) -> bool:
-        """True only when armed AND not kill-switched.
+        """True unless explicitly disabled or kill-switched.
 
-        OFF by default: ``auto_promote_candidates`` returns immediately (a true
-        no-op, no writes) unless ``ALFRED_AUTO_PROMOTE`` is truthy.
-        ``ALFRED_AUTO_PROMOTE_KILL`` wins over the arm flag so a bad batch can
-        be stopped without un-setting the deployment config."""
-        if _env_flag_on("ALFRED_AUTO_PROMOTE_KILL", env):
-            return False
-        return _env_flag_on("ALFRED_AUTO_PROMOTE", env)
+        Memory should learn autonomously: evidenced candidates reach the LLM
+        judge by default and the judge decides whether to save. Operators can
+        set ``ALFRED_AUTO_PROMOTE=0`` for a normal opt-out; malformed nonblank
+        values fail closed too. ``ALFRED_AUTO_PROMOTE_KILL=1`` wins over
+        everything so a bad batch can be halted without editing the rest of the
+        deployment config."""
+        env_src = self._auto_promote_env(env)
+        return _auto_promote_switches_allow_learning(env_src)
+
+    def _auto_promote_env(self, env: Mapping[str, str] | None = None) -> Mapping[str, str]:
+        if env is not None:
+            return env
+        if self._env is not None:
+            return self._env
+        return _direct_auto_promote_env()
 
     def hold_candidate_for_review(
         self, candidate_id: str, *, note: str = ""
@@ -760,7 +950,7 @@ class FleetBrain:
 
         Structural gate (every condition must hold):
 
-          * the master arm flag is on and the kill-switch is off
+          * the opt-out flag is not off and the kill-switch is off
             (``auto_promote_enabled``); otherwise this is a NO-OP that touches
             nothing and the manual queue is unchanged;
           * the candidate is still ``candidate`` and not already held for a
@@ -774,7 +964,7 @@ class FleetBrain:
             pre-filter so any evidenced candidate reaches the judge, which is
             the real save/skip decision (autonomous LLM-driven capture+save).
 
-        LLM judge (additive, default ON when armed, gated behind
+        LLM judge (additive, default ON, gated behind
         ``ALFRED_AUTO_PROMOTE_LLM_JUDGE``): for each candidate that clears the
         structural gate, an LLM is asked whether the lesson is safe to save.
         The verdict shapes the outcome:
@@ -796,7 +986,7 @@ class FleetBrain:
         ``reviewer="auto"`` so the whole batch stays auditable. ``judge`` is an
         injectable ``str -> str|None`` seam; tests pass a stub so no real model
         process is spawned. Returns a summary dict (always safe to log)."""
-        env_src = env if env is not None else os.environ
+        env_src = self._auto_promote_env(env)
         summary: dict[str, Any] = {
             "enabled": self.auto_promote_enabled(env_src),
             "judge_enabled": False,
@@ -821,7 +1011,7 @@ class FleetBrain:
             "ams_write_errors": 0,
         }
         if not summary["enabled"]:
-            # No-op when disarmed: do not even read the queue.
+            # No-op when explicitly disabled: do not even read the queue.
             return summary
 
         from memory_judge import judge_candidate, judge_enabled
@@ -930,6 +1120,7 @@ class FleetBrain:
                     body=candidate.body or "",
                     evidence=candidate.evidence or "",
                     judge=judge,
+                    env=env_src,
                 )
                 if verdict is None:
                     # FAIL-SOFT: a failed/empty/unparseable judgment must NEVER
@@ -979,7 +1170,12 @@ class FleetBrain:
                     )
 
             try:
-                self.promote_memory_candidate(candidate.id, reviewer=reviewer, review_note=note)
+                self.promote_memory_candidate(
+                    candidate.id,
+                    reviewer=reviewer,
+                    review_note=note,
+                    env=env_src,
+                )
             except ValueError:
                 # The candidate changed under us (already promoted/rejected by a
                 # concurrent reviewer). Skip without counting it.

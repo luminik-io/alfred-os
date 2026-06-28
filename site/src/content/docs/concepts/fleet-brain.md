@@ -135,14 +135,20 @@ reviewed lessons with `memory sync now`.
 
 For unattended fleets, schedule `memory-harvest.py` from launchd or systemd. It
 queues the same reviewable repeated-failure candidates and nudges Slack only
-when there is something to review. It does not promote lessons or sync Redis.
+when there is something to review. The starter fleet also schedules
+`memory-auto-promote.py`, which saves only judged, evidenced candidates.
 
 ## Autonomous capture and save
 
 The goal is that memory captures AND saves itself through the LLMs, not through a
 human review queue. `alfred brain auto-promote` makes an LLM safety judge the
-primary save decision. It is a no-op unless you arm `ALFRED_AUTO_PROMOTE`. When
-armed, the structural confidence bar (default 0.5,
+primary save decision. It is enabled by default when `ALFRED_AUTO_PROMOTE` is
+unset, blank, or a recognized truthy value (`1`, `true`, `yes`, `on`,
+`enabled`). Set `ALFRED_AUTO_PROMOTE=0` to opt out, or
+`ALFRED_AUTO_PROMOTE_KILL=1` to halt it immediately. Any other nonblank
+`ALFRED_AUTO_PROMOTE` value fails closed.
+
+The structural confidence bar (default 0.5,
 `ALFRED_AUTO_PROMOTE_THRESHOLD`) is a light pre-filter, and the judge
 (`lib/memory_judge.py`) decides: it saves both safe and behavior-changing
 lessons (behavior-changing is no longer held for a human, and every auto-save is

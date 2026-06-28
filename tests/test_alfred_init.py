@@ -80,10 +80,14 @@ def test_discover_agents_handles_scheduled_utilities(tmp_path, init_mod):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "fleet-doctor.py").write_text("# doctor\n")
+    (bin_dir / "memory-harvest.py").write_text("# harvest\n")
+    (bin_dir / "memory-auto-promote.py").write_text("# auto promote\n")
     (bin_dir / "shipped-summary-daily.sh").write_text("#!/bin/sh\n")
     (bin_dir / "shipped-summary-weekly.sh").write_text("#!/bin/sh\n")
     out = init_mod.discover_agents(bin_dir)
     assert "fleet_doctor" in out
+    assert "memory_harvest" in out
+    assert "memory_auto_promote" in out
     assert "shipped_summary_daily" in out
     assert "shipped_summary_weekly" in out
 
@@ -157,6 +161,19 @@ def test_render_agents_conf_schedules_health_and_shipped_reports(init_mod, tmp_p
     assert "alfred.shipped-summary-daily\tshipped-summary-daily.sh\tcron:7:35" in text
     assert "alfred.shipped-summary-weekly\tshipped-summary-weekly.sh\tcron:1:7:35" in text
     assert text.count("\talfred.shipped-summary\tshipped summary") == 2
+
+
+def test_render_agents_conf_schedules_memory_learning_jobs(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_harvest", "memory_auto_promote"))
+    text = init_mod.render_agents_conf(state)
+    assert (
+        "alfred.memory-harvest\tmemory-harvest.py\tcron:8:05\tno\t"
+        "alfred.memory-harvest\tmemory harvest" in text
+    )
+    assert (
+        "alfred.memory-auto-promote\tmemory-auto-promote.py\tcron:8:20\tno\t"
+        "alfred.memory-auto-promote\tmemory auto-promote" in text
+    )
 
 
 def test_render_agents_conf_custom_codename(init_mod, tmp_path):
@@ -517,6 +534,37 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
     assert out["ALFRED_HUNTRESS_AWS_PROFILE"] == "acme-cron"
 
 
+def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_AUTO_PROMOTE=0",
+                "ALFRED_AUTO_PROMOTE_KILL=1",
+                "",
+            ]
+        )
+    )
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+
+
+def test_env_assignments_use_alfredrc_stop_control_over_runtime_env(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE=0\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+
+
 # ---------------------------------------------------------------------------
 # telemetry endpoint / opt-out behavior
 # ---------------------------------------------------------------------------
@@ -771,6 +819,68 @@ def test_read_alfredrc_parses_kv_and_strips_quotes(tmp_path, init_mod):
     assert out["QUOTED"] == "hello world"
 
 
+def test_read_alfredrc_strips_inline_comments_without_touching_quoted_hashes(tmp_path, init_mod):
+    rc = tmp_path / ".alfredrc"
+    rc.write_text(
+        "\n".join(
+            [
+                "ALFRED_AUTO_PROMOTE=0 # opted out",
+                "ALFRED_AUTO_PROMOTE_KILL=1 # halt",
+                "TOPIC='memory # literal' # comment",
+                'BODY="ship # literal" # comment',
+                "TOKEN=abc#not-comment",
+                "HASH_TOKEN=#abc",
+                "EMPTY= # comment",
+                "",
+            ]
+        )
+    )
+
+    out = init_mod.read_alfredrc(rc)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert out["TOPIC"] == "memory # literal"
+    assert out["BODY"] == "ship # literal"
+    assert out["TOKEN"] == "abc#not-comment"
+    assert out["HASH_TOKEN"] == "#abc"
+    assert out["EMPTY"] == ""
+
+
+def test_env_assignments_preserve_runtime_stop_control_over_stale_alfredrc(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE=1\nALFRED_AUTO_PROMOTE_KILL=0\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE"] == "0"
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+
+
+def test_env_assignments_preserve_malformed_runtime_kill_over_stale_alfredrc(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_KILL=fales\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE_KILL=0\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "fales"
+
+
+def test_env_assignments_preserve_runtime_judge_stop_over_stale_alfredrc(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=1\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
+
+
 def test_upsert_alfredrc_idempotent(tmp_path, init_mod):
     rc = tmp_path / ".alfredrc"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")
@@ -838,6 +948,155 @@ def test_upsert_alfredrc_quotes_shell_metacharacters(tmp_path, init_mod):
     assert res.returncode == 0, res.stderr
     assert res.stdout.splitlines() == [url, token, quote_token]
     assert not marker.exists()
+
+
+def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
+    monkeypatch, tmp_path, init_mod
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfredrc = tmp_path / "custom.alfredrc"
+    launch_rc = home / ".alfredrc"
+    launch_rc.write_text(
+        "\n".join(
+            [
+                "MANUAL=value",
+                "",
+                init_mod.ALFREDRC_BANNER,
+                "GH_ORG=acme",
+                "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/A/B/C",
+                "",
+            ]
+        )
+    )
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {
+            "ALFRED_AUTO_PROMOTE": "0",
+            "ALFRED_AUTO_PROMOTE_KILL": "1",
+            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "treu",
+            "GH_ORG": "acme",
+        },
+    )
+
+    assert mirrored == 3
+    parsed = init_mod.read_alfredrc(launch_rc)
+    assert parsed["MANUAL"] == "value"
+    assert parsed["GH_ORG"] == "acme"
+    assert parsed["SLACK_WEBHOOK_URL"] == "https://hooks.slack.com/services/A/B/C"
+    assert parsed["ALFREDRC"] == str(state.alfredrc)
+    assert parsed["ALFRED_AUTO_PROMOTE"] == "0"
+    assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert parsed["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
+    text = launch_rc.read_text()
+    assert text.count(init_mod.ALFREDRC_BANNER) == 1
+    assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {
+            "ALFRED_AUTO_PROMOTE": "off",
+            "ALFRED_AUTO_PROMOTE_KILL": "1",
+            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0",
+        },
+    )
+
+    assert mirrored == 3
+    parsed = init_mod.read_alfredrc(launch_rc)
+    assert parsed["GH_ORG"] == "acme"
+    assert parsed["ALFREDRC"] == str(state.alfredrc)
+    assert parsed["ALFRED_AUTO_PROMOTE"] == "off"
+    assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert parsed["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "0"
+    text = launch_rc.read_text()
+    assert text.count(init_mod.ALFREDRC_BANNER) == 1
+    assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
+
+
+def test_custom_alfredrc_pointer_is_persisted_without_memory_stop_controls(
+    monkeypatch, tmp_path, init_mod
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("lucius",))
+    state.alfredrc = tmp_path / "custom.alfredrc"
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {"GH_ORG": "acme"},
+    )
+
+    assert mirrored == 0
+    parsed = init_mod.read_alfredrc(home / ".alfredrc")
+    assert parsed["ALFREDRC"] == str(state.alfredrc)
+
+
+def test_selected_alfredrc_pointer_file_is_persisted(tmp_path, init_mod):
+    state = _state_with(init_mod, tmp_path, roles=("lucius",))
+    state.alfredrc = tmp_path / "custom.alfredrc"
+
+    pointer = init_mod.persist_alfredrc_pointer(state)
+
+    assert pointer == state.alfred_home / "launchd" / "alfredrc.path"
+    assert pointer.read_text(encoding="utf-8") == f"{state.alfredrc}\n"
+
+
+def test_mirror_memory_stop_controls_skips_default_alfredrc(monkeypatch, tmp_path, init_mod):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfredrc = home / ".alfredrc"
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {"ALFRED_AUTO_PROMOTE": "0"},
+    )
+
+    assert mirrored == 0
+    assert not (home / ".alfredrc").exists()
+
+
+def test_mirror_memory_stop_controls_removes_stale_pointer_block_for_default_alfredrc(
+    monkeypatch, tmp_path, init_mod
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfredrc = home / ".alfredrc"
+    stale_custom_rc = tmp_path / "stale-custom.alfredrc"
+    launch_rc = home / ".alfredrc"
+    launch_rc.write_text(
+        "\n".join(
+            [
+                "MANUAL=value",
+                "",
+                init_mod.ALFREDRC_MEMORY_STOP_BANNER,
+                f"ALFREDRC={stale_custom_rc}",
+                "ALFRED_AUTO_PROMOTE=0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {"ALFRED_AUTO_PROMOTE": "1"},
+    )
+
+    assert mirrored == 0
+    text = launch_rc.read_text(encoding="utf-8")
+    parsed = init_mod.read_alfredrc(launch_rc)
+    assert parsed["MANUAL"] == "value"
+    assert "ALFREDRC" not in parsed
+    assert "ALFRED_AUTO_PROMOTE" not in parsed
+    assert init_mod.ALFREDRC_MEMORY_STOP_BANNER not in text
 
 
 # ---------------------------------------------------------------------------
@@ -1317,12 +1576,22 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
 
 
 def test_starter_roles_and_agents_arg(init_mod):
-    available = ["feature_dev", "planner", "cross_repo_coordinator", "pr_review", "agent_cleanup"]
+    available = [
+        "feature_dev",
+        "planner",
+        "cross_repo_coordinator",
+        "pr_review",
+        "agent_cleanup",
+        "memory_harvest",
+        "memory_auto_promote",
+    ]
     assert init_mod.starter_roles(available) == [
         "planner",
         "feature_dev",
         "pr_review",
         "agent_cleanup",
+        "memory_harvest",
+        "memory_auto_promote",
     ]
     assert init_mod.recommended_roles(available) == available
     assert init_mod.roles_from_agents_arg("", available) == available
@@ -1340,6 +1609,8 @@ def test_starter_roles_and_agents_arg(init_mod):
         "feature_dev",
         "pr_review",
         "agent_cleanup",
+        "memory_harvest",
+        "memory_auto_promote",
         "cross_repo_coordinator",
     ]
 

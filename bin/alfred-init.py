@@ -114,6 +114,18 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
         False,
         "cron:3:00",
     ),
+    "memory_harvest": (
+        "memory-harvest",
+        "memory harvest (queues repeated failure and reflection lessons)",
+        False,
+        "cron:8:05",
+    ),
+    "memory_auto_promote": (
+        "memory-auto-promote",
+        "memory auto-promote (LLM-judges queued lessons into recall)",
+        False,
+        "cron:8:20",
+    ),
     "code_map_refresh": (
         "code-map-refresh",
         "code map refresh (regenerates per-repo skeleton)",
@@ -163,7 +175,14 @@ CODENAME_TO_ROLE: dict[str, str] = {
     default: role for role, (default, _, _, _) in AGENT_CATALOG.items()
 }
 
-STARTER_ROLES = ("planner", "feature_dev", "pr_review", "agent_cleanup")
+STARTER_ROLES = (
+    "planner",
+    "feature_dev",
+    "pr_review",
+    "agent_cleanup",
+    "memory_harvest",
+    "memory_auto_promote",
+)
 OPT_IN_ROLES = {"cross_repo_coordinator"}
 CONFIG_GATED_ROLE_ENVS = {
     "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),
@@ -184,6 +203,11 @@ MORNING_BRIEF_EXCLUDED_ROLES = {
     "shipped_summary_daily",
     "shipped_summary_weekly",
 }
+MEMORY_AUTO_PROMOTE_CONTROL_ENVS = (
+    "ALFRED_AUTO_PROMOTE",
+    "ALFRED_AUTO_PROMOTE_KILL",
+    "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+)
 
 # The only strings that count as an explicit opt-in for a privacy-sensitive
 # consent flag. Anything else (including "false", "0", "no", "", or any other
@@ -270,6 +294,14 @@ ALFREDRC_BANNER = "# alfred-init, generated below this line. Safe to re-run."
 # uses a comma). upsert_alfredrc relies on this so an upgrade rewrites the
 # existing managed block in place instead of appending a duplicate.
 ALFREDRC_BANNER_RE = re.compile(r"# alfred-init.{1,4}generated below this line\. Safe to re-run\.")
+ALFREDRC_MEMORY_STOP_BANNER = (
+    "# alfred-init scheduler rc pointer and memory stop controls, generated below this line. "
+    "Safe to re-run."
+)
+ALFREDRC_MEMORY_STOP_BANNER_RE = re.compile(
+    r"# alfred-init (?:scheduler rc pointer and memory stop controls|memory stop controls), "
+    r"generated below this line\. Safe to re-run\."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +487,7 @@ def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
             continue
         k, _, v = line.partition("=")
         k = k.strip()
-        v = v.strip()
+        v = strip_inline_comment(v).strip()
         try:
             parsed = shlex.split(v)
         except ValueError:
@@ -467,6 +499,29 @@ def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
         if k:
             out[k] = v
     return out
+
+
+def strip_inline_comment(value: str) -> str:
+    """Strip shell-style inline comments while preserving quoted hashes."""
+    quote: str | None = None
+    escaped = False
+    for index, ch in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            continue
+        if ch == "#" and index > 0 and value[index - 1].isspace():
+            return value[:index].rstrip()
+    return value
 
 
 def read_alfredrc(path: Path) -> dict[str, str]:
@@ -511,21 +566,80 @@ def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
     Idempotent: rewrites the marker block on every call so re-running
     the wizard doesn't accumulate dupes.
     """
+    upsert_alfredrc_block(path, kvs, ALFREDRC_BANNER, ALFREDRC_BANNER_RE)
+
+
+def upsert_alfredrc_block(
+    path: Path,
+    kvs: dict[str, str],
+    banner: str,
+    banner_re: re.Pattern[str],
+) -> None:
+    """Add or update keys in an idempotent generated rc block."""
     if not kvs:
         return
     existing = path.read_text() if path.exists() else ""
-    # Strip any prior alfred-init block (current or older-release banner) so
-    # we re-emit fresh values instead of accumulating a duplicate section.
-    prior = ALFREDRC_BANNER_RE.search(existing)
+    # Strip any prior generated block for this marker so we re-emit fresh
+    # values instead of accumulating a duplicate section.
+    prior = banner_re.search(existing)
     if prior:
         existing = existing[: prior.start()].rstrip() + "\n"
-    block = [ALFREDRC_BANNER]
+    block = [banner]
     for k, v in kvs.items():
         block.append(f"{k}={quote_alfredrc_value(v)}")
     new = existing.rstrip() + "\n\n" + "\n".join(block) + "\n"
     path.write_text(new)
     with contextlib.suppress(OSError):
         path.chmod(0o600)
+
+
+def remove_alfredrc_block(path: Path, banner_re: re.Pattern[str]) -> None:
+    """Remove a generated rc block and its managed values, if present."""
+    if not path.exists():
+        return
+    existing = path.read_text()
+    prior = banner_re.search(existing)
+    if not prior:
+        return
+    new = existing[: prior.start()].rstrip()
+    if not new:
+        with contextlib.suppress(OSError):
+            path.unlink()
+        return
+    path.write_text(new + "\n")
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+
+
+def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[str, str]) -> int:
+    """Mirror custom rc path and emergency memory controls into scheduled jobs source."""
+    launch_rc = Path.home() / ".alfredrc"
+    if launch_rc == state.alfredrc:
+        remove_alfredrc_block(launch_rc, ALFREDRC_MEMORY_STOP_BANNER_RE)
+        return 0
+    controls = {
+        key: value
+        for key, value in env_kvs.items()
+        if key in MEMORY_AUTO_PROMOTE_CONTROL_ENVS and value.strip()
+    }
+    values = {"ALFREDRC": str(state.alfredrc), **controls}
+    upsert_alfredrc_block(
+        launch_rc,
+        values,
+        ALFREDRC_MEMORY_STOP_BANNER,
+        ALFREDRC_MEMORY_STOP_BANNER_RE,
+    )
+    return len(controls)
+
+
+def persist_alfredrc_pointer(state: WizardState) -> Path:
+    """Persist the selected rc path for clean-shell deploy/render reruns."""
+    pointer = state.alfred_home / "launchd" / "alfredrc.path"
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text(f"{state.alfredrc}\n", encoding="utf-8")
+    with contextlib.suppress(OSError):
+        pointer.chmod(0o600)
+    return pointer
 
 
 # ---------------------------------------------------------------------------
@@ -839,6 +953,8 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
             out[f"ALFRED_{default_slug}_AWS_PROFILE"] = state.aws_agent_profiles[codename]
+    if "memory_auto_promote" in state.enabled_roles:
+        out.update(memory_auto_promote_control_assignments(state))
     # Anonymous proof-telemetry is opt-out. New installs use Alfred's hosted
     # collector by default; a "no" answer writes ALFRED_TELEMETRY_ENABLED=0 so
     # the opt-out is explicit.
@@ -852,6 +968,39 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
     elif not state.telemetry_enabled:
         out["ALFRED_TELEMETRY_ENABLED"] = "0"
     return out
+
+
+def memory_auto_promote_control_assignments(state: WizardState) -> dict[str, str]:
+    """Preserve persisted stop controls for scheduled memory auto-promotion."""
+    values: dict[str, str] = {}
+    for source in (state.alfred_home / ".env", state.alfredrc):
+        with contextlib.suppress(OSError):
+            for key, value in read_alfredrc(source).items():
+                if key not in MEMORY_AUTO_PROMOTE_CONTROL_ENVS:
+                    continue
+                clean = value.strip()
+                if not clean:
+                    continue
+                if memory_auto_promote_stop_control_active(key, clean):
+                    values[key] = clean
+                    continue
+                existing = values.get(key)
+                if existing and memory_auto_promote_stop_control_active(key, existing):
+                    continue
+                values[key] = clean
+    return values
+
+
+def memory_auto_promote_stop_control_active(key: str, value: str) -> bool:
+    """Return true for values that should keep default-on memory paused."""
+    token = strip_inline_comment(value).strip().lower()
+    if not token:
+        return False
+    if key in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
+        return token not in {"1", "true", "yes", "on", "enabled"}
+    if key == "ALFRED_AUTO_PROMOTE_KILL":
+        return token not in {"0", "false", "no", "off", "disabled"}
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1449,6 +1598,11 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     env_kvs = env_assignments_for(state)
     upsert_alfredrc(state.alfredrc, env_kvs)
     ok(f"updated {state.alfredrc} with {len(env_kvs)} keys")
+    pointer = persist_alfredrc_pointer(state)
+    ok(f"persisted selected rc path to {pointer}")
+    mirrored = mirror_memory_stop_controls_to_launch_rc(state, env_kvs)
+    if mirrored:
+        ok(f"mirrored {mirrored} memory stop-control key(s) into {Path.home() / '.alfredrc'}")
     created_prompts = seed_prompt_templates(state)
     if created_prompts:
         ok(
