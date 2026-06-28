@@ -37,10 +37,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agent_runner.paths import config_value, decode_env_value
-from issue_queue import allowed_queue_repos
-from shipped_board import _gh_bin, _gh_subprocess_env
-
 # The watched-repo allowlist the rest of the fleet reads. The Set up surface
 # writes BOTH the queue allowlist (controls what an operator can arm/hold/close)
 # and the shipped allowlist (controls which repos the board scans), so the one
@@ -90,6 +86,38 @@ _CAPABILITY_SOURCES: dict[str, dict[str, str]] = {
 }
 
 
+def decode_env_value(value: str) -> str:
+    """Decode one shell-style env-file value without importing agent_runner."""
+
+    if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
+        return value[1:-1].replace("'\"'\"'", "'")
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1]
+    return value
+
+
+def _setup_config_value(key: str, default: str = "") -> str:
+    return _code_memory_config(_code_memory_launcher_env(), key, default)
+
+
+def _allowed_queue_repos() -> set[str]:
+    from issue_queue import allowed_queue_repos
+
+    return allowed_queue_repos()
+
+
+def _gh_bin() -> str:
+    from shipped_board import _gh_bin as resolve_gh_bin
+
+    return resolve_gh_bin()
+
+
+def _gh_subprocess_env() -> dict[str, str]:
+    from shipped_board import _gh_subprocess_env as resolve_gh_subprocess_env
+
+    return resolve_gh_subprocess_env()
+
+
 # --------------------------------------------------------------------------- #
 # Repo slug validation
 # --------------------------------------------------------------------------- #
@@ -128,7 +156,7 @@ def selected_repos() -> list[str]:
     shows the same scope queue/hold/close actually enforce. Sorted for a stable
     render.
     """
-    return sorted(allowed_queue_repos())
+    return sorted(_allowed_queue_repos())
 
 
 # --------------------------------------------------------------------------- #
@@ -292,7 +320,7 @@ def engine_clis() -> list[dict[str, Any]]:
     search = os.pathsep.join((*_engine_search_path(os.environ), os.environ.get("PATH", "")))
     out: list[dict[str, Any]] = []
     for name in _ENGINE_BINS:
-        configured = config_value(f"{name.upper()}_BIN")
+        configured = _setup_config_value(f"{name.upper()}_BIN")
         resolved = (
             configured
             if configured and (os.path.isabs(configured) or shutil.which(configured, path=search))
@@ -455,12 +483,13 @@ def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
     )
     binary = shutil.which("headroom", path=search)
     enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
-    if binary and enabled:
-        state = "ready"
-        detail = "Headroom CLI is installed and context compression is enabled."
-    elif binary:
+    if binary:
         state = "available"
-        detail = "Headroom CLI is installed; enable ALFRED_CONTEXT_COMPRESSION to wire it in."
+        detail = (
+            "Headroom CLI is installed; Alfred will report ready after runner wiring is enabled."
+            if enabled
+            else "Headroom CLI is installed; runner integration is not wired yet."
+        )
     else:
         state = "missing"
         detail = (
@@ -911,7 +940,7 @@ def _repo_list_owners() -> list[str]:
         seen.add(owner)
         owners.append(owner)
 
-    for raw in re.split(r"[\s,]+", config_value("GH_ORG") or ""):
+    for raw in re.split(r"[\s,]+", _setup_config_value("GH_ORG") or ""):
         add(raw)
     for slug in selected_repos():
         owner, sep, _repo = slug.partition("/")

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -202,7 +204,7 @@ def test_capability_plane_reports_missing_optional_layers(
     assert by_key["engineering_skills"]["state"] == "missing"
 
 
-def test_capability_plane_reports_ready_external_layers(
+def test_capability_plane_reports_external_layers_without_headroom_runner_wiring(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     codex_home = tmp_path / "codex"
@@ -235,9 +237,10 @@ def test_capability_plane_reports_ready_external_layers(
     payload = setup_mod.capability_status(code_memory)
     by_key = {item["key"]: item for item in payload["capabilities"]}
 
-    assert payload["summary"]["ready"] == 3
+    assert payload["summary"]["ready"] == 2
+    assert payload["summary"]["actionable"] == 1
     assert by_key["code_graph"]["state"] == "ready"
-    assert by_key["context_compression"]["state"] == "ready"
+    assert by_key["context_compression"]["state"] == "available"
     assert by_key["engineering_skills"]["state"] == "ready"
     assert by_key["engineering_skills"]["detected"]["paths"] == [
         str(codex_home / "skills" / "gstack")
@@ -310,6 +313,44 @@ def test_capability_plane_uses_explicit_skill_homes_without_resolving_home(
 
     assert skills["state"] == "ready"
     assert skills["detected"]["paths"] == [str(codex_home / "skills" / "gstack")]
+
+
+def test_setup_module_cold_import_survives_without_agent_runner_home(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = os.environ.copy()
+    env.pop("HOME", None)
+    env["PYTHONPATH"] = str(ROOT / "lib")
+    code = """
+import builtins
+import pathlib
+
+real_import = builtins.__import__
+
+def guarded_import(name, *args, **kwargs):
+    if name == "agent_runner.paths":
+        raise RuntimeError("agent_runner.paths import should not be needed")
+    return real_import(name, *args, **kwargs)
+
+builtins.__import__ = guarded_import
+pathlib.Path.home = staticmethod(
+    lambda: (_ for _ in ()).throw(RuntimeError("no home"))
+)
+
+from server.setup import capability_status
+
+print(capability_status()["summary"]["total"])
+"""
+
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == "3"
 
 
 def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
