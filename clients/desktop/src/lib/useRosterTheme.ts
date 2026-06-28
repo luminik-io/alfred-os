@@ -337,6 +337,18 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
         // hook hydrated. When the runtime later connects, the hydration effect
         // must still read the server's persisted cast rather than skip it.
         // A connection-level error is not tied to a specific synced runtime.
+        if (baseUrl) {
+          const seq = ++saveSeqRef.current;
+          latestSeqByUrlRef.current.set(baseUrl, seq);
+          const pending = pendingRef.current.get(baseUrl);
+          if (pending) {
+            pendingRef.current.delete(baseUrl);
+            pending.resolve(false);
+          }
+          if (hydratedUrlRef.current === baseUrl) {
+            hydratedUrlRef.current = null;
+          }
+        }
         saveErrorUrlRef.current = null;
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
         return Promise.resolve(false);

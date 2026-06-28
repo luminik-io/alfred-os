@@ -674,6 +674,51 @@ describe("useRosterTheme", () => {
     expect(result.current.saveError).toContain("Not connected");
   });
 
+  it("supersedes an in-flight same-runtime save when edited offline", async () => {
+    let resolveReconnectLoad: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme
+      .mockReturnValueOnce(new Promise<RosterThemeResponse>(() => {}))
+      .mockReturnValueOnce(
+        new Promise<RosterThemeResponse>((resolve) => {
+          resolveReconnectLoad = resolve;
+        }),
+      );
+    let resolveOldSave: (value: RosterThemeResponse) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveOldSave = resolve;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: true } },
+    );
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    rerender({ connected: false });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    rerender({ connected: true });
+
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+
+    await act(async () => {
+      resolveOldSave(serverState({ theme: "justice-league" }));
+    });
+    await act(async () => {
+      resolveReconnectLoad(serverState({ theme: "batman" }));
+    });
+
+    expect(result.current.rosterTheme).toBe("batman");
+  });
+
   // Thread: "Stale Hydration Overwrites Edit". A change made on a runtime
   // whose hydration GET is still in flight must not be reverted when that GET
   // resolves: the operator's edit owns the runtime state immediately.
