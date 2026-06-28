@@ -61,8 +61,10 @@ def allowed_queue_repos() -> set[str]:
     so it must be scoped at least as tightly as the Slack issue bridge. Require
     an explicit allowlist and never infer from arbitrary GitHub access.
     """
+    explicit = _config_value("ALFRED_QUEUE_REPOS")
+    env_names = ("ALFRED_QUEUE_REPOS",) if explicit.strip() else _ALLOWLIST_ENV
     repos: set[str] = set()
-    for env_name in _ALLOWLIST_ENV:
+    for env_name in env_names:
         raw = _config_value(env_name)
         for item in re.split(r"[\s,]+", raw):
             repo = item.strip().lower()
