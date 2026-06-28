@@ -548,7 +548,8 @@ fn preserves_stop_control(key: &str, value: &str) -> bool {
     if key == "ALFRED_AUTO_PROMOTE" {
         return !matches!(token.as_str(), "1" | "true" | "yes" | "on" | "enabled");
     }
-    key == "ALFRED_AUTO_PROMOTE_KILL" && matches!(token.as_str(), "1" | "true" | "yes" | "on")
+    key == "ALFRED_AUTO_PROMOTE_KILL"
+        && !matches!(token.as_str(), "0" | "false" | "no" | "off" | "disabled")
 }
 
 fn overrides_with_stop_control(key: &str, value: &str) -> bool {
@@ -2510,6 +2511,48 @@ mod tests {
         restore_var("ALFRED_HOME", prev_alfred);
         restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE", prev_auto_promote);
+        restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
+    }
+
+    #[test]
+    fn native_subprocess_env_malformed_file_kill_overrides_enabling_values() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let prev_home = std::env::var("HOME").ok();
+        let prev_alfred = std::env::var("ALFRED_HOME").ok();
+        let prev_alfredrc = std::env::var("ALFREDRC").ok();
+        let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
+
+        let root = temp_root("alfred-malformed-kill-over-process");
+        let home = root.join("home");
+        let runtime = root.join("runtime");
+        fs::create_dir_all(&home).expect("create temp home");
+        fs::create_dir_all(&runtime).expect("create temp runtime");
+        std::fs::write(
+            home.join(".alfredrc"),
+            format!(
+                "ALFRED_HOME='{}'\nALFRED_AUTO_PROMOTE_KILL=0\n",
+                runtime.to_string_lossy()
+            ),
+        )
+        .expect("write temp alfredrc");
+        std::fs::write(runtime.join(".env"), "ALFRED_AUTO_PROMOTE_KILL=fales\n")
+            .expect("write temp env");
+
+        std::env::set_var("HOME", &home);
+        std::env::set_var("ALFRED_HOME", &runtime);
+        std::env::remove_var("ALFREDRC");
+        std::env::set_var("ALFRED_AUTO_PROMOTE_KILL", "0");
+
+        let env = merged_alfred_env();
+        assert_eq!(
+            env.get("ALFRED_AUTO_PROMOTE_KILL"),
+            Some(&"fales".to_string())
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        restore_var("HOME", prev_home);
+        restore_var("ALFRED_HOME", prev_alfred);
+        restore_var("ALFREDRC", prev_alfredrc);
         restore_var("ALFRED_AUTO_PROMOTE_KILL", prev_auto_promote_kill);
     }
 

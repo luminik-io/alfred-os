@@ -976,7 +976,7 @@ def memory_auto_promote_stop_control_active(key: str, value: str) -> bool:
     if key == "ALFRED_AUTO_PROMOTE":
         return token not in {"1", "true", "yes", "on", "enabled"}
     if key == "ALFRED_AUTO_PROMOTE_KILL":
-        return token in {"1", "true", "yes", "on"}
+        return token not in {"0", "false", "no", "off", "disabled"}
     return False
 
 

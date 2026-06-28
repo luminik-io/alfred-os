@@ -859,6 +859,17 @@ def test_env_assignments_preserve_runtime_stop_control_over_stale_alfredrc(init_
     assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
 
 
+def test_env_assignments_preserve_malformed_runtime_kill_over_stale_alfredrc(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_KILL=fales\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE_KILL=0\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "fales"
+
+
 def test_upsert_alfredrc_idempotent(tmp_path, init_mod):
     rc = tmp_path / ".alfredrc"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")
