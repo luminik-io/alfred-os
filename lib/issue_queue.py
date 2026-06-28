@@ -18,10 +18,12 @@ works in the launchd server's bare PATH, not just the cron agents' fuller one.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
+from pathlib import Path
 
-from agent_runner.paths import launcher_config_value
+from agent_runner.paths import launcher_env
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
 from shipped_board import _config_value, _gh_bin, _gh_subprocess_env
 
@@ -36,9 +38,34 @@ _ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS", "ALFRED_BRIDGE_R
 
 
 def _queue_config_value(key: str) -> str:
-    """Resolve queue config from the live runtime, then launcher rc fallback."""
+    """Resolve queue config from the live runtime, then same-home launcher rc fallback."""
 
-    return _config_value(key).strip() or launcher_config_value(key).strip()
+    live_value = _config_value(key).strip()
+    if live_value:
+        return live_value
+    launcher = _launcher_env_for_runtime()
+    if not launcher:
+        return ""
+    return launcher.get(key, "").strip()
+
+
+def _launcher_env_for_runtime() -> dict[str, str] | None:
+    """Launcher env only when it targets the connected runtime home."""
+
+    launcher = launcher_env()
+    runtime_home = _runtime_home()
+    launcher_home = Path(launcher.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
+    if _same_runtime_home(runtime_home, launcher_home):
+        return launcher
+    return None
+
+
+def _runtime_home() -> Path:
+    return Path(os.environ.get("ALFRED_HOME") or "~/.alfred").expanduser()
+
+
+def _same_runtime_home(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
 
 
 def parse_issue_ref(text: str) -> tuple[str, int] | None:

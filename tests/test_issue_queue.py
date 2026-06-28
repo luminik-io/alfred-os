@@ -132,7 +132,9 @@ def test_allowed_queue_repos_reads_active_home_env(tmp_path: Path, monkeypatch):
     assert iq.allowed_queue_repos() == {"org/runtime"}
 
 
-def test_allowed_queue_repos_reads_launcher_rc_when_runtime_missing(tmp_path: Path, monkeypatch):
+def test_allowed_queue_repos_ignores_launcher_rc_for_different_runtime_home(
+    tmp_path: Path, monkeypatch
+):
     launcher_home = tmp_path / "launcher-runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "runtime"))
@@ -142,6 +144,24 @@ def test_allowed_queue_repos_reads_launcher_rc_when_runtime_missing(tmp_path: Pa
 
     (tmp_path / ".alfredrc").write_text(
         f"ALFRED_HOME={launcher_home}\nALFRED_QUEUE_REPOS=org/launcher\n",
+        encoding="utf-8",
+    )
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_reads_launcher_rc_for_matching_runtime_home(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_QUEUE_REPOS=org/launcher\n",
         encoding="utf-8",
     )
 
