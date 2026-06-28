@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   type CustomRosterNames,
@@ -52,11 +52,14 @@ export function CustomThemeEditor({
   const [roles, setRoles] = useState<Record<string, string>>(value.roles);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const wasOpenRef = useRef(open);
 
-  // Re-seed the draft whenever the editor (re)opens with the persisted maps, so
-  // a cancelled edit never leaks into the next open.
+  // Re-seed the draft only when the editor opens. While it stays open, parent
+  // value changes can be a failed-save hydration retry; keep the user's draft.
   useEffect(() => {
-    if (open) {
+    const wasOpen = wasOpenRef.current;
+    wasOpenRef.current = open;
+    if (open && !wasOpen) {
       setNames({ ...value.names });
       setRoles({ ...value.roles });
       setSaveError(null);

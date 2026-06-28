@@ -31,4 +31,37 @@ describe("CustomThemeEditor", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(onOpenChange).not.toHaveBeenCalled();
   });
+
+  it("keeps the draft open when parent values change after a failed save", async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    const onSave = vi.fn(async () => false);
+    const { rerender } = render(
+      <CustomThemeEditor
+        open
+        value={{ names: { batman: "Original" }, roles: {} }}
+        onOpenChange={onOpenChange}
+        onSave={onSave}
+      />,
+    );
+    const nameInput = screen.getByLabelText(/Batman name/i);
+    await user.clear(nameInput);
+    await user.type(nameInput, "Draft Wayne");
+
+    await user.click(screen.getByRole("button", { name: /save cast/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/could not save custom names/i);
+
+    rerender(
+      <CustomThemeEditor
+        open
+        value={{ names: { batman: "Server Wayne" }, roles: {} }}
+        onOpenChange={onOpenChange}
+        onSave={onSave}
+      />,
+    );
+
+    expect(screen.getByLabelText(/Batman name/i)).toHaveValue("Draft Wayne");
+    expect(screen.getByRole("alert")).toHaveTextContent(/could not save custom names/i);
+    expect(onOpenChange).not.toHaveBeenCalled();
+  });
 });

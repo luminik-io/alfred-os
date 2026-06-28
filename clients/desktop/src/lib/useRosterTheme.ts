@@ -301,6 +301,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       inFlightRef.current = true;
       return saveRosterTheme(url, body)
         .then(() => {
+          clearRuntimeSaveError(url);
           const latestSeq = latestSeqByUrlRef.current.get(url);
           // The server is now the agreed source of truth; clear any prior
           // failure and record this runtime as synced so a racing GET cannot
@@ -312,7 +313,6 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
             }
             return false;
           }
-          clearRuntimeSaveError(url);
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
