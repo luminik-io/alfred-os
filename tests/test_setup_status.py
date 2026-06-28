@@ -75,8 +75,9 @@ def test_bootstrap_status_reports_configured_code_memory(
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
     index_dir = tmp_path / "index"
-    index_dir.mkdir()
-    (index_dir / "graph.db").write_text("ok", encoding="utf-8")
+    graph_dir = index_dir / ".cache" / "codebase-memory-mcp"
+    graph_dir.mkdir(parents=True)
+    (graph_dir / "graph.db").write_text("ok", encoding="utf-8")
     workspace = tmp_path / "workspace"
     (workspace / "api" / ".git").mkdir(parents=True)
     (workspace / "web" / ".git").mkdir(parents=True)
@@ -107,6 +108,32 @@ def test_bootstrap_status_reports_configured_code_memory(
         "limit": 25,
     }
     assert code_memory["detail"] == "Code-memory binary and index are present."
+
+
+def test_bootstrap_status_ignores_legacy_index_dir_database(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    (index_dir / "legacy.db").write_text("stale", encoding="utf-8")
+
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["index_dir"] == str(index_dir)
+    assert code_memory["graph_dir"] == str(index_dir / ".cache" / "codebase-memory-mcp")
+    assert code_memory["index_present"] is False
+    assert (
+        code_memory["detail"]
+        == "Code-memory binary is present; run an index before relying on graph queries."
+    )
 
 
 def test_bootstrap_status_checks_code_memory_home_cache_for_index(

@@ -326,7 +326,7 @@ def code_memory_status() -> dict[str, Any]:
         if enabled
         else _disabled_code_memory_repo_scope(launcher_env)
     )
-    index_present = _code_memory_index_present(index_dir, graph_dir)
+    index_present = _code_memory_index_present(graph_dir)
     pin = _code_memory_pin(launcher_env)
 
     if not enabled:
@@ -635,8 +635,8 @@ def _code_memory_pin(env: dict[str, str]) -> dict[str, str]:
     }
 
 
-def _code_memory_index_present(index_dir: Path, graph_dir: Path) -> bool:
-    return _has_graph_artifact(graph_dir) or _has_graph_artifact(index_dir)
+def _code_memory_index_present(graph_dir: Path) -> bool:
+    return _has_graph_artifact(graph_dir)
 
 
 def _has_graph_artifact(path: Path) -> bool:
