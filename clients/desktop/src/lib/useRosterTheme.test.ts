@@ -440,6 +440,35 @@ describe("useRosterTheme", () => {
     });
   });
 
+  it("does not acknowledge a save that resolved after switching runtimes", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+    let resolveA: (value: RosterThemeResponse) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveA = resolve;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    let saveResult: Promise<boolean> | null = null;
+    act(() => {
+      saveResult = result.current.setRosterTheme("justice-league");
+    });
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+
+    await act(async () => {
+      resolveA(serverState({ theme: "justice-league" }));
+    });
+
+    if (saveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(saveResult).resolves.toBe(false);
+    expect(result.current.saveError).toBeNull();
+  });
+
   it("does not surface a save failure from a runtime after switching away", async () => {
     loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     let rejectA: (reason?: unknown) => void = () => {};

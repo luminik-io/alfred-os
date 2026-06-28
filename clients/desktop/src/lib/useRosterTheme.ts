@@ -233,12 +233,11 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
-          if (url === baseUrlRef.current) {
-            hydratedUrlRef.current = url;
-            setHydrationError(null);
-            saveErrorUrlRef.current = null;
-            setSaveError(null);
-          }
+          if (url !== baseUrlRef.current) return false;
+          hydratedUrlRef.current = url;
+          setHydrationError(null);
+          saveErrorUrlRef.current = null;
+          setSaveError(null);
           return true;
         })
         .catch((err: unknown) => {
