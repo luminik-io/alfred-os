@@ -62,6 +62,29 @@ pinned_sha256() {
 
 log() { printf '[code-memory-mcp] %s\n' "$*" >&2; }
 
+capture_inherited_env_keys() {
+  local line key value
+  env | while IFS='=' read -r key value || [ -n "${key:-}" ]; do
+    case "$key" in
+      ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
+    esac
+    [ -n "${value:-}" ] || continue
+    printf '%s\n' "$key"
+  done
+}
+
+INHERITED_ENV_KEYS="$(capture_inherited_env_keys)"
+
+is_inherited_env_key() {
+  local key="$1"
+  case "$(printf '\n%s\n' "$INHERITED_ENV_KEYS")" in
+    *"
+$key
+"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 load_env_file() {
   local file="$1" line key value
   [ -f "$file" ] || return 0
@@ -75,6 +98,9 @@ load_env_file() {
     case "$key" in
       ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
     esac
+    if is_inherited_env_key "$key"; then
+      continue
+    fi
     case "$value" in
       \"*\") value="${value#\"}"; value="${value%\"}" ;;
       \'*\') value="${value#\'}"; value="${value%\'}" ;;

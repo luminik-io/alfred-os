@@ -150,14 +150,7 @@ def _home_child(name: str) -> Path:
     return home / name
 
 
-def _configured_home(env_key: str, default_name: str) -> Path:
-    raw = os.environ.get(env_key, "").strip()
-    if raw:
-        return _safe_expanduser(Path(raw))
-    return _home_child(default_name)
-
-
-PRIMARY_CLAUDE_DIR = _configured_home("CLAUDE_HOME", ".claude")
+PRIMARY_CLAUDE_DIR = _home_child(".claude")
 SECONDARY_CLAUDE_DIR = _home_child(".claude-secondary")
 TELEMETRY_LABEL = "alfred.proof-telemetry"
 TELEMETRY_ROW = (

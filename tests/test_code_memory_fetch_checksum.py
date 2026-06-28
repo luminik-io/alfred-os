@@ -121,5 +121,39 @@ def test_fetch_timeout_knobs_are_derived_after_env_files_load() -> None:
     assert load_pos < connect_timeout_pos
 
 
+def test_process_code_memory_binary_overrides_runtime_env_file(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    file_bin = tmp_path / "file-codebase-memory-mcp"
+    process_bin = tmp_path / "process-codebase-memory-mcp"
+    for path, label in ((file_bin, "file"), (process_bin, "process")):
+        path.write_text(f"#!/bin/sh\\necho {label}\\n", encoding="utf-8")
+        path.chmod(0o755)
+    (runtime / ".env").write_text(
+        f"ALFRED_CODE_MEMORY_BIN={file_bin}\n",
+        encoding="utf-8",
+    )
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "ALFRED_HOME": str(runtime),
+        "ALFRED_CODE_MEMORY_BIN": str(process_bin),
+        "ALFRED_CODE_MEMORY_AUTOFETCH": "0",
+    }
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"binary:  {process_bin}" in res.stderr
+    assert str(file_bin) not in res.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

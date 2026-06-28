@@ -323,3 +323,43 @@ raise SystemExit(mod.main(["capabilities", "--json"]))
     skills = {item["key"]: item for item in payload["capabilities"]}["engineering_skills"]
     assert skills["state"] == "ready"
     assert skills["detected"]["paths"] == [str(codex_home / "skills" / "gstack")]
+
+
+def test_claude_home_does_not_override_primary_auth_directory(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    claude_home = tmp_path / "skill-claude-home"
+    home.mkdir()
+    runtime.mkdir()
+    claude_home.mkdir()
+    env = {
+        **os.environ,
+        "HOME": str(home),
+        "ALFRED_HOME": str(runtime),
+        "CLAUDE_HOME": str(claude_home),
+        "PYTHONPATH": str(LIB),
+    }
+    code = f"""
+import importlib.util
+import sys
+from importlib.machinery import SourceFileLoader
+
+loader = SourceFileLoader("alfred_cli_claude_home_auth", {str(BIN)!r})
+spec = importlib.util.spec_from_loader(loader.name, loader)
+assert spec and spec.loader
+mod = importlib.util.module_from_spec(spec)
+sys.modules[loader.name] = mod
+spec.loader.exec_module(mod)
+print(mod.PRIMARY_CLAUDE_DIR)
+"""
+
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert res.stdout.strip() == str(home / ".claude")
