@@ -640,6 +640,36 @@ def test_agent_launch_followed_alfredrc_retargets_runtime_env(
     assert "AUTO=0" in proc.stdout
 
 
+def test_agent_launch_persisted_pointer_preserves_process_runtime(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    process_home = home / ".alfred"
+    pointed_home = tmp_path / "pointed-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    process_home.mkdir()
+    pointed_home.mkdir()
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(f"ALFRED_HOME={pointed_home}\n", encoding="utf-8")
+    (process_home / ".env").write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    (pointed_home / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n", encoding="utf-8")
+    target = tmp_path / "echo-persisted-runtime.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=process_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={process_home}" in proc.stdout
+    assert "AUTO=0" in proc.stdout
+
+
 def test_agent_launch_direct_alfredrc_retargets_stale_process_runtime(
     tmp_path: Path,
 ) -> None:
