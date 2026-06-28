@@ -38,7 +38,7 @@ shift
 
 memory_auto_promote_stop_control_active() {
   local key="$1" token
-  token="$(printf '%s' "$2" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')"
+  token="$(printf '%s' "$2" | sed 's/[[:space:]]#.*$//;s/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')"
   [ -n "$token" ] || return 1
   case "$key" in
     ALFRED_AUTO_PROMOTE)

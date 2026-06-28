@@ -226,6 +226,32 @@ def test_agent_launch_env_file_stop_controls_override_stale_alfredrc(
     assert "KILL=fales" in proc.stdout
 
 
+def test_agent_launch_env_file_stop_controls_override_commented_stale_alfredrc(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "ALFRED_AUTO_PROMOTE=1 # old enable\nALFRED_AUTO_PROMOTE_KILL=0 # disabled\n",
+        encoding="utf-8",
+    )
+    (alfred_home / ".env").write_text(
+        "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n", encoding="utf-8"
+    )
+    target = tmp_path / "echo-memory-stop.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n'
+        'echo "KILL=${ALFRED_AUTO_PROMOTE_KILL:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "AUTO=0" in proc.stdout
+    assert "KILL=1" in proc.stdout
+
+
 def test_agent_launch_env_file_stop_controls_override_stale_process_env(
     tmp_path: Path, alfred_home: Path
 ) -> None:
