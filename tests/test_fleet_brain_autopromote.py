@@ -96,7 +96,7 @@ def brain(tmp_path: Path) -> FleetBrain:
     # to end (capture -> judge -> auto-promote -> AMS write) without a server.
     ams = _FakeAMS()
     fb.ams = ams  # type: ignore[attr-defined]
-    fb._lesson_provider = lambda: ams  # type: ignore[method-assign]
+    fb._lesson_provider = lambda env=None: ams  # type: ignore[method-assign]
     return fb
 
 
@@ -226,6 +226,45 @@ def test_direct_auto_promote_runtime_judge_stop_overrides_stale_process_env(
     assert summary["promoted"] == []
     assert summary["considered"] == 0
     assert _status(brain, c.id) == "candidate"
+
+
+def test_auto_promote_passes_runtime_env_to_ams_writer(tmp_path, monkeypatch) -> None:
+    brain = FleetBrain(db_path=tmp_path / "brain.db")
+    c = _candidate(brain, "write promoted lesson to configured runtime AMS", confidence=0.96)
+    captured_envs: list[dict[str, str] | None] = []
+
+    class Writer:
+        def reflect(self, **kwargs):
+            return Lesson(
+                id=kwargs["memory_id"],
+                codename=kwargs["codename"],
+                repo=kwargs["repo"],
+                body=kwargs["body"],
+                tags=kwargs["tags"],
+                severity=kwargs["severity"],
+                firing_id=kwargs["firing_id"],
+                created_at=datetime.now(UTC),
+            )
+
+    def provider(*, env=None):
+        captured_envs.append(dict(env) if env is not None else None)
+        return Writer()
+
+    monkeypatch.setattr(brain, "_lesson_provider", provider)
+
+    summary = brain.auto_promote_candidates(
+        env={
+            "ALFRED_AUTO_PROMOTE": "1",
+            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0",
+            "ALFRED_REDIS_MEMORY_URL": "http://runtime-ams.local",
+            "ALFRED_AMS_TOKEN": "runtime-secret",
+        }
+    )
+
+    assert c.id in summary["promoted"]
+    assert captured_envs[0] is not None
+    assert captured_envs[0]["ALFRED_REDIS_MEMORY_URL"] == "http://runtime-ams.local"
+    assert captured_envs[0]["ALFRED_AMS_TOKEN"] == "runtime-secret"
 
 
 def test_unrecognized_auto_promote_value_fails_closed(brain: FleetBrain) -> None:

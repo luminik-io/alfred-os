@@ -229,12 +229,13 @@ def parse_verdict(raw: str | None) -> JudgeVerdict | None:
     )
 
 
-def default_judge() -> JudgeInvoker:
+def default_judge(env: Mapping[str, str] | None = None) -> JudgeInvoker:
     """Resolve the real CLI judge lazily (claude -p, read-only).
 
     Imported lazily so this module stays importable on a brain-only host and
     so tests that inject a stub never import the heavy runner. Returns ``None``
     (never raises) on any dispatch failure, so the caller fails soft."""
+    env_src = env if env is not None else os.environ
 
     def _invoke(prompt: str) -> str | None:
         try:
@@ -244,11 +245,11 @@ def default_judge() -> JudgeInvoker:
         try:
             result = claude_invoke(
                 prompt,
-                workdir=Path(os.environ.get("ALFRED_HOME", ".")),
+                workdir=Path(env_src.get("ALFRED_HOME", ".")),
                 # Read-only judgment: no tools needed.
                 allowed_tools="",
                 max_turns=1,
-                timeout=int(os.environ.get("ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT", "120")),
+                timeout=int(env_src.get("ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT", "120")),
             )
         except Exception:
             return None
@@ -265,10 +266,11 @@ def judge_candidate(
     body: str,
     evidence: Any,
     judge: JudgeInvoker | None = None,
+    env: Mapping[str, str] | None = None,
 ) -> JudgeVerdict | None:
     """Run the LLM judge on one candidate. Never raises; returns None on any
     failure so the caller falls back to the heuristic gate."""
-    invoke = judge or default_judge()
+    invoke = judge or default_judge(env)
     prompt = build_judge_prompt(topic=topic, body=body, evidence=evidence)
     try:
         raw = invoke(prompt)

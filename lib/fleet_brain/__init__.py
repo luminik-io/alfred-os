@@ -768,7 +768,7 @@ class FleetBrain:
         )
         return self.store.insert_memory_candidate(candidate)
 
-    def _lesson_provider(self) -> Any:
+    def _lesson_provider(self, env: Mapping[str, str] | None = None) -> Any:
         """Build the Redis AMS provider, the promoted-lesson backend.
 
         Imported lazily to avoid an import cycle: the provider imports
@@ -776,7 +776,7 @@ class FleetBrain:
         """
         from memory.redis_agent_memory import RedisAgentMemoryProvider
 
-        return RedisAgentMemoryProvider.from_env()
+        return RedisAgentMemoryProvider.from_env(env=env)
 
     def promote_memory_candidate(
         self,
@@ -786,6 +786,7 @@ class FleetBrain:
         review_note: str = "",
         reviewed_at: datetime | None = None,
         lesson_writer: Any | None = None,
+        env: Mapping[str, str] | None = None,
     ) -> Lesson:
         """Promote a candidate into a trusted lesson, written to Redis AMS.
 
@@ -817,7 +818,7 @@ class FleetBrain:
         # ams_write_error) rather than a raw exception / CLI traceback.
         try:
             if lesson_writer is None:
-                lesson_writer = self._lesson_provider()
+                lesson_writer = self._lesson_provider(env=env)
             lesson = lesson_writer.reflect(
                 codename=candidate.codename,
                 repo=candidate.repo,
@@ -1092,6 +1093,7 @@ class FleetBrain:
                     body=candidate.body or "",
                     evidence=candidate.evidence or "",
                     judge=judge,
+                    env=env_src,
                 )
                 if verdict is None:
                     # FAIL-SOFT: a failed/empty/unparseable judgment must NEVER
@@ -1141,7 +1143,12 @@ class FleetBrain:
                     )
 
             try:
-                self.promote_memory_candidate(candidate.id, reviewer=reviewer, review_note=note)
+                self.promote_memory_candidate(
+                    candidate.id,
+                    reviewer=reviewer,
+                    review_note=note,
+                    env=env_src,
+                )
             except ValueError:
                 # The candidate changed under us (already promoted/rejected by a
                 # concurrent reviewer). Skip without counting it.

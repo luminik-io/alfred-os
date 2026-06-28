@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from types import ModuleType
 
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "lib"))
@@ -16,6 +17,7 @@ sys.path.insert(0, str(_REPO / "lib"))
 from memory_judge import (  # noqa: E402
     JudgeVerdict,
     build_judge_prompt,
+    default_judge,
     judge_candidate,
     judge_enabled,
     parse_verdict,
@@ -136,3 +138,35 @@ def test_judge_candidate_uses_injected_invoker_and_fails_soft() -> None:
         raise RuntimeError("cli exploded")
 
     assert judge_candidate(topic="t", body="b", evidence=[], judge=_boom) is None
+
+
+def test_default_judge_uses_supplied_runtime_env(monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    class Result:
+        success = True
+        result_text = (
+            '{"confidence": 0.91, "is_duplicate": false, '
+            '"changes_agent_behavior": false, "rationale": "ok"}'
+        )
+
+    fake_runner = ModuleType("agent_runner")
+
+    def fake_claude_invoke(prompt: str, **kwargs):
+        seen["prompt"] = prompt
+        seen.update(kwargs)
+        return Result()
+
+    fake_runner.claude_invoke = fake_claude_invoke
+    monkeypatch.setitem(sys.modules, "agent_runner", fake_runner)
+
+    invoke = default_judge(
+        {
+            "ALFRED_HOME": "/tmp/alfred-runtime",
+            "ALFRED_AUTO_PROMOTE_JUDGE_TIMEOUT": "7",
+        }
+    )
+
+    assert invoke("judge this") == Result.result_text
+    assert seen["workdir"] == Path("/tmp/alfred-runtime")
+    assert seen["timeout"] == 7

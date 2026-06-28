@@ -75,28 +75,32 @@ trim_env_value() {
   printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
+memory_auto_promote_value_is_enabled() {
+  case "$1" in
+    1|true|yes|on|enabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+memory_auto_promote_value_is_disabled() {
+  case "$1" in
+    0|false|no|off|disabled) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 memory_auto_promote_stop_control_active() {
   local key="$1" token
   token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
   [ -n "$token" ] || return 1
   case "$key" in
-    ALFRED_AUTO_PROMOTE)
-      case "$token" in
-        1|true|yes|on|enabled) return 1 ;;
-        *) return 0 ;;
-      esac
+    ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
+      memory_auto_promote_value_is_enabled "$token" && return 1
+      return 0
       ;;
     ALFRED_AUTO_PROMOTE_KILL)
-      case "$token" in
-        0|false|no|off|disabled) return 1 ;;
-        *) return 0 ;;
-      esac
-      ;;
-    ALFRED_AUTO_PROMOTE_LLM_JUDGE)
-      case "$token" in
-        1|true|yes|on|enabled) return 1 ;;
-        *) return 0 ;;
-      esac
+      memory_auto_promote_value_is_disabled "$token" && return 1
+      return 0
       ;;
   esac
   return 1

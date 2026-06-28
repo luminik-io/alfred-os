@@ -556,14 +556,15 @@ fn preserves_stop_control(key: &str, value: &str) -> bool {
     if token.is_empty() {
         return false;
     }
-    if key == "ALFRED_AUTO_PROMOTE" {
-        return !matches!(token.as_str(), "1" | "true" | "yes" | "on" | "enabled");
+    match key {
+        "ALFRED_AUTO_PROMOTE" | "ALFRED_AUTO_PROMOTE_LLM_JUDGE" => {
+            !matches!(token.as_str(), "1" | "true" | "yes" | "on" | "enabled")
+        }
+        "ALFRED_AUTO_PROMOTE_KILL" => {
+            !matches!(token.as_str(), "0" | "false" | "no" | "off" | "disabled")
+        }
+        _ => false,
     }
-    if key == "ALFRED_AUTO_PROMOTE_LLM_JUDGE" {
-        return !matches!(token.as_str(), "1" | "true" | "yes" | "on" | "enabled");
-    }
-    key == "ALFRED_AUTO_PROMOTE_KILL"
-        && !matches!(token.as_str(), "0" | "false" | "no" | "off" | "disabled")
 }
 
 fn overrides_with_stop_control(key: &str, value: &str) -> bool {
