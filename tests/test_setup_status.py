@@ -305,7 +305,7 @@ def test_selected_repos_preserves_shipped_and_bridge_fallbacks(
     assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
 
 
-def test_selected_repos_prefers_primary_queue_scope(
+def test_selected_repos_merges_queue_shipped_and_bridge_scopes(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     runtime = tmp_path / "runtime"
@@ -315,7 +315,7 @@ def test_selected_repos_prefers_primary_queue_scope(
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "acme/frontend")
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "acme/api")
 
-    assert setup_mod.selected_repos() == ["octocat/web"]
+    assert setup_mod.selected_repos() == ["acme/api", "acme/frontend", "octocat/web"]
 
 
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
@@ -691,7 +691,7 @@ def test_bootstrap_status_avoids_home_dependent_runtime_imports(
     payload = setup_mod.bootstrap_status()
 
     assert payload["github"]["ok"] is True
-    assert payload["repos"]["selected"] == ["octocat/web"]
+    assert payload["repos"]["selected"] == ["acme/api", "acme/frontend", "octocat/web"]
     assert payload["ready"] is True
 
 
