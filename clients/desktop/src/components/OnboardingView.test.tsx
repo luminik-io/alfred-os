@@ -264,18 +264,9 @@ describe("OnboardingView seven-step takeover", () => {
 
     view.rerender(
       <OnboardingView
-        baseUrl="http://127.0.0.1:7011"
-        loading={false}
-        connected
-        canRun
-        nativeBusy={null}
-        nativeResult={null}
-        onConnectServer={vi.fn()}
-        onStartRuntime={vi.fn()}
-        onRunLocalAction={vi.fn(async () => null)}
-        onOpenConnection={vi.fn()}
-        onSwitch={vi.fn()}
-        onRefreshBoard={vi.fn(async () => undefined)}
+        {...onboardingProps({
+          baseUrl: "http://127.0.0.1:7011",
+        })}
       />,
     );
 

@@ -734,6 +734,48 @@ describe("useRosterTheme", () => {
     expect(result.current.saveError).toBeNull();
   });
 
+  it("restores the saved choice when hydration retries while a save is pending", async () => {
+    let resolveSave: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    expect(result.current.rosterTheme).toBe("justice-league");
+
+    act(() => {
+      result.current.retryHydration();
+    });
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+
+    await act(async () => {
+      resolveSave(serverState({ theme: "justice-league" }));
+    });
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("justice-league");
+    });
+    expect(result.current.saveError).toBeNull();
+  });
+
   // Thread: "Queued Runtime Edit Drops". A queued edit for one runtime must not
   // be discarded when an edit for a second runtime is queued behind it: the
   // pending queue is keyed per runtime, so both saves eventually go out.

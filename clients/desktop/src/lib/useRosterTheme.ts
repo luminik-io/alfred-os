@@ -249,9 +249,12 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           if (url !== baseUrlRef.current) return false;
           hydratedUrlRef.current = url;
           skippedHydrationUrlRef.current = null;
+          setRosterThemeState(theme);
+          setCustomNamesState(custom);
           setHydrationError(null);
           saveErrorUrlRef.current = null;
           setSaveError(null);
+          writeStored(theme, custom);
           return true;
         })
         .catch((err: unknown) => {
