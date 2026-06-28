@@ -461,7 +461,7 @@ def engine_clis() -> list[dict[str, Any]]:
     return out
 
 
-def code_memory_status() -> dict[str, Any]:
+def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
     """Detect the optional code-structure memory layer without mutating state.
 
     ``bin/code-memory-mcp doctor`` may auto-fetch the pinned upstream binary,
@@ -470,7 +470,7 @@ def code_memory_status() -> dict[str, Any]:
     pinned launcher metadata, and the existing index directory.
     """
 
-    launcher_env = _code_memory_launcher_env()
+    launcher_env = env or _code_memory_launcher_env()
     enabled = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_MCP", default=True)
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
     binary = _code_memory_binary(launcher_env)
@@ -1099,7 +1099,7 @@ def bootstrap_status() -> dict[str, Any]:
     runtime_env = _runtime_config_env()
     repos = setup_board_repos(runtime_env)
     any_engine = any(e["installed"] for e in engines)
-    code_memory = code_memory_status()
+    code_memory = code_memory_status(runtime_env)
     capability_plane = capability_status(code_memory)
     return {
         "github": gh,
