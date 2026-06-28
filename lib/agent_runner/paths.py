@@ -230,18 +230,40 @@ def launcher_env() -> dict[str, str]:
     if not env.get("ALFRED_HOME", "").strip():
         env.pop("ALFRED_HOME", None)
     inherited_keys = set(env)
-    rc_path = home / ".alfredrc"
+    rc_path = _selected_alfredrc_path(env, home)
+    direct_selected_alfredrc = "ALFREDRC" in inherited_keys and bool(
+        env.get("ALFREDRC", "").strip()
+    )
+    env["ALFREDRC"] = str(rc_path)
     rc_env: dict[str, str] = {}
     load_env_file(rc_path, rc_env)
     process_home = env.get("ALFRED_HOME", "").strip()
     blocked_rc_keys: set[str] | None = None
-    if process_home:
+    if process_home and not direct_selected_alfredrc:
         effective_home = Path(process_home).expanduser()
         rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
         if not _same_runtime_home(effective_home, rc_home):
             blocked_rc_keys = _SETUP_MANAGED_RUNTIME_ENV_KEYS
     if rc_env:
-        load_env_file(rc_path, env, no_clobber=True, skip_keys=blocked_rc_keys)
+        rc_clobber_keys = {"ALFREDRC"}
+        if direct_selected_alfredrc:
+            rc_clobber_keys.update({"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"})
+        load_env_file(
+            rc_path,
+            env,
+            no_clobber=True,
+            clobber_keys=rc_clobber_keys,
+            skip_keys=blocked_rc_keys,
+        )
+    if env.get("ALFREDRC", "").strip() and env["ALFREDRC"] != str(rc_path):
+        rc_path = _selected_alfredrc_path(env, home)
+        env["ALFREDRC"] = str(rc_path)
+        load_env_file(
+            rc_path,
+            env,
+            no_clobber=True,
+            clobber_keys={"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"},
+        )
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
     else:
@@ -256,6 +278,13 @@ def launcher_env() -> dict[str, str]:
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
     return env
+
+
+def _selected_alfredrc_path(env: dict[str, str], home: Path) -> Path:
+    raw = env.get("ALFREDRC", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return home / ".alfredrc"
 
 
 def launcher_config_value(key: str, default: str = "") -> str:

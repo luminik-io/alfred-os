@@ -23,7 +23,11 @@ export function InstallInventoryPanel({
     return null;
   }
 
-  const queueItem = queue && !queue.ready ? queueInventoryItem(queue) : null;
+  const queueMissingCount = queue?.missing_selected?.length ?? 0;
+  const queueItem =
+    queue && (!queue.ready || queue.covers_selected === false || queueMissingCount > 0)
+      ? queueInventoryItem(queue)
+      : null;
   const items = PRIMARY_ITEMS
     .map((key) => inventory.items.find((item) => item.key === key))
     .filter((item): item is SetupInstallItem => Boolean(item))

@@ -102,6 +102,60 @@ def test_launcher_env_treats_empty_process_home_as_absent(
     assert env["ALFRED_QUEUE_REPOS"] == "org/from-rc"
 
 
+def test_launcher_env_respects_explicit_alfredrc(fresh_agent_runner, monkeypatch, tmp_path):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(custom_rc))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "stale-runtime"))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_QUEUE_REPOS=org/custom\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_QUEUE_REPOS"] == "org/custom"
+
+
+def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, tmp_path):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    stale_runtime = tmp_path / "stale-runtime"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    stale_runtime.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    (home / ".alfredrc").write_text(
+        f"ALFREDRC={custom_rc}\nALFRED_HOME={stale_runtime}\nALFRED_QUEUE_REPOS=org/stale\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_QUEUE_REPOS=org/custom\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_QUEUE_REPOS"] == "org/stale"
+
+
 def test_launcher_env_lets_env_file_repo_scope_override_rc(
     fresh_agent_runner, monkeypatch, tmp_path
 ):

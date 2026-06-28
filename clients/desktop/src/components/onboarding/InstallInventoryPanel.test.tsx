@@ -91,7 +91,7 @@ describe("InstallInventoryPanel", () => {
       ),
     });
     const queue: NonNullable<SetupStatus["queue"]> = {
-      ready: false,
+      ready: true,
       count: 1,
       covers_selected: false,
       missing_selected: ["acme/mobile"],
