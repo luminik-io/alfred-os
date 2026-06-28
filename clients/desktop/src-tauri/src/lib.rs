@@ -475,11 +475,11 @@ fn load_config_file(
         let clean = decode_config_value(strip_inline_comment(value), home)
             .trim()
             .to_string();
-        if no_clobber && process_env_keys.contains(key) {
-            continue;
-        }
         if overrides_with_stop_control(key, &clean) {
             env.insert(key.to_string(), clean);
+            continue;
+        }
+        if no_clobber && process_env_keys.contains(key) {
             continue;
         }
         if let Some(existing) = env.get(key) {
@@ -2468,7 +2468,7 @@ mod tests {
     }
 
     #[test]
-    fn native_subprocess_env_preserves_process_stop_control_over_files() {
+    fn native_subprocess_env_file_stop_controls_override_enabling_process_values() {
         let _guard = ENV_LOCK.lock().unwrap();
         let prev_home = std::env::var("HOME").ok();
         let prev_alfred = std::env::var("ALFRED_HOME").ok();
@@ -2476,7 +2476,7 @@ mod tests {
         let prev_auto_promote = std::env::var("ALFRED_AUTO_PROMOTE").ok();
         let prev_auto_promote_kill = std::env::var("ALFRED_AUTO_PROMOTE_KILL").ok();
 
-        let root = temp_root("alfred-process-stop-control-over-files");
+        let root = temp_root("alfred-file-stop-control-over-process");
         let home = root.join("home");
         let runtime = root.join("runtime");
         fs::create_dir_all(&home).expect("create temp home");
@@ -2502,8 +2502,8 @@ mod tests {
         std::env::set_var("ALFRED_AUTO_PROMOTE_KILL", "0");
 
         let env = merged_alfred_env();
-        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"1".to_string()));
-        assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"0".to_string()));
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE"), Some(&"0".to_string()));
+        assert_eq!(env.get("ALFRED_AUTO_PROMOTE_KILL"), Some(&"1".to_string()));
 
         let _ = std::fs::remove_dir_all(&root);
         restore_var("HOME", prev_home);
