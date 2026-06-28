@@ -385,6 +385,28 @@ def test_selected_repos_reads_runtime_env_file_but_not_alfredrc(
     assert setup_mod.selected_repos() == ["octocat/api", "octocat/web"]
 
 
+def test_install_inventory_uses_active_serve_home_not_launcher_rc_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    home = tmp_path / "home"
+    active_home = tmp_path / "active-runtime"
+    launcher_home = tmp_path / "launcher-runtime"
+    home.mkdir()
+    active_home.mkdir()
+    launcher_home.mkdir()
+    (home / ".alfredrc").write_text(f"ALFRED_HOME={launcher_home}\n", encoding="utf-8")
+    (active_home / ".env").write_text("GH_ORG=active\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(active_home))
+
+    inventory = setup_mod.bootstrap_status()["install"]
+
+    assert inventory["alfred_home"] == str(active_home)
+    assert inventory["env_path"] == str(active_home / ".env")
+    assert inventory["env_present"] is True
+
+
 def test_bootstrap_status_expands_tilde_home_for_code_memory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
