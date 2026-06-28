@@ -244,6 +244,38 @@ def test_bootstrap_status_reads_code_memory_launcher_env_files(
     assert code_memory["index_dir"] == str(alfred_home / "state" / "code-memory")
 
 
+def test_bootstrap_status_expands_tilde_home_for_code_memory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    home = tmp_path / "home"
+    alfred_home = home / "runtime"
+    cache_bin = alfred_home / "bin" / "codebase-memory-mcp"
+    index_dir = alfred_home / "state" / "code-memory"
+    cache_bin.parent.mkdir(parents=True)
+    index_dir.mkdir(parents=True)
+    cache_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    (index_dir / "graph.db").write_text("ok", encoding="utf-8")
+    cache_bin.chmod(cache_bin.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    (home / ".alfredrc").write_text("ALFRED_HOME=~/runtime\n", encoding="utf-8")
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["binary"] == {
+        "resolved": True,
+        "path": str(cache_bin),
+        "source": "cache",
+        "configured": None,
+    }
+    assert code_memory["index_dir"] == str(index_dir)
+    assert code_memory["index_present"] is True
+
+
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

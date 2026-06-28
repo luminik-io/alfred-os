@@ -180,7 +180,9 @@ def _rc_path() -> Path:
 def _alfred_home(env: dict[str, str] | None = None) -> Path:
     if env is None:
         return Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
-    return Path(_code_memory_config(env, "ALFRED_HOME", os.path.expanduser("~/.alfred")))
+    return Path(
+        _code_memory_config(env, "ALFRED_HOME", os.path.expanduser("~/.alfred"))
+    ).expanduser()
 
 
 def _format_repo_value(repos: list[str]) -> str:
@@ -447,12 +449,18 @@ def _code_memory_launcher_env() -> dict[str, str]:
     env = dict(os.environ)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    else:
+        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
     _load_launcher_env_file(Path.home() / ".alfredrc", env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    else:
+        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
     _load_launcher_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    else:
+        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
     return env
 
 

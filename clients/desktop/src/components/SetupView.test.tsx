@@ -53,11 +53,12 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function renderSetup(baseUrl: string) {
+function renderSetup(baseUrl: string, props: Partial<React.ComponentProps<typeof SetupView>> = {}) {
   return (
     <SetupView
       baseUrl={baseUrl}
       loading={false}
+      connected
       actionNotice={null}
       trustedSlack={null}
       busyTrustedUser={null}
@@ -67,6 +68,7 @@ function renderSetup(baseUrl: string) {
       onRunLocalAction={vi.fn()}
       onStartRuntime={vi.fn()}
       onConnectServer={vi.fn()}
+      {...props}
     />
   );
 }
@@ -93,6 +95,30 @@ describe("SetupView", () => {
     oldRequest.resolve(setupStatus("/tmp/old-alfred-home"));
     await waitFor(() => {
       expect(screen.queryByText("/tmp/old-alfred-home")).not.toBeInTheDocument();
+    });
+  });
+
+  it("ignores stale setup inventory after a same-url disconnect and reconnect", async () => {
+    const staleRequest = deferred<SetupStatus>();
+    const loadStatus = vi
+      .spyOn(api, "loadSetupStatus")
+      .mockReturnValueOnce(staleRequest.promise)
+      .mockResolvedValue(setupStatus("/tmp/reconnected-alfred-home"));
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+
+    const view = render(renderSetup("http://127.0.0.1:7010"));
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(1));
+
+    view.rerender(renderSetup("http://127.0.0.1:7010", { connected: false }));
+    view.rerender(renderSetup("http://127.0.0.1:7010", { connected: true }));
+
+    expect((await screen.findAllByText("/tmp/reconnected-alfred-home")).length).toBeGreaterThan(
+      0,
+    );
+    staleRequest.resolve(setupStatus("/tmp/stale-alfred-home"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/stale-alfred-home")).not.toBeInTheDocument();
     });
   });
 });

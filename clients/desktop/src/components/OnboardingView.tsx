@@ -196,6 +196,7 @@ export function OnboardingView({
   const statusRequestSeq = useRef(0);
   const baseUrlRef = useRef(baseUrl);
   const connectedRef = useRef(connected);
+  const connectionGenerationRef = useRef(0);
 
   useEffect(() => {
     baseUrlRef.current = baseUrl;
@@ -203,6 +204,9 @@ export function OnboardingView({
 
   useEffect(() => {
     connectedRef.current = connected;
+    if (!connected) {
+      connectionGenerationRef.current += 1;
+    }
   }, [connected]);
 
   const refreshStatus = useCallback(async () => {
@@ -214,19 +218,35 @@ export function OnboardingView({
     }
     const requestId = ++statusRequestSeq.current;
     const requestBaseUrl = baseUrl;
+    const requestGeneration = connectionGenerationRef.current;
     setStatusLoading(true);
     try {
       const next = await loadSetupStatus(baseUrl);
-      if (statusRequestSeq.current === requestId && baseUrlRef.current === requestBaseUrl) {
+      if (
+        statusRequestSeq.current === requestId &&
+        baseUrlRef.current === requestBaseUrl &&
+        connectedRef.current &&
+        connectionGenerationRef.current === requestGeneration
+      ) {
         setStatus(next);
         setStatusError(null);
       }
     } catch (err) {
-      if (statusRequestSeq.current === requestId && baseUrlRef.current === requestBaseUrl) {
+      if (
+        statusRequestSeq.current === requestId &&
+        baseUrlRef.current === requestBaseUrl &&
+        connectedRef.current &&
+        connectionGenerationRef.current === requestGeneration
+      ) {
         setStatusError(errorDetail(err) || "Could not read setup status.");
       }
     } finally {
-      if (statusRequestSeq.current === requestId && baseUrlRef.current === requestBaseUrl) {
+      if (
+        statusRequestSeq.current === requestId &&
+        baseUrlRef.current === requestBaseUrl &&
+        connectedRef.current &&
+        connectionGenerationRef.current === requestGeneration
+      ) {
         setStatusLoading(false);
       }
     }
@@ -250,8 +270,11 @@ export function OnboardingView({
     });
 
     const requestBaseUrl = baseUrl;
+    const requestGeneration = connectionGenerationRef.current;
     const isCurrentRequest = () =>
-      connectedRef.current && baseUrlRef.current === requestBaseUrl;
+      connectedRef.current &&
+      baseUrlRef.current === requestBaseUrl &&
+      connectionGenerationRef.current === requestGeneration;
 
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
