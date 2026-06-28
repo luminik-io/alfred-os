@@ -227,6 +227,8 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
     assert res.returncode == 0, res.stderr
     for agent in ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin"):
         assert agent in res.stdout
+    assert "Codex fallback only on capability gaps" in res.stdout
+    assert "auth/limit/budget" not in res.stdout
 
 
 def test_cli_codex_status_reports_binary_and_engines(tmp_path):
@@ -394,6 +396,20 @@ def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
     status = _run_cli("engine", "status", "marshall", env_extra=env)
     assert status.returncode == 0, status.stderr
     assert "marshall engine: codex" in status.stdout
+
+
+def test_cli_engine_set_rasalghul_uses_canonical_engine_state_only(tmp_path):
+    alfred = tmp_path / "alfred"
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("engine", "set", "rasalghul", "codex", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    assert (alfred / "state" / "engines" / "rasalghul").read_text().strip() == "codex"
+    assert not (alfred / "state" / "review-engine").exists()
 
 
 def test_cli_review_engine_alias_is_not_exposed(tmp_path):

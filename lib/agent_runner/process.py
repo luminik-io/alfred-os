@@ -1150,7 +1150,7 @@ def invoke_agent_engine(
     Returns ``(result, engine_used)`` where ``engine_used`` is one of
     ``"claude"``, ``"codex"``, or ``"codex-fallback"``. The
     ``on_fallback`` callback fires only when hybrid mode falls back
-    after a Claude provider-limit subtype; useful for posting a
+    after a Claude capability failure; useful for posting a
     one-line Slack warning.
     """
     mode = normalize_engine(engine)
@@ -1261,9 +1261,8 @@ def invoke_agent_engine(
                 on_fallback(result)
             result = _resilient_invoke("codex", _invoke_codex)
             engine_used = "codex-fallback"
-            # Stamp the codex result with the Claude failure that triggered
-            # the fallback so callers (reported_subtype) can surface the ROOT
-            # cause rather than a bare codex subtype.
+            # Stamp the Codex result with the Claude capability failure that
+            # triggered the fallback so event logs can explain the path.
             result.fallback_from_subtype = trigger_subtype
 
     result = _stamp_context_governance(result)

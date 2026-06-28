@@ -274,14 +274,13 @@ def main() -> int:
         memory_repo=f"{GH_ORG}/{repo}" if GH_ORG else repo,
     )
     spend.increment(firings_today=1, turns_today=result.num_turns, cost_usd_today=result.cost_usd)
-    # Root-cause subtype to REPORT. When a Claude auth failure triggered the
-    # codex fallback (which then failed for its own reason), report the auth
-    # failure, not codex's downstream subtype. ``result.subtype`` stays the
-    # raw codex subtype; ``root_subtype`` is what the operator should see.
+    # Report the result subtype directly. If a hybrid fallback happened,
+    # ``fallback_from_subtype`` remains audit context on the result.
     root_subtype = reported_subtype(result)
+    fallback_from_subtype = getattr(result, "fallback_from_subtype", None)
     fallback_detail = (
-        f" (after claude {result.fallback_from_subtype}, fell back to {result.subtype})"
-        if root_subtype != result.subtype
+        f" (after claude {fallback_from_subtype}, fell back to {result.subtype})"
+        if fallback_from_subtype
         else ""
     )
     events.emit(

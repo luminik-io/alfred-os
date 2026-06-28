@@ -59,7 +59,7 @@ alfred auth status
 |---|---|
 | `claude` | Claude Code only. |
 | `codex` | Codex only. |
-| `hybrid` | Claude first, Codex fallback on Claude auth, budget, or rate-limit errors. |
+| `hybrid` | Claude first. Retry transient failures on Claude, and fall back to Codex only when Claude ran but produced no useful result. |
 
 ## Two-account swap (`alfred claude`)
 

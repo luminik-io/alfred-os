@@ -13,20 +13,18 @@ This page covers the three modes, the precedence chain, the fallback behavior, t
 |---|---|
 | `claude` | Use Claude Code only. No fallback. |
 | `codex` | Use Codex only. No fallback. |
-| `hybrid` | Use Claude Code first. Fall back to Codex on `error_budget`, `error_rate_limit`, or `error_authentication`. Default for most codenames. |
+| `hybrid` | Use Claude Code first. Retry transient failures on the same engine, and fall back to Codex only when Claude ran but produced no useful result. Default for most codenames. |
 
-`hybrid` is the default for builder agents because it gives you graceful degradation when Claude quota is exhausted, without committing every firing to Codex. Reviewer agents that are happy with either engine often run pure `codex` so they preserve Claude quota for builders.
+`hybrid` is the default for builder agents because it gives them a second shot when Claude ran but produced no usable result, without hiding quota, auth, or transport faults behind another provider. Reviewer agents that are happy with either engine often run pure `codex` so they preserve Claude quota for builders.
 
 ## Per-agent overrides
 
 The framework reads the engine for each firing from a precedence chain. The first source that returns a normalized mode wins.
 
 1. `ALFRED_<CODENAME>_ENGINE` (e.g. `ALFRED_LUCIUS_ENGINE=claude`, `ALFRED_RASALGHUL_ENGINE=codex`).
-2. An optional legacy env var for migrated fleets (the codename's runner can name one).
-3. `ALFRED_ENGINE` for fleet-wide testing (useful in `alfred-dry-run`).
-4. `$ALFRED_HOME/state/engines/<codename>`, written by `alfred engine set`.
-5. An optional legacy state file.
-6. The codename's compiled-in default, usually `hybrid`.
+2. `ALFRED_ENGINE` for fleet-wide testing (useful in `alfred-dry-run`).
+3. `$ALFRED_HOME/state/engines/<codename>`, written by `alfred engine set`.
+4. The codename's compiled-in default, usually `hybrid`.
 
 Alfred CLI:
 
@@ -44,17 +42,24 @@ Set the env-var form in `~/.alfredrc` when you want the override to follow your 
 
 ## Hybrid fallback behavior
 
-Hybrid mode tries Claude first. The runner inspects the `AgentResult` and falls back to Codex only for a narrow set of subtypes:
+Hybrid mode tries Claude first. Every invocation outcome is classified before
+Alfred decides what to do next:
 
-- `error_budget`: the Claude account has run out of subscription budget.
-- `error_rate_limit`: the Claude account hit a rate limit.
-- `error_authentication`: the Claude CLI auth is missing or stale.
+- **TRANSIENT** (`error_rate_limit`, `error_overloaded`, `error_timeout`,
+  `error_api`, connection resets, context overflow): retry the same engine with
+  exponential backoff and jitter.
+- **FATAL** (`error_authentication`, `error_budget`, 401/403/422): surface the
+  failure honestly and do not burn the fallback.
+- **CAPABILITY** (`error_max_turns`, parse failure, loop detection, or another
+  no-useful-result failure): fall back to Codex because a different engine may
+  handle the task better.
 
-Any other failure stays a Claude failure. A normal Claude tool error is a bug in the runner or prompt, not a reason to switch engines; hiding it behind a fallback would mask real problems.
+The fallback only fires on a capability gap. It does not hide auth, quota, or
+transport faults behind a different provider.
 
 When a Claude-backed firing returns `error_rate_limit` or `error_budget`, the runner also calls `set_global_block(hours=1, reason=...)`. That writes `$ALFRED_HOME/state/global-blocked-until.json`, which every other Claude-backed firing reads at the top of `main()`. They print `[<AGENT>-GLOBAL-BLOCKED]` and exit 0 for the next hour. The block stops the stampede; without it, the whole fleet would spend the hour firing into the same rate-limit wall.
 
-Hybrid agents are *not* silenced by the global block: if they fall back to Codex successfully, they keep working through the Claude outage. That is the point.
+All shipped agents check the global block before dispatch today, regardless of engine mode. The block is a fleet-wide pause, not a Claude-only router bypass.
 
 ## Default routing matrix
 
@@ -62,8 +67,8 @@ The shipped fleet has the following defaults. Override per codename when your ac
 
 | Codename | Default mode | Why |
 |---|---|---|
-| **batman** | `hybrid` | Architect for cross-repo execution. Long-context planning prefers Claude; Codex fallback keeps the architect lane alive during Claude outages. |
-| **lucius** | `hybrid` | Builder. Wants Claude for first-class code generation, but cannot afford to be idle during a Claude rate-limit hour. |
+| **batman** | `hybrid` | Architect for cross-repo execution. Long-context planning prefers Claude; Codex fallback gives the architect lane a second model when Claude produced no useful plan. |
+| **lucius** | `hybrid` | Builder. Wants Claude for first-class code generation, with Codex available only for capability gaps. |
 | **drake** | `claude` | Planner. Cross-repo grep plus issue-filing benefits from Claude's longer effective context and tool integration. |
 | **bane** | `hybrid` | Test-coverage builder. Same posture as Lucius; tests are valuable enough to fall back rather than skip. |
 | **rasalghul** | `codex` | Reviewer. An independent reviewer on a different model surfaces blind spots the builder model shares. Also preserves Claude quota for builders. |
@@ -96,7 +101,7 @@ On the roadmap:
 - **Ollama and other local engines**: for teams that want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
 - **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
 
-Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and a subtype-mapping table so hybrid fallback knows which failures to swallow.
+Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and classifier coverage so retry, breaker, and fallback policy treat failures honestly.
 
 ## See also
 

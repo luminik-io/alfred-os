@@ -43,14 +43,13 @@ For the local config template, see [`.alfredrc.example`](https://github.com/lumi
 |---|---|---|
 | `ALFRED_<CODENAME>_ENGINE` | per-agent engine choice | runner default |
 | `ALFRED_ENGINE` | fleet-wide engine override | (none) |
-| `ALFRED_REVIEW_ENGINE` | legacy review-agent override | (none) |
 | `ALFRED_<CODENAME>_MAX_TURNS` | optional per-agent Claude turn cap | runner default |
 | `ALFRED_<CODENAME>_CODEX_SANDBOX` | per-agent Codex sandbox | `CODEX_SANDBOX` |
 | `ALFRED_<CODENAME>_CODEX_WRITE` | shortcut for `workspace-write` | `0` |
 
-Engine values are `claude`, `codex`, or `hybrid`; `both` is accepted as a
-legacy alias for `hybrid`. `bin/alfred engine status/set` persists per-agent
-engine choices under `$ALFRED_HOME/state/engines/<codename>`.
+Engine values are `claude`, `codex`, or `hybrid`. `bin/alfred engine
+status/set` persists per-agent engine choices under
+`$ALFRED_HOME/state/engines/<codename>`.
 
 ## Shipped summaries
 

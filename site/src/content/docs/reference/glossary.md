@@ -85,7 +85,8 @@ in depth.
   against; agents refuse to act on repos outside it.
   See also: [Install](/getting-started/install/).
 - **hybrid fallback**: Engine routing mode where the runner tries Claude
-  first and falls back to Codex when Claude hits a rate limit or budget cap.
+  first and falls back to Codex only when Claude ran but produced no useful
+  result.
   See also: [Claude Code and Codex](/guides/claude-code/).
 - **IAM-per-agent**: AWS pattern where each agent gets its own IAM identity
   and Secrets Manager scope, so a compromised agent can only reach its own keys.

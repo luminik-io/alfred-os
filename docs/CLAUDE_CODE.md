@@ -28,7 +28,7 @@ Engine modes:
 |---|---|
 | `claude` | Use Claude Code only. |
 | `codex` | Use Codex only. |
-| `hybrid` | Use Claude Code first. Fall back to Codex when Claude returns `error_budget`, `error_rate_limit`, or `error_authentication`. |
+| `hybrid` | Use Claude Code first. Retry transient failures on Claude, and fall back to Codex only when Claude ran but produced no useful result. |
 
 ```sh
 alfred engine status
@@ -43,11 +43,9 @@ alfred auth status
 Resolution order for one codename:
 
 1. `ALFRED_<CODENAME>_ENGINE`
-2. Optional legacy env var for migrated fleets
-3. Fleet-wide `ALFRED_ENGINE`, useful for testing
-4. `$ALFRED_HOME/state/engines/<codename>`
-5. Optional legacy state file
-6. The codename's default, usually `hybrid`
+2. Fleet-wide `ALFRED_ENGINE`, useful for testing
+3. `$ALFRED_HOME/state/engines/<codename>`
+4. The codename's default, usually `hybrid`
 
 ## Optional Codex routing
 

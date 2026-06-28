@@ -1,14 +1,12 @@
-"""Tests for honest root-cause surfacing of LLM failures.
+"""Tests for honest subtype reporting and hybrid fallback audit metadata.
 
-Covers the gap behind the silent-401 outage: in hybrid mode a Claude auth
-failure triggers a codex fallback, and if codex then rate-limits the
-returned result carries codex's ``error_rate_limit`` subtype. Reporting
-that bare subtype hides the real, operator-actionable cause
-(authentication). These tests pin:
+Hybrid fallback now fires only for capability failures. Provider auth, budget,
+and rate-limit failures surface on the original engine instead of being hidden
+behind a Codex attempt. These tests pin:
 
-* ``reported_subtype`` promotes an auth trigger over the codex subtype,
-* ``invoke_agent_engine`` stamps ``fallback_from_subtype`` on the codex
-  result when a Claude failure triggered the fallback.
+* ``reported_subtype`` reports the raw result subtype.
+* ``invoke_agent_engine`` stamps ``fallback_from_subtype`` on the Codex result
+  when a Claude capability failure triggered the fallback.
 """
 
 from __future__ import annotations
@@ -43,10 +41,9 @@ def _result(subtype: str, *, success: bool = False, **kw) -> ClaudeResult:
 # --------------------------------------------------------------------------
 # reported_subtype
 # --------------------------------------------------------------------------
-def test_reported_subtype_promotes_auth_trigger_over_codex_rate_limit() -> None:
-    """Claude 401 -> codex fallback -> codex rate-limit must report auth."""
+def test_reported_subtype_does_not_rewrite_fallback_trigger() -> None:
     result = _result("error_rate_limit", fallback_from_subtype="error_authentication")
-    assert reported_subtype(result) == "error_authentication"
+    assert reported_subtype(result) == "error_rate_limit"
 
 
 def test_reported_subtype_returns_subtype_when_no_fallback() -> None:
@@ -54,14 +51,12 @@ def test_reported_subtype_returns_subtype_when_no_fallback() -> None:
     assert reported_subtype(result) == "error_rate_limit"
 
 
-def test_reported_subtype_keeps_codex_limit_when_trigger_was_also_a_limit() -> None:
-    """Both ends genuinely rate-limited: reporting the codex subtype is not
-    misleading, so we do not rewrite it."""
+def test_reported_subtype_keeps_result_limit_when_trigger_was_also_a_limit() -> None:
     result = _result("error_rate_limit", fallback_from_subtype="error_rate_limit")
     assert reported_subtype(result) == "error_rate_limit"
 
 
-def test_reported_subtype_does_not_double_report_auth() -> None:
+def test_reported_subtype_returns_auth_result() -> None:
     result = _result("error_authentication", fallback_from_subtype="error_authentication")
     assert reported_subtype(result) == "error_authentication"
 
@@ -112,8 +107,8 @@ def test_hybrid_stamps_fallback_trigger_on_codex_result() -> None:
     assert engine_used == "codex-fallback"
     assert result.subtype == "error_rate_limit"
     assert result.fallback_from_subtype == "error_max_turns"
-    # The codex subtype is the honest headline here (the trigger was not an
-    # operator-actionable auth failure), so reported_subtype keeps it.
+    # The Codex subtype is the honest headline; the Claude trigger is audit
+    # metadata for the fallback path.
     assert reported_subtype(result) == "error_rate_limit"
     # on_fallback fired with the ORIGINAL claude failure.
     assert captured and captured[0].subtype == "error_max_turns"

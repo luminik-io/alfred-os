@@ -76,21 +76,27 @@ flowchart TD
     claudeOnly["claude"]
     codexOnly["codex"]
     hybrid["hybrid:<br/>Claude first"]
-    fb{"subtype in<br/>HYBRID_FALLBACK_SUBTYPES?"}
+    class{"classify_result()"}
+    retry["retry same engine<br/>+ circuit breaker"]
+    fatal["surface fatal<br/>auth / budget / schema"]
+    cap{"CAPABILITY?"}
     used1["engine_used = claude"]
     used2["engine_used = codex"]
     used3["engine_used = codex-fallback"]
 
     engineMode -->|claude| claudeOnly --> used1
     engineMode -->|codex| codexOnly --> used2
-    engineMode -->|hybrid| hybrid --> fb
-    fb -->|no| used1
-    fb -->|yes| used3
+    engineMode -->|hybrid| hybrid --> class
+    class -->|TRANSIENT| retry --> used1
+    class -->|FATAL| fatal --> used1
+    class --> cap
+    cap -->|no| used1
+    cap -->|yes| used3
 ```
 
-The engine mode is resolved by `agent_engine` (`lib/agent_runner/config.py`) from the precedence chain `ALFRED_<AGENT>_ENGINE` then an optional legacy env var then `ALFRED_ENGINE`, defaulting to `hybrid`. `invoke_agent_engine` (`lib/agent_runner/process.py`) returns `(result, engine_used)` where `engine_used` is one of `claude`, `codex`, or `codex-fallback`.
+The engine mode is resolved by `agent_engine` (`lib/agent_runner/config.py`) from the precedence chain `ALFRED_<AGENT>_ENGINE`, then `ALFRED_ENGINE`, then `$ALFRED_HOME/state/engines/<agent>`, defaulting to `hybrid`. `invoke_agent_engine` (`lib/agent_runner/process.py`) returns `(result, engine_used)` where `engine_used` is one of `claude`, `codex`, or `codex-fallback`.
 
-Hybrid means Claude first, Codex only on a fallback subtype. `HYBRID_FALLBACK_SUBTYPES` (`config.py`) is the provider-limit set (`error_budget`, `error_rate_limit`) plus the other transient failure subtypes. Codex does not expose Claude's allow-list, max-turn, or resume-session semantics, so `codex_invoke` rejects those kwargs rather than implying they were enforced; its default posture is a read-only sandbox with no approval prompts.
+Hybrid means Claude first, same-engine retry for transient failures, honest surfacing for fatal failures, and Codex only on a capability gap (`FailureClass.CAPABILITY`). Codex does not expose Claude's allow-list, max-turn, or resume-session semantics, so `codex_invoke` rejects those kwargs rather than implying they were enforced; its default posture is a read-only sandbox with no approval prompts.
 
 ## Distributed locking
 
@@ -126,7 +132,7 @@ flowchart TB
     setblock --> gpoison
 ```
 
-The spend ledger (`state.py:SpendState`) is the per-agent per-day file the cap checks read: `turns_today`, `cost_usd_today`, `consecutive_failures`, and friends, auto-resetting at midnight via the per-day filename. The global block defaults to a one-hour window (`maybe_set_global_block_for_result`) and only trips for the `claude` engine, since Codex provider limits are handled as silent hybrid fallbacks instead.
+The spend ledger (`state.py:SpendState`) is the per-agent per-day file the cap checks read: `turns_today`, `cost_usd_today`, `consecutive_failures`, and friends, auto-resetting at midnight via the per-day filename. The global block defaults to a one-hour window (`maybe_set_global_block_for_result`) and trips only when a Claude-backed invocation reports a provider limit. Shipped agents check the block before dispatch, so the pause is fleet-wide until it expires.
 
 ## Slack conversational flow
 

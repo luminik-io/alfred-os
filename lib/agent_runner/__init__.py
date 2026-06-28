@@ -80,7 +80,6 @@ from .agent_events import (
 # --------------------------------------------------------------------------
 from .config import (
     ENGINE_CHOICES,
-    HYBRID_FALLBACK_SUBTYPES,
     PROVIDER_LIMIT_SUBTYPES,
     _agent_env_slug,
     _env_present,
@@ -380,7 +379,6 @@ __all__ = [
     "today_str",
     # config
     "ENGINE_CHOICES",
-    "HYBRID_FALLBACK_SUBTYPES",
     "PROVIDER_LIMIT_SUBTYPES",
     "agent_engine",
     "codex_sandbox_for_agent",
