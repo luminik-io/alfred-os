@@ -395,13 +395,24 @@ def test_install_inventory_uses_active_serve_home_not_launcher_rc_home(
     home.mkdir()
     active_home.mkdir()
     launcher_home.mkdir()
-    (home / ".alfredrc").write_text(f"ALFRED_HOME={launcher_home}\n", encoding="utf-8")
-    (active_home / ".env").write_text("GH_ORG=active\n", encoding="utf-8")
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={launcher_home}\nALFRED_SHIPPED_REPOS=launcher/api\n",
+        encoding="utf-8",
+    )
+    (active_home / ".env").write_text(
+        "GH_ORG=active\nALFRED_SHIPPED_REPOS=active/api\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", str(active_home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
 
-    inventory = setup_mod.bootstrap_status()["install"]
+    status = setup_mod.bootstrap_status()
+    inventory = status["install"]
 
+    assert status["repos"]["selected"] == ["active/api"]
     assert inventory["alfred_home"] == str(active_home)
     assert inventory["env_path"] == str(active_home / ".env")
     assert inventory["env_present"] is True

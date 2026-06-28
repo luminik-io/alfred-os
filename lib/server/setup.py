@@ -1071,8 +1071,8 @@ def bootstrap_status() -> dict[str, Any]:
     """
     gh = gh_auth_status()
     engines = engine_clis()
-    launcher_env = _runtime_config_env()
-    repos = setup_board_repos(launcher_env)
+    runtime_env = _runtime_config_env()
+    repos = setup_board_repos(runtime_env)
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status()
     capability_plane = capability_status(code_memory)
@@ -1088,12 +1088,16 @@ def bootstrap_status() -> dict[str, Any]:
             "keys": list(_REPO_ENV_KEYS),
         },
         "demo": {"present": any(load_demo_cards().values())},
-        "install": install_inventory(repos=repos),
+        "install": install_inventory(repos=repos, env=runtime_env),
         "ready": bool(gh["ok"] and any_engine and repos),
     }
 
 
-def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
+def install_inventory(
+    *,
+    repos: list[str] | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Read-only inventory of an existing Alfred install.
 
     The desktop onboarding uses this to show what Alfred already found on the
@@ -1103,17 +1107,17 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
 
     from . import schedule as setup_schedule
 
-    launcher_env = _runtime_config_env()
-    home = _alfred_home(launcher_env)
+    resolved_env = env or _runtime_config_env()
+    home = _alfred_home(resolved_env)
     env_path = home / ".env"
     token_path = home / "state" / "server-token"
     conf_path = _install_agents_conf_path(home)
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
-    selected = repos if repos is not None else setup_board_repos(launcher_env)
-    selected_env_present = any(_has_config_value(launcher_env, key) for key in _REPO_ENV_KEYS)
-    board_env_present = any(_has_config_value(launcher_env, key) for key in _BOARD_REPO_ENV_KEYS)
-    slack_configured = any(_has_config_value(launcher_env, key) for key in _SLACK_CONFIG_KEYS)
-    memory_overridden = any(_has_config_value(launcher_env, key) for key in _MEMORY_CONFIG_KEYS)
+    selected = repos if repos is not None else setup_board_repos(resolved_env)
+    selected_env_present = any(_has_config_value(resolved_env, key) for key in _REPO_ENV_KEYS)
+    board_env_present = any(_has_config_value(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
+    slack_configured = any(_has_config_value(resolved_env, key) for key in _SLACK_CONFIG_KEYS)
+    memory_overridden = any(_has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS)
     memory_detail = (
         "Custom Redis Agent Memory settings found."
         if memory_overridden

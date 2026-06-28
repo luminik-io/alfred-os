@@ -73,17 +73,18 @@ def test_install_inventory_reports_existing_config_without_secret_values(
     assert by_key["token"]["ok"] is True
 
 
-def test_install_inventory_uses_launcher_home_for_agents_conf(
+def test_install_inventory_uses_active_serve_home_for_agents_conf(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    home = tmp_path / "runtime"
+    home = tmp_path / "active-runtime"
+    launcher_home = tmp_path / "launcher-runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
 
-    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
+    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={launcher_home}\n", encoding="utf-8")
     env_path = home / ".env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("ALFRED_QUEUE_REPOS=acme/api\n", encoding="utf-8")
@@ -92,6 +93,12 @@ def test_install_inventory_uses_launcher_home_for_agents_conf(
     conf.parent.mkdir(parents=True)
     conf.write_text(
         "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+    launcher_conf = launcher_home / "launchd" / "agents.conf"
+    launcher_conf.parent.mkdir(parents=True)
+    launcher_conf.write_text(
+        "alfred.bane\tbane.py\tinterval:1200\tyes\t\topus\tLauncher-only engineer\n",
         encoding="utf-8",
     )
 
@@ -103,35 +110,52 @@ def test_install_inventory_uses_launcher_home_for_agents_conf(
     assert inventory["scheduled_runs"] == 1
 
 
-def test_install_inventory_does_not_mix_stale_agents_conf_from_default_home(
+def test_install_inventory_does_not_mix_launcher_config_into_active_default_home(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    home = tmp_path / "runtime"
-    stale_home = tmp_path / ".alfred"
+    active_home = tmp_path / ".alfred"
+    launcher_home = tmp_path / "launcher-runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("ALFRED_HOME", raising=False)
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
 
-    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
-    env_path = home / ".env"
+    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={launcher_home}\n", encoding="utf-8")
+    env_path = launcher_home / ".env"
     env_path.parent.mkdir(parents=True)
-    env_path.write_text("ALFRED_QUEUE_REPOS=acme/api\n", encoding="utf-8")
-
-    stale_conf = stale_home / "launchd" / "agents.conf"
-    stale_conf.parent.mkdir(parents=True)
-    stale_conf.write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tStale install\n",
+    env_path.write_text(
+        "\n".join(
+            [
+                "ALFRED_SHIPPED_REPOS=acme/api",
+                "SLACK_BOT_TOKEN=xoxb-launcher-only",
+                "ALFRED_AMS_PORT=9099",
+            ]
+        )
+        + "\n",
         encoding="utf-8",
     )
 
-    inventory = setup_mod.install_inventory(repos=["acme/api"])
+    launcher_conf = launcher_home / "launchd" / "agents.conf"
+    launcher_conf.parent.mkdir(parents=True)
+    launcher_conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\topus\tLauncher-only install\n",
+        encoding="utf-8",
+    )
 
-    assert inventory["alfred_home"] == str(home)
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["alfred_home"] == str(active_home)
     assert inventory["agents_conf_path"] is None
     assert inventory["agents_conf_present"] is False
     assert inventory["scheduled_runs"] == 0
+    assert inventory["selected_repos_env_present"] is False
+    assert inventory["slack_configured"] is False
+    assert inventory["memory_configured"] is False
+    by_key = {item["key"]: item for item in inventory["items"]}
+    assert by_key["repos"]["ok"] is False
+    assert by_key["slack"]["ok"] is False
+    assert by_key["memory"]["path"] is None
 
 
 def test_bootstrap_status_does_not_treat_queue_only_scope_as_ready(
@@ -140,14 +164,13 @@ def test_bootstrap_status_does_not_treat_queue_only_scope_as_ready(
 ) -> None:
     home = tmp_path / "runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
 
-    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
     env_path = home / ".env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("ALFRED_QUEUE_REPOS=Acme/API\n", encoding="utf-8")
@@ -176,20 +199,19 @@ def test_bootstrap_status_does_not_treat_queue_only_scope_as_ready(
     assert status["ready"] is False
 
 
-def test_bootstrap_status_uses_launcher_home_for_board_repo_selection(
+def test_bootstrap_status_uses_active_serve_home_for_board_repo_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     home = tmp_path / "runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
 
-    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
     env_path = home / ".env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("ALFRED_SHIPPED_REPOS=Acme/API\n", encoding="utf-8")
