@@ -192,6 +192,40 @@ def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, 
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/custom-memory"
 
 
+def test_launcher_env_preserves_process_memory_scope_over_pointed_alfredrc(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    stale_runtime = tmp_path / "stale-runtime"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    stale_runtime.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "org/process")
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    (home / ".alfredrc").write_text(
+        f"ALFREDRC={custom_rc}\n"
+        f"ALFRED_HOME={stale_runtime}\n"
+        "ALFRED_CODE_MEMORY_REPOS=org/stale-memory\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/custom-memory\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFREDRC"] == str(custom_rc)
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/process"
+
+
 def test_launcher_env_lets_env_file_repo_scope_override_rc(
     fresh_agent_runner, monkeypatch, tmp_path
 ):
