@@ -264,7 +264,7 @@ rc_targets_effective_home() {
   if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
     return 0
   fi
-  if [ "$ORIGINAL_ALFRED_HOME_PRESENT" -ne 1 ]; then
+  if [ "$ORIGINAL_ALFRED_HOME_PRESENT" -ne 1 ] || [ -z "${ALFRED_HOME:-}" ]; then
     return 0
   fi
   original_home="$(normalize_runtime_home "$ALFRED_HOME")"

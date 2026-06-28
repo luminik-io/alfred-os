@@ -169,12 +169,18 @@ def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, 
     monkeypatch.delenv("ALFREDRC", raising=False)
     monkeypatch.delenv("ALFRED_HOME", raising=False)
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
     (home / ".alfredrc").write_text(
-        f"ALFREDRC={custom_rc}\nALFRED_HOME={stale_runtime}\nALFRED_QUEUE_REPOS=org/stale\n",
+        f"ALFREDRC={custom_rc}\n"
+        f"ALFRED_HOME={stale_runtime}\n"
+        "ALFRED_QUEUE_REPOS=org/stale\n"
+        "ALFRED_CODE_MEMORY_REPOS=org/stale-memory\n",
         encoding="utf-8",
     )
     custom_rc.write_text(
-        f"ALFRED_HOME={runtime}\nALFRED_QUEUE_REPOS=org/custom\n",
+        f"ALFRED_HOME={runtime}\n"
+        "ALFRED_QUEUE_REPOS=org/custom\n"
+        "ALFRED_CODE_MEMORY_REPOS=org/custom-memory\n",
         encoding="utf-8",
     )
 
@@ -182,7 +188,8 @@ def test_launcher_env_follows_alfredrc_pointer(fresh_agent_runner, monkeypatch, 
 
     assert env["ALFREDRC"] == str(custom_rc)
     assert env["ALFRED_HOME"] == str(runtime)
-    assert env["ALFRED_QUEUE_REPOS"] == "org/stale"
+    assert env["ALFRED_QUEUE_REPOS"] == "org/custom"
+    assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/custom-memory"
 
 
 def test_launcher_env_lets_env_file_repo_scope_override_rc(

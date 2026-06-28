@@ -316,7 +316,7 @@ def launcher_env() -> dict[str, str]:
             rc_path,
             env,
             no_clobber=True,
-            clobber_keys={"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"},
+            clobber_keys={"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"} | _SETUP_MANAGED_RUNTIME_ENV_KEYS,
         )
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
