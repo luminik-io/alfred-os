@@ -721,7 +721,7 @@ describe("useRosterTheme", () => {
       resolveLoad(serverState({ theme: "justice-league" }));
     });
     expect(result.current.rosterTheme).toBe("justice-league");
-    expect(result.current.saveError).toContain("503");
+    expect(result.current.saveError).toBeNull();
   });
 
   // Thread: "Hydration still skips". If the initial server read resolves while
@@ -766,7 +766,7 @@ describe("useRosterTheme", () => {
     await waitFor(() => {
       expect(result.current.rosterTheme).toBe("justice-league");
     });
-    expect(result.current.saveError).toContain("503");
+    expect(result.current.saveError).toBeNull();
   });
 
   it("restores the saved choice when hydration retries while a save is pending", async () => {

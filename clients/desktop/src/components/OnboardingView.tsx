@@ -247,6 +247,19 @@ export function OnboardingView({
   const statusRequestSeq = useRef(0);
   const baseUrlRef = useRef(baseUrl);
   const connectedRef = useRef(connected);
+  const effectBaseUrlRef = useRef(baseUrl);
+  const effectConnectedRef = useRef(connected);
+  const propsGenerationRef = useRef(0);
+  const propsSnapshotRef = useRef({ baseUrl, connected });
+  if (
+    propsSnapshotRef.current.baseUrl !== baseUrl ||
+    propsSnapshotRef.current.connected !== connected
+  ) {
+    propsGenerationRef.current += 1;
+    propsSnapshotRef.current = { baseUrl, connected };
+  }
+  baseUrlRef.current = baseUrl;
+  connectedRef.current = connected;
   const connectionGenerationRef = useRef(0);
   const githubAuthRequestSeq = useRef(0);
   const githubAuthFlowRequestSeq = useRef<number | null>(null);
@@ -285,7 +298,7 @@ export function OnboardingView({
   );
 
   useEffect(() => {
-    if (baseUrlRef.current !== baseUrl) {
+    if (effectBaseUrlRef.current !== baseUrl) {
       connectionGenerationRef.current += 1;
       statusRequestSeq.current += 1;
       githubAuthRequestSeq.current += 1;
@@ -299,11 +312,11 @@ export function OnboardingView({
         "GitHub sign-in was interrupted. Start it again for this runtime.",
       );
     }
-    baseUrlRef.current = baseUrl;
+    effectBaseUrlRef.current = baseUrl;
   }, [baseUrl, setInterruptedGithubAuthFlow]);
 
   useEffect(() => {
-    const wasConnected = connectedRef.current;
+    const wasConnected = effectConnectedRef.current;
     if (wasConnected !== connected) {
       connectionGenerationRef.current += 1;
       githubAuthRequestSeq.current += 1;
@@ -311,7 +324,7 @@ export function OnboardingView({
       setFleetSavePending(false);
       setFleetTouchedUrl(null);
     }
-    connectedRef.current = connected;
+    effectConnectedRef.current = connected;
     if (!connected) {
       statusRequestSeq.current += 1;
       setStatus(null);
@@ -608,11 +621,14 @@ export function OnboardingView({
     ): Promise<boolean> => {
       const seq = ++fleetSaveSeq.current;
       const requestBaseUrl = baseUrl;
+      const requestPropsGeneration = propsGenerationRef.current;
       setFleetSavePending(true);
       try {
         const saved = await save();
+        if (propsGenerationRef.current !== requestPropsGeneration) return false;
         if (seq !== fleetSaveSeq.current) return false;
         if (baseUrlRef.current !== requestBaseUrl) return false;
+        if (!connectedRef.current) return false;
         if (saved === false || (saved !== true && rosterSaveError)) {
           setFleetTouchedUrl(null);
           setNotice({
@@ -625,6 +641,7 @@ export function OnboardingView({
         setNotice(null);
         return true;
       } catch (err) {
+        if (propsGenerationRef.current !== requestPropsGeneration) return false;
         if (seq !== fleetSaveSeq.current) return false;
         setFleetTouchedUrl(null);
         setNotice({
@@ -633,7 +650,7 @@ export function OnboardingView({
         });
         return false;
       } finally {
-        if (seq === fleetSaveSeq.current) {
+        if (propsGenerationRef.current === requestPropsGeneration && seq === fleetSaveSeq.current) {
           setFleetSavePending(false);
         }
       }

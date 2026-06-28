@@ -209,7 +209,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
         setRosterThemeState(theme);
         setCustomNamesState(custom);
         setHydrationError(null);
-        showSaveErrorForCurrentRuntime();
+        clearRuntimeSaveError(baseUrl);
         writeStored(theme, custom);
       } catch (err: unknown) {
         // Keep the localStorage fallback in state for display, but do not treat it
@@ -232,7 +232,13 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
     return () => {
       cancelled = true;
     };
-  }, [baseUrl, connected, hydrationRequestSeq, showSaveErrorForCurrentRuntime]);
+  }, [
+    baseUrl,
+    clearRuntimeSaveError,
+    connected,
+    hydrationRequestSeq,
+    showSaveErrorForCurrentRuntime,
+  ]);
 
   // Mirror every change to localStorage so the next launch is instant.
   useEffect(() => {

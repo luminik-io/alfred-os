@@ -985,6 +985,40 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.queryByText(/want approvals and questions in slack/i)).not.toBeInTheDocument();
   });
 
+  it("does not accept a slow Fleet save after the runtime props change", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const slowSave = deferred<boolean>();
+    const onRosterThemeChange = vi.fn(() => slowSave.promise);
+    const props = onboardingProps({
+      baseUrl: "http://127.0.0.1:7010",
+      onRosterThemeChange,
+    });
+    const view = render(<OnboardingView {...props} />);
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    fireEvent.click(screen.getByRole("button", { name: /^continue$/i }));
+    await waitFor(() => expect(onRosterThemeChange).toHaveBeenCalledTimes(1));
+
+    view.rerender(<OnboardingView {...props} baseUrl="http://127.0.0.1:7020" />);
+    await act(async () => {
+      slowSave.resolve(true);
+    });
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /fleet/i,
+    );
+    expect(onRosterThemeChange).toHaveBeenCalledTimes(1);
+    expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
+      /4 of 7/i,
+    );
+  });
+
   it("resets the Fleet save acknowledgement when the runtime changes", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
