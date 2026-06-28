@@ -113,6 +113,7 @@ function App() {
     setCustomNames,
     saveError: rosterSaveError,
     hydrating: rosterHydrating,
+    hydrationError: rosterHydrationError,
   } = useRosterTheme(baseUrl);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -357,6 +358,7 @@ function App() {
               customNames={customNames}
               rosterSaveError={rosterSaveError}
               rosterHydrating={rosterHydrating}
+              rosterHydrationError={rosterHydrationError}
               onRosterThemeChange={setRosterTheme}
               onCustomNamesChange={setCustomNames}
             />

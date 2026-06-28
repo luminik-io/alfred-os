@@ -58,6 +58,32 @@ describe("useRosterTheme", () => {
     expect(result.current.rosterTheme).toBe("transformers");
   });
 
+  it("surfaces roster load failure until hydration is retried", async () => {
+    loadRosterTheme
+      .mockRejectedValueOnce(new Error("runtime returned 500"))
+      .mockResolvedValueOnce(serverState({ theme: "justice-league" }));
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    await waitFor(() => {
+      expect(result.current.hydrationError).toContain("runtime returned 500");
+    });
+    expect(result.current.hydrating).toBe(false);
+    expect(result.current.rosterTheme).toBe("batman");
+
+    act(() => {
+      result.current.retryHydration();
+    });
+
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("justice-league");
+    });
+    expect(result.current.hydrationError).toBeNull();
+  });
+
   // Thread: "Offline Change Blocks Hydration". A change made while baseUrl is
   // absent must not mark the hook hydrated, so the later server read still runs
   // and the desktop converges on the server (and Slack) cast.

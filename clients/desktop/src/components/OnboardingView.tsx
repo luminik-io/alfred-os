@@ -175,6 +175,7 @@ export function OnboardingView({
   customNames,
   rosterSaveError,
   rosterHydrating,
+  rosterHydrationError,
   onRosterThemeChange,
   onCustomNamesChange,
 }: {
@@ -197,6 +198,7 @@ export function OnboardingView({
   customNames: CustomRosterNames;
   rosterSaveError: string | null;
   rosterHydrating: boolean;
+  rosterHydrationError: string | null;
   onRosterThemeChange: (next: RosterThemeId) => boolean | void | Promise<boolean | void>;
   onCustomNamesChange: (next: CustomRosterNames) => boolean | void | Promise<boolean | void>;
 }) {
@@ -221,6 +223,7 @@ export function OnboardingView({
   const [slackTouched, setSlackTouched] = useState(false);
   const persistedFleetChoice =
     rosterTheme !== DEFAULT_ROSTER_THEME || hasCustomRosterValues(customNames);
+  const fleetRosterBlocked = Boolean(rosterHydrating || rosterHydrationError);
   // True once this onboarding session chooses a theme or continues from Fleet
   // to accept the default roster. Current props still win for persisted choices:
   // if server hydration replaces a local fallback, this state does not keep the
@@ -499,7 +502,7 @@ export function OnboardingView({
         case "fleet":
           if (fleetSavePending) return false;
           if (!canMutate) return fleetTouched || persistedFleetChoice;
-          return !rosterSaveError && fleetTouched;
+          return !fleetRosterBlocked && !rosterSaveError && fleetTouched;
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -516,6 +519,7 @@ export function OnboardingView({
       engineReady,
       canMutate,
       fleetTouched,
+      fleetRosterBlocked,
       fleetSavePending,
       githubConnected,
       persistedFleetChoice,
@@ -633,6 +637,13 @@ export function OnboardingView({
       });
       return false;
     }
+    if (rosterHydrationError) {
+      setNotice({
+        tone: "error",
+        message: rosterHydrationError,
+      });
+      return false;
+    }
     if (rosterSaveError || !fleetTouched) {
       return saveFleetChoice(() => onRosterThemeChange(rosterTheme));
     }
@@ -642,6 +653,7 @@ export function OnboardingView({
     fleetSavePending,
     fleetTouched,
     onRosterThemeChange,
+    rosterHydrationError,
     rosterHydrating,
     rosterSaveError,
     rosterTheme,
@@ -693,12 +705,19 @@ export function OnboardingView({
         });
         return;
       }
+      if (rosterHydrationError) {
+        setNotice({
+          tone: "error",
+          message: rosterHydrationError,
+        });
+        return;
+      }
       void saveFleetChoice(
         () => onRosterThemeChange(next),
         "Save the fleet naming theme before continuing.",
       );
     },
-    [canMutate, onRosterThemeChange, rosterHydrating, saveFleetChoice],
+    [canMutate, onRosterThemeChange, rosterHydrationError, rosterHydrating, saveFleetChoice],
   );
 
   const handleCustomNamesChange = useCallback(
@@ -718,12 +737,19 @@ export function OnboardingView({
         });
         return false;
       }
+      if (rosterHydrationError) {
+        setNotice({
+          tone: "error",
+          message: rosterHydrationError,
+        });
+        return false;
+      }
       return saveFleetChoice(
         () => onCustomNamesChange(next),
         "Save the custom fleet names before continuing.",
       );
     },
-    [canMutate, onCustomNamesChange, rosterHydrating, saveFleetChoice],
+    [canMutate, onCustomNamesChange, rosterHydrationError, rosterHydrating, saveFleetChoice],
   );
 
   const skipStep = useCallback(
@@ -907,8 +933,8 @@ export function OnboardingView({
               <FleetStep
                 value={rosterTheme}
                 customNames={customNames}
-                saveError={rosterSaveError}
-                disabled={fleetSavePending || rosterHydrating || !canMutate}
+                saveError={rosterSaveError ?? rosterHydrationError}
+                disabled={fleetSavePending || fleetRosterBlocked || !canMutate}
                 onChange={handleRosterThemeChange}
                 onSaveCustom={handleCustomNamesChange}
               />

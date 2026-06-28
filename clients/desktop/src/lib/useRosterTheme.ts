@@ -81,6 +81,8 @@ export type UseRosterTheme = {
   // setup flows use this to avoid POSTing a localStorage fallback before the
   // server's existing roster has had a chance to load.
   hydrating: boolean;
+  hydrationError: string | null;
+  retryHydration: () => void;
 };
 
 export function useRosterTheme(baseUrl?: string): UseRosterTheme {
@@ -88,6 +90,8 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const [customNames, setCustomNamesState] = useState<CustomRosterNames>(readStoredCustom);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [hydrating, setHydrating] = useState(false);
+  const [hydrationError, setHydrationError] = useState<string | null>(null);
+  const [hydrationRequestSeq, setHydrationRequestSeq] = useState(0);
   // Avoid clobbering a freshly persisted choice with a slow initial GET. We
   // track WHICH runtime we have synced with, not just whether we have synced:
   // a successful read or write records its `baseUrl` here. If the desktop later
@@ -137,9 +141,13 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   useEffect(() => {
     if (!baseUrl || hydratedUrlRef.current === baseUrl) {
       setHydrating(false);
+      if (!baseUrl) {
+        setHydrationError(null);
+      }
       return;
     }
     let cancelled = false;
+    setHydrationError(null);
     setHydrating(true);
     void (async () => {
       try {
@@ -157,9 +165,19 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         hydratedUrlRef.current = baseUrl;
         setRosterThemeState(theme);
         setCustomNamesState(custom);
+        setHydrationError(null);
         writeStored(theme, custom);
-      } catch {
-        // Unreachable runtime: keep the localStorage fallback already in state.
+      } catch (err: unknown) {
+        // Keep the localStorage fallback in state for display, but do not treat it
+        // as safe to persist from setup: the server's current Slack cast is still
+        // unknown, so mutating would risk overwriting it with a fallback.
+        if (!cancelled && baseUrlRef.current === baseUrl) {
+          setHydrationError(
+            err instanceof Error && err.message
+              ? `Could not load saved fleet names from Alfred: ${err.message}`
+              : "Could not load saved fleet names from Alfred.",
+          );
+        }
       } finally {
         if (!cancelled && baseUrlRef.current === baseUrl) {
           setHydrating(false);
@@ -169,7 +187,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
     return () => {
       cancelled = true;
     };
-  }, [baseUrl]);
+  }, [baseUrl, hydrationRequestSeq]);
 
   // Mirror every change to localStorage so the next launch is instant.
   useEffect(() => {
@@ -206,6 +224,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // runtime we have since left must not mark the current one synced.
           if (url === baseUrlRef.current) {
             hydratedUrlRef.current = url;
+            setHydrationError(null);
           }
           // Clear the surfaced error only if it belongs to THIS runtime (or is a
           // connection-level error, tracked as null): a success for one runtime
@@ -316,5 +335,21 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
     [persist],
   );
 
-  return { rosterTheme, customNames, setRosterTheme, setCustomNames, saveError, hydrating };
+  const retryHydration = useCallback(() => {
+    if (!baseUrl) return;
+    hydratedUrlRef.current = null;
+    setHydrationError(null);
+    setHydrationRequestSeq((seq) => seq + 1);
+  }, [baseUrl]);
+
+  return {
+    rosterTheme,
+    customNames,
+    setRosterTheme,
+    setCustomNames,
+    saveError,
+    hydrating,
+    hydrationError,
+    retryHydration,
+  };
 }
