@@ -126,6 +126,38 @@ def test_bootstrap_status_reads_code_memory_launcher_env_files(
     assert code_memory["index_dir"] == str(alfred_home / "state" / "code-memory")
 
 
+def test_setup_config_prefers_process_env_over_runtime_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text(
+        "\n".join(
+            [
+                "CLAUDE_BIN=/file/claude",
+                "CODEX_BIN=/file/codex",
+                "GH_ORG=file-org",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("CLAUDE_BIN", "/env/claude")
+    monkeypatch.setenv("CODEX_BIN", "/env/codex")
+    monkeypatch.setenv("GH_ORG", "env-org")
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: [])
+
+    launcher_env = setup_mod._code_memory_launcher_env()
+    engines = {item["name"]: item for item in setup_mod.engine_clis()}
+
+    assert launcher_env["CLAUDE_BIN"] == "/env/claude"
+    assert launcher_env["CODEX_BIN"] == "/env/codex"
+    assert launcher_env["GH_ORG"] == "env-org"
+    assert engines["claude"]["path"] == "/env/claude"
+    assert engines["codex"]["path"] == "/env/codex"
+    assert setup_mod._repo_list_owners() == ["env-org"]
+
+
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

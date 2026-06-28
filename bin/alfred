@@ -124,8 +124,41 @@ OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
 ENGINE_SCRIPTS = tuple(f"{agent}.py" for agent in ENGINE_AGENTS)
 NATIVE_DRY_RUN_SCRIPTS = {"lucius.py", "hello.py", "echo_summarise.py"}
-PRIMARY_CLAUDE_DIR = Path.home() / ".claude"
-SECONDARY_CLAUDE_DIR = Path.home() / ".claude-secondary"
+
+
+def _safe_expanduser(path: Path) -> Path:
+    try:
+        return path.expanduser()
+    except RuntimeError:
+        return path
+
+
+def _safe_home() -> Path | None:
+    raw = os.environ.get("HOME", "").strip()
+    if raw:
+        return _safe_expanduser(Path(raw))
+    try:
+        return Path.home()
+    except RuntimeError:
+        return None
+
+
+def _home_child(name: str) -> Path:
+    home = _safe_home()
+    if home is None:
+        return Path(name)
+    return home / name
+
+
+def _configured_home(env_key: str, default_name: str) -> Path:
+    raw = os.environ.get(env_key, "").strip()
+    if raw:
+        return _safe_expanduser(Path(raw))
+    return _home_child(default_name)
+
+
+PRIMARY_CLAUDE_DIR = _configured_home("CLAUDE_HOME", ".claude")
+SECONDARY_CLAUDE_DIR = _home_child(".claude-secondary")
 TELEMETRY_LABEL = "alfred.proof-telemetry"
 TELEMETRY_ROW = (
     f"{TELEMETRY_LABEL}\tproof-telemetry.py\tinterval:3600\tno\t"
@@ -385,7 +418,10 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
 
 
 def _alfredrc_path(raw: str | None = None) -> Path:
-    return Path(raw or os.environ.get("ALFREDRC") or (Path.home() / ".alfredrc")).expanduser()
+    configured = raw or os.environ.get("ALFREDRC")
+    if configured:
+        return _safe_expanduser(Path(configured))
+    return _home_child(".alfredrc")
 
 
 def _read_alfredrc_values(path: Path) -> dict[str, str]:
@@ -566,7 +602,10 @@ def _strip_telemetry_env_lines(text: str) -> str:
 
 
 def _alfred_home_path() -> Path:
-    return Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred")).expanduser()
+    configured = os.environ.get("ALFRED_HOME")
+    if configured:
+        return _safe_expanduser(Path(configured))
+    return _home_child(".alfred")
 
 
 def _source_agents_conf_for_root(root: Path) -> Path | None:

@@ -97,6 +97,9 @@ def decode_env_value(value: str) -> str:
 
 
 def _setup_config_value(key: str, default: str = "") -> str:
+    value = os.environ.get(key, "").strip()
+    if value:
+        return value
     return _code_memory_config(_code_memory_launcher_env(), key, default)
 
 
@@ -628,22 +631,26 @@ def _code_memory_launcher_env() -> dict[str, str]:
     """Return the env shape ``bin/code-memory-mcp`` sees after its loaders run."""
 
     env = dict(os.environ)
+    protected = {key for key, value in os.environ.items() if value.strip()}
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = str(_default_alfred_home(env))
     home = _safe_home(env)
     if home:
-        _load_launcher_env_file(home / ".alfredrc", env)
+        _load_launcher_env_file(home / ".alfredrc", env, protected_keys=protected)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = str(_default_alfred_home(env))
     alfred_home = _safe_expand_path(env["ALFRED_HOME"])
     if alfred_home:
-        _load_launcher_env_file(alfred_home / ".env", env)
+        _load_launcher_env_file(alfred_home / ".env", env, protected_keys=protected)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = str(_default_alfred_home(env))
     return env
 
 
-def _load_launcher_env_file(path: Path, env: dict[str, str]) -> None:
+def _load_launcher_env_file(
+    path: Path, env: dict[str, str], *, protected_keys: set[str] | None = None
+) -> None:
+    protected_keys = protected_keys or set()
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -659,6 +666,8 @@ def _load_launcher_env_file(path: Path, env: dict[str, str]) -> None:
         key, _, value = line.partition("=")
         key = key.strip()
         if not _ENV_KEY_RE.match(key):
+            continue
+        if key in protected_keys:
             continue
         decoded = decode_env_value(value.strip())
         home = _safe_home(env)

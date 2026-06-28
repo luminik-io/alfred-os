@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from importlib.machinery import SourceFileLoader
@@ -272,3 +273,53 @@ def test_capabilities_command_emits_json(
 
     assert cli_module.main(["capabilities", "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == payload
+
+
+def test_capabilities_command_import_survives_unresolvable_home(
+    tmp_path: Path,
+) -> None:
+    codex_home = tmp_path / "codex"
+    claude_home = tmp_path / "claude"
+    (codex_home / "skills" / "gstack").mkdir(parents=True)
+    (claude_home / "skills").mkdir(parents=True)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    env = {
+        **os.environ,
+        "ALFRED_HOME": str(runtime),
+        "CODEX_HOME": str(codex_home),
+        "CLAUDE_HOME": str(claude_home),
+        "PYTHONPATH": str(LIB),
+    }
+    env.pop("HOME", None)
+    code = f"""
+import importlib.util
+import pathlib
+import sys
+from importlib.machinery import SourceFileLoader
+
+pathlib.Path.home = staticmethod(
+    lambda: (_ for _ in ()).throw(RuntimeError("no home"))
+)
+loader = SourceFileLoader("alfred_cli_cold_capabilities", {str(BIN)!r})
+spec = importlib.util.spec_from_loader(loader.name, loader)
+assert spec and spec.loader
+mod = importlib.util.module_from_spec(spec)
+sys.modules[loader.name] = mod
+spec.loader.exec_module(mod)
+raise SystemExit(mod.main(["capabilities", "--json"]))
+"""
+
+    res = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+
+    assert res.returncode == 0, res.stderr
+    payload = json.loads(res.stdout)
+    skills = {item["key"]: item for item in payload["capabilities"]}["engineering_skills"]
+    assert skills["state"] == "ready"
+    assert skills["detected"]["paths"] == [str(codex_home / "skills" / "gstack")]
