@@ -320,7 +320,6 @@ def _write_env_file_values(path: Path, values: dict[str, str], *, export: bool =
     with suppress(OSError):
         os.chmod(path, 0o600)
 
-
 def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
