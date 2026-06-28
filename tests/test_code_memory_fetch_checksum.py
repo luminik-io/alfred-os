@@ -135,7 +135,10 @@ def test_fetch_timeout_knobs_are_derived_after_env_files_load() -> None:
 def test_scope_repos_auto_discovers_git_repos_when_unconfigured(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "product" / "api" / ".git").mkdir(parents=True)
+    (workspace / "product" / "api" / "packages" / "nested" / ".git").mkdir(parents=True)
     (workspace / "tools" / "alfred-os" / ".git").mkdir(parents=True)
+    (workspace / "worktree").mkdir()
+    (workspace / "worktree" / ".git").write_text("gitdir: ../.git/worktrees/worktree\n")
     (workspace / ".archive" / "old" / ".git").mkdir(parents=True)
     (workspace / "tools" / ".worktrees" / "pr-1" / ".git").mkdir(parents=True)
     env = _launcher_env(
@@ -154,7 +157,7 @@ def test_scope_repos_auto_discovers_git_repos_when_unconfigured(tmp_path: Path) 
 
     assert res.returncode == 0, res.stderr
     repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
-    assert repos == ["product/api", "tools/alfred-os"]
+    assert repos == ["product/api", "tools/alfred-os", "worktree"]
 
 
 def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:

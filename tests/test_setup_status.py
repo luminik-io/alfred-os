@@ -201,7 +201,10 @@ def test_bootstrap_status_auto_discovers_code_memory_repos(
     _isolate_launcher_env(monkeypatch, tmp_path)
     workspace = tmp_path / "workspace"
     (workspace / "product" / "api" / ".git").mkdir(parents=True)
+    (workspace / "product" / "api" / "packages" / "nested" / ".git").mkdir(parents=True)
     (workspace / "tools" / "alfred-os" / ".git").mkdir(parents=True)
+    (workspace / "worktree").mkdir()
+    (workspace / "worktree" / ".git").write_text("gitdir: ../.git/worktrees/worktree\n")
     (workspace / ".archive" / "old" / ".git").mkdir(parents=True)
     (workspace / "tools" / ".worktrees" / "pr-1" / ".git").mkdir(parents=True)
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
@@ -213,10 +216,10 @@ def test_bootstrap_status_auto_discovers_code_memory_repos(
     assert code_memory["repos"] == {
         "configured": [],
         "configured_existing": [],
-        "discovered": ["product/api", "tools/alfred-os"],
-        "selected": ["product/api", "tools/alfred-os"],
+        "discovered": ["product/api", "tools/alfred-os", "worktree"],
+        "selected": ["product/api", "tools/alfred-os", "worktree"],
         "source": "auto",
-        "count": 2,
+        "count": 3,
         "limit": 25,
     }
 

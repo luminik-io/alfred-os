@@ -267,33 +267,36 @@ discovery_limit() {
 }
 
 discover_scope_repos() {
-  local limit count gitdir repo
+  local limit count dir child base last_index i
+  local -a stack children
   limit="$(discovery_limit)"
   count=0
   [ -d "$WORKSPACE" ] || return 0
-  while IFS= read -r gitdir; do
-    repo="${gitdir%/.git}"
-    [ -d "$repo" ] || continue
-    printf '%s\n' "$repo"
-    count=$((count + 1))
-    [ "$count" -ge "$limit" ] && break
-  done < <(
-    find "$WORKSPACE" \
-      \( -type d \( \
-        -name .archive -o \
-        -name .cache -o \
-        -name .external -o \
-        -name .external-submissions -o \
-        -name .venv -o \
-        -name .worktrees -o \
-        -name build -o \
-        -name dist -o \
-        -name node_modules -o \
-        -name target -o \
-        -name venv \
-      \) -prune \) -o \
-      \( -type d -name .git -print -prune \) 2>/dev/null | sort
-  )
+  stack=("$WORKSPACE")
+  while [ "${#stack[@]}" -gt 0 ]; do
+    last_index=$((${#stack[@]} - 1))
+    dir="${stack[$last_index]}"
+    unset "stack[$last_index]"
+    if [ -e "$dir/.git" ]; then
+      printf '%s\n' "$dir"
+      count=$((count + 1))
+      [ "$count" -ge "$limit" ] && break
+      continue
+    fi
+    children=()
+    while IFS= read -r child; do
+      base="${child##*/}"
+      case "$base" in
+        .archive|.cache|.external|.external-submissions|.venv|.worktrees|build|dist|node_modules|target|venv)
+          continue
+          ;;
+      esac
+      children+=("$child")
+    done < <(find "$dir" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort)
+    for ((i = ${#children[@]} - 1; i >= 0; i--)); do
+      stack+=("${children[$i]}")
+    done
+  done
   return 0
 }
 

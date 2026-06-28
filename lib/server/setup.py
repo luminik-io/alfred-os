@@ -453,9 +453,9 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
     found: list[str] = []
     if not workspace.is_dir():
         return found
-    for root, dirs, _files in os.walk(workspace):
+    for root, dirs, files in os.walk(workspace):
         dirs[:] = sorted(d for d in dirs if d not in _CODE_MEMORY_DISCOVERY_IGNORES)
-        if ".git" not in dirs:
+        if ".git" not in dirs and ".git" not in files:
             continue
         repo = Path(root)
         try:
@@ -465,7 +465,7 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
         if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
             continue
         found.append(str(repo.relative_to(workspace)))
-        dirs.remove(".git")
+        dirs.clear()
         if len(found) >= limit:
             break
     return found
