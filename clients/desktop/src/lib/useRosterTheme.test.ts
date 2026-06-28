@@ -1359,4 +1359,50 @@ describe("useRosterTheme", () => {
     });
     expect(result.current.rosterTheme).toBe("transformers");
   });
+  it("drops queued saves that cross a same-url reconnect", async () => {
+    let resolveFirst: (value: RosterThemeResponse) => void = () => {};
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveFirst = resolve;
+      }),
+    );
+    saveRosterTheme.mockResolvedValue(serverState({ theme: "transformers" }));
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+
+    let firstSave: Promise<boolean> | null = null;
+    let queuedSave: Promise<boolean> | null = null;
+    act(() => {
+      firstSave = result.current.setRosterTheme("justice-league");
+    });
+    act(() => {
+      queuedSave = result.current.setRosterTheme("transformers");
+    });
+    expect(saveRosterTheme).toHaveBeenCalledTimes(1);
+
+    rerender({ connected: false });
+    rerender({ connected: true });
+
+    await act(async () => {
+      resolveFirst(serverState({ theme: "justice-league" }));
+    });
+
+    if (firstSave === null || queuedSave === null) {
+      throw new Error("setRosterTheme did not return save promises");
+    }
+    await expect(firstSave).resolves.toBe(false);
+    await expect(queuedSave).resolves.toBe(false);
+    expect(saveRosterTheme).toHaveBeenCalledTimes(1);
+  });
 });

@@ -374,10 +374,18 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           // carries its own target url, so it posts to the runtime it was made
           // against; runtimes other than this one keep their queued edits rather
           // than being overwritten by a single shared pending slot.
-          const nextUrl = pendingRef.current.keys().next().value;
-          if (nextUrl !== undefined) {
+          while (true) {
+            const nextUrl = pendingRef.current.keys().next().value;
+            if (nextUrl === undefined) {
+              return;
+            }
             const next = pendingRef.current.get(nextUrl)!;
             pendingRef.current.delete(nextUrl);
+            if (next.reconnectSeq !== (reconnectSeqByUrlRef.current.get(nextUrl) ?? 0)) {
+              next.resolve(false);
+              requestHydrationReconcile(nextUrl);
+              continue;
+            }
             void runSave(
               nextUrl,
               next.theme,
@@ -386,6 +394,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
               next.generation,
               next.reconnectSeq,
             ).then(next.resolve);
+            return;
           }
         });
     },
