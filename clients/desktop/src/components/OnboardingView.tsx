@@ -226,11 +226,13 @@ export function OnboardingView({
   const persistedFleetChoice =
     rosterTheme !== DEFAULT_ROSTER_THEME || hasCustomRosterValues(customNames);
   const fleetRosterBlocked = Boolean(rosterHydrating || rosterHydrationError);
-  // True once this onboarding session chooses a theme or continues from Fleet
-  // to accept the default roster. Current props still win for persisted choices:
-  // if server hydration replaces a local fallback, this state does not keep the
-  // old fallback checked off.
-  const [fleetTouched, setFleetTouched] = useState(false);
+  // The runtime URL this onboarding session last saved or acknowledged Fleet
+  // for. Current props still win for persisted choices: if server hydration
+  // replaces a local fallback, this state does not keep the old fallback checked
+  // off. Scoping it to the URL prevents a save on runtime A from satisfying
+  // Fleet after the desktop switches to runtime B.
+  const [fleetTouchedUrl, setFleetTouchedUrl] = useState<string | null>(null);
+  const fleetTouched = fleetTouchedUrl === baseUrl;
   const [fleetSavePending, setFleetSavePending] = useState(false);
   const fleetSaveSeq = useRef(0);
   const [githubAuthFlow, setGithubAuthFlow] = useState<GithubAuthFlow>(IDLE_GITHUB_AUTH_FLOW);
@@ -286,9 +288,12 @@ export function OnboardingView({
       connectionGenerationRef.current += 1;
       statusRequestSeq.current += 1;
       githubAuthRequestSeq.current += 1;
+      fleetSaveSeq.current += 1;
       setStatus(null);
       setStatusError(null);
       setStatusLoading(false);
+      setFleetSavePending(false);
+      setFleetTouchedUrl(null);
       setInterruptedGithubAuthFlow(
         "GitHub sign-in was interrupted. Start it again for this runtime.",
       );
@@ -597,24 +602,26 @@ export function OnboardingView({
       failureMessage = "Save the fleet naming choice before continuing.",
     ): Promise<boolean> => {
       const seq = ++fleetSaveSeq.current;
+      const requestBaseUrl = baseUrl;
       setFleetSavePending(true);
       try {
         const saved = await save();
         if (seq !== fleetSaveSeq.current) return false;
+        if (baseUrlRef.current !== requestBaseUrl) return false;
         if (saved === false || (saved !== true && rosterSaveError)) {
-          setFleetTouched(false);
+          setFleetTouchedUrl(null);
           setNotice({
             tone: "error",
             message: rosterSaveError ?? failureMessage,
           });
           return false;
         }
-        setFleetTouched(true);
+        setFleetTouchedUrl(requestBaseUrl);
         setNotice(null);
         return true;
       } catch (err) {
         if (seq !== fleetSaveSeq.current) return false;
-        setFleetTouched(false);
+        setFleetTouchedUrl(null);
         setNotice({
           tone: "error",
           message: err instanceof Error && err.message ? err.message : failureMessage,
@@ -626,13 +633,13 @@ export function OnboardingView({
         }
       }
     },
-    [rosterSaveError],
+    [baseUrl, rosterSaveError],
   );
 
   const ensureFleetChoiceSaved = useCallback(async (): Promise<boolean> => {
     if (fleetSavePending) return false;
     if (!canMutate) {
-      setFleetTouched(true);
+      setFleetTouchedUrl(baseUrl);
       return true;
     }
     if (rosterHydrating) {
@@ -655,6 +662,7 @@ export function OnboardingView({
     }
     return true;
   }, [
+    baseUrl,
     canMutate,
     fleetSavePending,
     fleetTouched,
@@ -702,7 +710,7 @@ export function OnboardingView({
   const handleRosterThemeChange = useCallback(
     (next: RosterThemeId) => {
       if (!canMutate) {
-        setFleetTouched(true);
+        setFleetTouchedUrl(baseUrl);
         return;
       }
       if (rosterHydrating) {
@@ -724,13 +732,13 @@ export function OnboardingView({
         "Save the fleet naming theme before continuing.",
       );
     },
-    [canMutate, onRosterThemeChange, rosterHydrationError, rosterHydrating, saveFleetChoice],
+    [baseUrl, canMutate, onRosterThemeChange, rosterHydrationError, rosterHydrating, saveFleetChoice],
   );
 
   const handleCustomNamesChange = useCallback(
     async (next: CustomRosterNames) => {
       if (!canMutate) {
-        setFleetTouched(true);
+        setFleetTouchedUrl(baseUrl);
         setNotice({
           tone: "error",
           message: "Open Alfred in the desktop app to save custom fleet names.",
@@ -756,7 +764,7 @@ export function OnboardingView({
         "Save the custom fleet names before continuing.",
       );
     },
-    [canMutate, onCustomNamesChange, rosterHydrationError, rosterHydrating, saveFleetChoice],
+    [baseUrl, canMutate, onCustomNamesChange, rosterHydrationError, rosterHydrating, saveFleetChoice],
   );
 
   const skipStep = useCallback(
