@@ -42,6 +42,16 @@ def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> No
     monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
 
 
+def _write_code_memory_graph(index_home: Path, value: str = "ok") -> None:
+    graph_dir = index_home / ".cache" / "codebase-memory-mcp"
+    graph_dir.mkdir(parents=True)
+    (graph_dir / "graph.db").write_text(value, encoding="utf-8")
+
+
+def _write_workspace_repo(workspace: Path, name: str) -> None:
+    (workspace / name / ".git").mkdir(parents=True)
+
+
 def test_bootstrap_status_reports_code_memory_defaults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -215,9 +225,10 @@ def test_bootstrap_status_ignores_empty_code_memory_cache_scaffolding(
     assert "run an index" in code_memory["detail"]
 
 
-def test_code_memory_status_reads_launcher_env_files(
+def test_bootstrap_status_reads_code_memory_launcher_env_files(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    _stub_common(monkeypatch)
     home = tmp_path / "home"
     alfred_home = tmp_path / "runtime"
     home.mkdir()
@@ -236,11 +247,40 @@ def test_code_memory_status_reads_launcher_env_files(
         encoding="utf-8",
     )
 
-    code_memory = setup_mod.code_memory_status()
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
 
     assert code_memory["enabled"] is False
     assert code_memory["autofetch"] is False
     assert code_memory["index_dir"] == str(alfred_home / "state" / "code-memory")
+
+
+def test_bootstrap_status_uses_same_home_launcher_code_memory_env(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    runtime.mkdir()
+    _write_workspace_repo(workspace, "org/rc")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/rc\n",
+        encoding="utf-8",
+    )
+
+    payload = setup_mod.bootstrap_status()
+
+    assert payload["code_memory"]["repos"]["configured"] == ["org/rc"]
+    assert payload["code_memory"]["repos"]["selected"] == ["org/rc"]
+    assert payload["code_memory"]["repos"]["source"] == "configured"
 
 
 def test_install_inventory_uses_active_serve_home_not_launcher_rc_home(
@@ -287,17 +327,18 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     active_index = active_home / "state" / "code-memory"
     launcher_cache = launcher_home / "bin" / "codebase-memory-mcp"
     launcher_index = launcher_home / "state" / "code-memory"
+    workspace = tmp_path / "workspace"
     home.mkdir()
     active_cache.parent.mkdir(parents=True)
-    active_index.mkdir(parents=True)
     launcher_cache.parent.mkdir(parents=True)
-    launcher_index.mkdir(parents=True)
     active_cache.write_text("#!/bin/sh\n", encoding="utf-8")
     active_cache.chmod(active_cache.stat().st_mode | stat.S_IXUSR)
     launcher_cache.write_text("#!/bin/sh\n", encoding="utf-8")
     launcher_cache.chmod(launcher_cache.stat().st_mode | stat.S_IXUSR)
-    (active_index / "graph.db").write_text("active", encoding="utf-8")
-    (launcher_index / "graph.db").write_text("launcher", encoding="utf-8")
+    _write_code_memory_graph(active_index, "active")
+    _write_code_memory_graph(launcher_index, "launcher")
+    _write_workspace_repo(workspace, "active/api")
+    _write_workspace_repo(workspace, "launcher/api")
     (home / ".alfredrc").write_text(
         f"ALFRED_HOME={launcher_home}\nALFRED_CODE_MEMORY_REPOS=launcher/api\n",
         encoding="utf-8",
@@ -310,9 +351,12 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("ALFRED_HOME", str(active_home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
@@ -324,7 +368,52 @@ def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     assert code_memory["binary"]["path"] == str(active_cache)
     assert code_memory["index_dir"] == str(active_index)
     assert code_memory["index_present"] is True
-    assert code_memory["repos"] == {"configured": ["active/api"], "count": 1}
+    assert code_memory["repos"]["configured"] == ["active/api"]
+    assert code_memory["repos"]["selected"] == ["active/api"]
+    assert code_memory["repos"]["source"] == "configured"
+
+
+def test_bootstrap_status_uses_same_home_rc_for_code_memory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    home = tmp_path / "home"
+    active_home = tmp_path / "active-runtime"
+    cache_bin = active_home / "bin" / "codebase-memory-mcp"
+    index_dir = active_home / "state" / "code-memory"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    active_home.mkdir()
+    cache_bin.parent.mkdir(parents=True)
+    cache_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    cache_bin.chmod(cache_bin.stat().st_mode | stat.S_IXUSR)
+    _write_code_memory_graph(index_dir, "active")
+    _write_workspace_repo(workspace, "rc/api")
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={active_home}\nALFRED_CODE_MEMORY_REPOS=rc/api\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(active_home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["binary"]["path"] == str(cache_bin)
+    assert code_memory["index_dir"] == str(index_dir)
+    assert code_memory["index_present"] is True
+    assert code_memory["repos"]["configured"] == ["rc/api"]
+    assert code_memory["repos"]["selected"] == ["rc/api"]
+    assert code_memory["repos"]["source"] == "configured"
 
 
 def test_bootstrap_status_expands_tilde_home_for_code_memory(
@@ -336,9 +425,8 @@ def test_bootstrap_status_expands_tilde_home_for_code_memory(
     cache_bin = alfred_home / "bin" / "codebase-memory-mcp"
     index_dir = alfred_home / "state" / "code-memory"
     cache_bin.parent.mkdir(parents=True)
-    index_dir.mkdir(parents=True)
     cache_bin.write_text("#!/bin/sh\n", encoding="utf-8")
-    (index_dir / "graph.db").write_text("ok", encoding="utf-8")
+    _write_code_memory_graph(index_dir)
     cache_bin.chmod(cache_bin.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("HOME", str(home))
@@ -366,19 +454,23 @@ def test_code_memory_status_keeps_code_memory_in_rc_selected_home(
     runtime_b = tmp_path / "runtime-b"
     cache_bin = runtime_a / "bin" / "codebase-memory-mcp"
     index_dir = runtime_a / "state" / "code-memory"
+    workspace = tmp_path / "workspace"
     home.mkdir()
     runtime_a.mkdir()
     runtime_b.mkdir()
     cache_bin.parent.mkdir(parents=True)
-    index_dir.mkdir(parents=True)
     cache_bin.write_text("#!/bin/sh\n", encoding="utf-8")
-    (index_dir / "graph.db").write_text("ok", encoding="utf-8")
+    _write_code_memory_graph(index_dir)
+    _write_workspace_repo(workspace, "api")
     cache_bin.chmod(cache_bin.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
     monkeypatch.delenv("ALFRED_HOME", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
     (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime_a}\n", encoding="utf-8")
     (runtime_a / ".env").write_text(
         f"ALFRED_HOME={runtime_b}\nALFRED_CODE_MEMORY_REPOS=api\n",
@@ -390,7 +482,9 @@ def test_code_memory_status_keeps_code_memory_in_rc_selected_home(
     assert code_memory["binary"]["path"] == str(cache_bin)
     assert code_memory["index_dir"] == str(index_dir)
     assert code_memory["index_present"] is True
-    assert code_memory["repos"] == {"configured": ["api"], "count": 1}
+    assert code_memory["repos"]["configured"] == ["api"]
+    assert code_memory["repos"]["selected"] == ["api"]
+    assert code_memory["repos"]["source"] == "configured"
 
 
 def test_bootstrap_status_matches_case_insensitive_launcher_flags(
