@@ -124,6 +124,26 @@ reviewable memory candidates, firing logs, GitHub cache, worker heartbeats, and
 telemetry inputs. See [Fleet brain](./FLEET_BRAIN.md) for the local ledger and
 CLI, and [Memory providers](./MEMORY_PROVIDERS.md) for the provider chain.
 
+## Context governor
+
+Before a firing reaches Claude or Codex, Alfred runs a local context governor
+over the final prompt after memory recall has been attached. The governor is
+default-on and no-ops for ordinary prompt sizes. When a prompt exceeds the
+configured character budget, Alfred keeps the beginning and tail, replaces the
+middle with an explicit `ALFRED_CONTEXT_GOVERNOR` marker, and records exact
+before/after counts in the engine result metadata. It never summarizes or
+invents facts. The agent must recover any omitted detail from the repository,
+tests, memory, or code-memory MCP tools.
+
+Configuration lives in `~/.alfredrc` or `$ALFRED_HOME/.env`:
+
+| Variable | Default | What it does |
+|---|---:|---|
+| `ALFRED_CONTEXT_GOVERNOR` | `1` | Set `0` to disable prompt compaction. |
+| `ALFRED_CONTEXT_MAX_CHARS` | `220000` | Maximum final prompt size before the governor trims the middle. |
+| `ALFRED_CONTEXT_HEAD_CHARS` | `130000` | Preferred number of leading characters to preserve. |
+| `ALFRED_CONTEXT_TAIL_CHARS` | `70000` | Preferred number of trailing characters to preserve. |
+
 The `memory-harvest.py` scheduled wrapper runs the same safe loop as
 `memory harvest now`: repeated failure patterns become reviewable candidates,
 not trusted lessons. Slack remains the review surface for `memory` and the

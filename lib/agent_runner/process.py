@@ -43,6 +43,7 @@ from .config import (
     is_dry_run,
     normalize_engine,
 )
+from .context_governor import govern_prompt_context
 from .memory_runtime import (
     BEGIN_MARKER,
     load_runtime_memory,
@@ -1144,14 +1145,22 @@ def invoke_agent_engine(
     claude_call = claude_fn or claude_invoke_streaming
     codex_call = codex_fn or codex_invoke
     memory_provider = load_runtime_memory() if memory_repo else None
-    prompt_for_engine = with_memory_prompt(
-        prompt,
-        memory_provider,
-        codename=agent,
-        repo=memory_repo,
-        query=memory_query,
-        limit=memory_limit,
+    prompt_for_engine, context_governance = govern_prompt_context(
+        with_memory_prompt(
+            prompt,
+            memory_provider,
+            codename=agent,
+            repo=memory_repo,
+            query=memory_query,
+            limit=memory_limit,
+        )
     )
+
+    def _stamp_context_governance(result: ClaudeResult) -> ClaudeResult:
+        if context_governance.applied:
+            result.raw = dict(result.raw or {})
+            result.raw["context_governor"] = context_governance.as_raw()
+        return result
 
     def _invoke_claude() -> ClaudeResult:
         return claude_call(
@@ -1245,6 +1254,7 @@ def invoke_agent_engine(
             # cause rather than a bare codex subtype.
             result.fallback_from_subtype = trigger_subtype
 
+    result = _stamp_context_governance(result)
     if memory_provider is not None and memory_repo:
         result_text = result.result_text or ""
         reflections = parse_memory_reflections(result_text)
