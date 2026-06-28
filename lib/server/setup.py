@@ -742,14 +742,20 @@ def _code_memory_index_dir(env: dict[str, str]) -> Path:
 def _code_memory_home(env: dict[str, str], index_dir: Path) -> Path:
     raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_HOME")
     if raw.strip():
-        return Path(raw).expanduser()
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
     return index_dir
 
 
 def _code_memory_graph_dir(env: dict[str, str], index_home: Path) -> Path:
     upstream_cache = _code_memory_config(env, "CBM_CACHE_DIR")
     if upstream_cache:
-        return Path(upstream_cache).expanduser()
+        path = _safe_expand_path(upstream_cache)
+        if path:
+            return path
+        return Path(upstream_cache)
     return index_home / ".cache" / _CODE_MEMORY_BIN_NAME
 
 
@@ -785,10 +791,16 @@ def _code_memory_workspace(env: dict[str, str]) -> Path:
 def _code_memory_workspace_root(env: dict[str, str]) -> Path:
     configured = _code_memory_config(env, "WORKSPACE_ROOT")
     if configured:
-        return Path(configured).expanduser()
+        path = _safe_expand_path(configured)
+        if path:
+            return path
+        return Path(configured)
     home = env.get("HOME", "").strip()
     if home:
-        return Path(home).expanduser() / "code"
+        path = _safe_expand_path(home)
+        if path:
+            return path / "code"
+        return Path(home) / "code"
     try:
         return Path.home() / "code"
     except (OSError, RuntimeError):

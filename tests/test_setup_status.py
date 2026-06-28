@@ -514,6 +514,11 @@ def test_capability_plane_uses_explicit_skill_homes_without_resolving_home(
         "home",
         staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
     )
+    monkeypatch.setattr(
+        setup_mod.os.path,
+        "expanduser",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("no home")),
+    )
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
 
     payload = setup_mod.capability_status()
@@ -604,6 +609,41 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     assert payload["demo"] == {"present": False}
     assert payload["capability_plane"]["summary"]["total"] == 3
     assert payload["ready"] is True
+
+
+def test_bootstrap_status_survives_tilde_code_memory_paths_without_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    _stub_common(monkeypatch)
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.setenv("WORKSPACE_ROOT", "~/workspace")
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "api")
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", "~/code-memory-home")
+    monkeypatch.setenv("CBM_CACHE_DIR", "~/code-memory-cache")
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+    monkeypatch.setattr(
+        setup_mod.os.path,
+        "expanduser",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("no home")),
+    )
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.bootstrap_status()
+
+    code_memory = payload["code_memory"]
+    assert code_memory["index_home"] == "~/code-memory-home"
+    assert code_memory["graph_dir"] == "~/code-memory-cache"
+    assert code_memory["repos"]["configured"] == ["api"]
+    assert code_memory["repos"]["source"] == "auto-fallback"
+    assert payload["capability_plane"]["summary"]["total"] == 3
 
 
 def test_bootstrap_status_avoids_home_dependent_runtime_imports(
