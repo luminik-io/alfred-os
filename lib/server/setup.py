@@ -38,6 +38,7 @@ from typing import Any
 
 from agent_runner.paths import config_value
 from agent_runner.paths import launcher_env as agent_launcher_env
+from agent_runner.paths import load_env_file as load_agent_env_file
 from issue_queue import allowed_queue_repos
 from shipped_board import _gh_bin, _gh_subprocess_env
 
@@ -449,6 +450,18 @@ def _code_memory_launcher_env() -> dict[str, str]:
     return _setup_launcher_env()
 
 
+def _setup_runtime_env() -> dict[str, str]:
+    """Return the config shape the connected ``alfred serve`` process reads."""
+
+    env = dict(os.environ)
+    raw_home = env.get("ALFRED_HOME", "").strip() or os.path.expanduser("~/.alfred")
+    env["ALFRED_HOME"] = str(Path(raw_home).expanduser())
+    load_agent_env_file(Path(env["ALFRED_HOME"]) / ".env", env, no_clobber=True)
+    if not env.get("WORKSPACE_ROOT", "").strip():
+        env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
+    return env
+
+
 def _setup_launcher_env() -> dict[str, str]:
     """Return the env shape scheduled agents see through ``bin/agent-launch``."""
 
@@ -712,8 +725,8 @@ def bootstrap_status() -> dict[str, Any]:
     """
     gh = gh_auth_status()
     engines = engine_clis()
-    launcher_env = _setup_launcher_env()
-    repos = setup_board_repos(launcher_env)
+    runtime_env = _setup_runtime_env()
+    repos = setup_board_repos(runtime_env)
     any_engine = any(e["installed"] for e in engines)
     return {
         "github": gh,
@@ -726,12 +739,16 @@ def bootstrap_status() -> dict[str, Any]:
             "keys": list(_REPO_ENV_KEYS),
         },
         "demo": {"present": any(load_demo_cards().values())},
-        "install": install_inventory(repos=repos),
+        "install": install_inventory(repos=repos, env=runtime_env),
         "ready": bool(gh["ok"] and any_engine and repos),
     }
 
 
-def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
+def install_inventory(
+    *,
+    repos: list[str] | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Read-only inventory of an existing Alfred install.
 
     The desktop onboarding uses this to show what Alfred already found on the
@@ -741,17 +758,17 @@ def install_inventory(*, repos: list[str] | None = None) -> dict[str, Any]:
 
     from . import schedule as setup_schedule
 
-    launcher_env = _setup_launcher_env()
-    home = _alfred_home()
+    resolved_env = env or _setup_runtime_env()
+    home = _alfred_home(resolved_env)
     env_path = home / ".env"
     token_path = home / "state" / "server-token"
     conf_path = _install_agents_conf_path(home)
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
-    selected = repos if repos is not None else setup_board_repos(launcher_env)
-    selected_env_present = any(_has_config_value(launcher_env, key) for key in _REPO_ENV_KEYS)
-    board_env_present = any(_has_config_value(launcher_env, key) for key in _BOARD_REPO_ENV_KEYS)
-    slack_configured = any(_has_config_value(launcher_env, key) for key in _SLACK_CONFIG_KEYS)
-    memory_overridden = any(_has_config_value(launcher_env, key) for key in _MEMORY_CONFIG_KEYS)
+    selected = repos if repos is not None else setup_board_repos(resolved_env)
+    selected_env_present = any(_has_config_value(resolved_env, key) for key in _REPO_ENV_KEYS)
+    board_env_present = any(_has_config_value(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
+    slack_configured = any(_has_config_value(resolved_env, key) for key in _SLACK_CONFIG_KEYS)
+    memory_overridden = any(_has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS)
     memory_detail = (
         "Custom Redis Agent Memory settings found."
         if memory_overridden
