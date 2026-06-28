@@ -593,10 +593,29 @@ def upsert_alfredrc_block(
         path.chmod(0o600)
 
 
+def remove_alfredrc_block(path: Path, banner_re: re.Pattern[str]) -> None:
+    """Remove a generated rc block and its managed values, if present."""
+    if not path.exists():
+        return
+    existing = path.read_text()
+    prior = banner_re.search(existing)
+    if not prior:
+        return
+    new = existing[: prior.start()].rstrip()
+    if not new:
+        with contextlib.suppress(OSError):
+            path.unlink()
+        return
+    path.write_text(new + "\n")
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+
+
 def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[str, str]) -> int:
     """Mirror custom rc path and emergency memory controls into scheduled jobs source."""
     launch_rc = Path.home() / ".alfredrc"
     if launch_rc == state.alfredrc:
+        remove_alfredrc_block(launch_rc, ALFREDRC_MEMORY_STOP_BANNER_RE)
         return 0
     controls = {
         key: value

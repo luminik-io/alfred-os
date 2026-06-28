@@ -1061,6 +1061,44 @@ def test_mirror_memory_stop_controls_skips_default_alfredrc(monkeypatch, tmp_pat
     assert not (home / ".alfredrc").exists()
 
 
+def test_mirror_memory_stop_controls_removes_stale_pointer_block_for_default_alfredrc(
+    monkeypatch, tmp_path, init_mod
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfredrc = home / ".alfredrc"
+    stale_custom_rc = tmp_path / "stale-custom.alfredrc"
+    launch_rc = home / ".alfredrc"
+    launch_rc.write_text(
+        "\n".join(
+            [
+                "MANUAL=value",
+                "",
+                init_mod.ALFREDRC_MEMORY_STOP_BANNER,
+                f"ALFREDRC={stale_custom_rc}",
+                "ALFRED_AUTO_PROMOTE=0",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
+        state,
+        {"ALFRED_AUTO_PROMOTE": "1"},
+    )
+
+    assert mirrored == 0
+    text = launch_rc.read_text(encoding="utf-8")
+    parsed = init_mod.read_alfredrc(launch_rc)
+    assert parsed["MANUAL"] == "value"
+    assert "ALFREDRC" not in parsed
+    assert "ALFRED_AUTO_PROMOTE" not in parsed
+    assert init_mod.ALFREDRC_MEMORY_STOP_BANNER not in text
+
+
 # ---------------------------------------------------------------------------
 # _resolve_repo_selection
 # ---------------------------------------------------------------------------
