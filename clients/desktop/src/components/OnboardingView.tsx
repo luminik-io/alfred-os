@@ -204,7 +204,9 @@ export function OnboardingView({
     setStatusLoading(false);
     setGithubAuthFlow((current) => {
       const canInterrupt = current.state === "starting" || current.state === "waiting";
-      const ownsFlow = requestId === undefined || githubAuthFlowRequestSeq.current === requestId;
+      const activeFlowRequestId = githubAuthFlowRequestSeq.current;
+      const ownsFlow =
+        requestId === undefined || activeFlowRequestId === requestId || activeFlowRequestId === null;
       if (!canInterrupt || !ownsFlow) {
         return current;
       }
@@ -225,7 +227,8 @@ export function OnboardingView({
   );
   const interruptStaleGithubAuthRequest = useCallback(
     (requestId: number) => {
-      if (githubAuthFlowRequestSeq.current !== requestId) {
+      const activeFlowRequestId = githubAuthFlowRequestSeq.current;
+      if (activeFlowRequestId !== requestId && activeFlowRequestId !== null) {
         return;
       }
       resetStaleGithubAuthFlow(

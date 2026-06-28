@@ -307,7 +307,7 @@ def _write_env_file_values(path: Path, values: dict[str, str], *, export: bool =
             raw_name = stripped.partition("=")[0].strip()
             name = raw_name.removeprefix("export ").strip()
             if name in remaining:
-                prefix = "export " if export or raw_name.startswith("export ") else ""
+                prefix = "export " if export else ""
                 out_lines.append(f"{prefix}{name}={remaining.pop(name)}")
                 continue
         out_lines.append(line)

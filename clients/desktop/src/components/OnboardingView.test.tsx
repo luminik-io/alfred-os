@@ -540,6 +540,8 @@ describe("OnboardingView six-step takeover", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
     );
+    await user.click(screen.getByRole("button", { name: /sign in with github/i }));
+    expect(onRunLocalAction).toHaveBeenCalledTimes(2);
   });
 
   it("falls back to copy-paste gh auth + recheck in browser mode", async () => {
