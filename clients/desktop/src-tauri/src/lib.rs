@@ -391,32 +391,7 @@ fn merged_alfred_env() -> HashMap<String, String> {
     let mut env: HashMap<String, String> = std::env::vars().collect();
     let process_env_keys: HashSet<String> = env.keys().cloned().collect();
     let home = home_dir();
-    if let Some(alfredrc) = alfredrc_path(home.as_deref(), &env) {
-        load_config_file(
-            &mut env,
-            &alfredrc,
-            true,
-            false,
-            home.as_deref(),
-            &process_env_keys,
-        );
-        if let Some(pointed_alfredrc) = alfredrc_path(home.as_deref(), &env) {
-            if pointed_alfredrc != alfredrc {
-                env.insert(
-                    "ALFREDRC".to_string(),
-                    pointed_alfredrc.to_string_lossy().into_owned(),
-                );
-                load_config_file(
-                    &mut env,
-                    &pointed_alfredrc,
-                    true,
-                    true,
-                    home.as_deref(),
-                    &process_env_keys,
-                );
-            }
-        }
-    }
+    load_selected_alfredrc_env(&mut env, home.as_deref(), &process_env_keys);
 
     let runtime_home = env
         .get("ALFRED_HOME")
@@ -440,6 +415,25 @@ fn merged_alfred_env() -> HashMap<String, String> {
             .or_insert_with(|| home.join("code").to_string_lossy().into_owned());
     }
     env
+}
+
+fn load_selected_alfredrc_env(
+    env: &mut HashMap<String, String>,
+    home: Option<&Path>,
+    process_env_keys: &HashSet<String>,
+) {
+    if let Some(alfredrc) = alfredrc_path(home, env) {
+        load_config_file(env, &alfredrc, true, false, home, process_env_keys);
+        if let Some(pointed_alfredrc) = alfredrc_path(home, env) {
+            if pointed_alfredrc != alfredrc {
+                env.insert(
+                    "ALFREDRC".to_string(),
+                    pointed_alfredrc.to_string_lossy().into_owned(),
+                );
+                load_config_file(env, &pointed_alfredrc, true, true, home, process_env_keys);
+            }
+        }
+    }
 }
 
 fn alfredrc_path(home: Option<&Path>, env: &HashMap<String, String>) -> Option<PathBuf> {
