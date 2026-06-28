@@ -428,8 +428,8 @@ def test_anthropic_subscription_cap_classified_as_rate_limit() -> None:
     wording that looks like a workspace-admin policy block but is
     actually a soft rate limit. Without classifying it as
     ``error_rate_limit`` the result falls through to generic
-    ``error_api`` which is not in HYBRID_FALLBACK_SUBTYPES, so hybrid
-    agents fail hard instead of falling back to codex.
+    ``error_api``, so the retry/breaker layer reports the wrong
+    operator-actionable cause.
 
     Regression test for the 2026-05-24 incident: ~70 firings burned
     through the subscription cap and the whole fleet went red because

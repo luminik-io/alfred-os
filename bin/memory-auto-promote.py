@@ -7,9 +7,10 @@ Slack note only when something was promoted or held for a human. It promotes
 ONLY high-confidence, evidence-backed, judge-approved candidates and leaves
 everything else in the review queue.
 
-Safe by default: the whole pass is a true no-op unless ``ALFRED_AUTO_PROMOTE``
-is armed, and ``ALFRED_AUTO_PROMOTE_KILL`` halts it without editing config. The
-per-run promotion cap and judge-call budget bound the work (and this wrapper's
+Safe by default: the LLM judge is the save decision, every save is capped and
+auditable, ``ALFRED_AUTO_PROMOTE=0`` opts out, and
+``ALFRED_AUTO_PROMOTE_KILL=1`` halts it without editing config. The per-run
+promotion cap and judge-call budget bound the work (and this wrapper's
 timeout), so a runaway queue can never promote in bulk or hang the scheduler.
 """
 
@@ -31,6 +32,15 @@ for candidate in (HERE.parent / "lib", Path(os.environ.get("ALFRED_HOME", "")) /
 
 def _brain_script() -> Path:
     return HERE / "alfred-brain.py"
+
+
+def _doctor_mode() -> bool:
+    return str(os.environ.get("ALFRED_DOCTOR", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _run_auto_promote(args: argparse.Namespace) -> dict[str, Any]:
@@ -138,6 +148,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if _doctor_mode():
+        print("[MEMORY-AUTO-PROMOTE-DOCTOR-OK]")
+        return 0
+
     args = build_parser().parse_args(argv)
     try:
         payload = _run_auto_promote(args)
@@ -150,11 +164,11 @@ def main(argv: list[str] | None = None) -> int:
 
     promoted = [p for p in payload.get("promoted", []) if isinstance(p, str)]
     held = _held_count(payload)
-    # Disarmed runs are a silent no-op: never nag Slack when the operator has
-    # not armed auto-promotion.
-    armed = bool(payload.get("enabled"))
+    # Explicitly disabled runs are a silent no-op: never nag Slack when the
+    # operator has opted out or pulled the kill switch.
+    enabled = bool(payload.get("enabled"))
     notable = bool(promoted) or held > 0
-    if args.slack and armed and (notable or args.slack_all):
+    if args.slack and enabled and (notable or args.slack_all):
         _post_slack(_render_slack(payload), severity="info")
 
     if args.json:
@@ -162,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(
             "memory-auto-promote: "
-            f"enabled={armed} "
+            f"enabled={enabled} "
             f"considered={int(payload.get('considered') or 0)} "
             f"promoted={len(promoted)} "
             f"held={held}"

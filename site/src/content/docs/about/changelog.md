@@ -67,7 +67,7 @@ Substrate, observability, planning, approval, memory, and connector primitives. 
 - **`--dry-run` mode**: run a full agent firing lifecycle with every side-effecting boundary stubbed: no LLM call, no spend, no Slack post, no GitHub or git mutation. Works with zero host config. See [Dry-run mode](/getting-started/dry-run/).
 - **`alfred pause` / `resume` / `run`** control verbs; `alfred agents` now shows a real scheduler-load column.
 - **`alfred claude probe`**, **`alfred codex status/probe`**, and **`alfred auth status/probe`**: first-class Claude Code and Codex CLI auth diagnostics.
-- **Solo-builder setup cleanup**: `alfred-init.py --repos`, starter-fleet default, prompt seeding, standard GitHub label setup, and Batman visible as an opt-in cross-repo architect.
+- **Solo-builder setup cleanup**: `alfred-init.py --repos`, full-fleet default, prompt seeding, standard GitHub label setup, Batman visible as an opt-in cross-repo architect, and config-heavy jobs kept disabled until their required settings exist.
 
 ## 0.2.1 (2026-05-12)
 

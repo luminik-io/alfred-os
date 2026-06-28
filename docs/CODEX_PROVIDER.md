@@ -33,16 +33,14 @@ alfred engine set lucius claude
 |---|---|
 | `claude` | Claude Code only. |
 | `codex` | Codex only. |
-| `hybrid` | Claude Code first. Fall back to Codex on Claude `error_budget`, `error_rate_limit`, or `error_authentication`. |
+| `hybrid` | Claude Code first. Retry transient failures on Claude, and fall back to Codex only when Claude ran but produced no useful result. |
 
 Resolution order:
 
 1. `ALFRED_<CODENAME>_ENGINE`
-2. Optional legacy env var for migrated fleets
-3. `ALFRED_ENGINE`
-4. `$ALFRED_HOME/state/engines/<codename>`
-5. Optional legacy state file
-6. Codename default
+2. `ALFRED_ENGINE`
+3. `$ALFRED_HOME/state/engines/<codename>`
+4. Codename default
 
 ## Runtime Contract
 
@@ -90,10 +88,11 @@ References:
 **`codex: command not found`.** Install/sign in to Codex CLI, rerun
 `bash deploy.sh`, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
 
-**Hybrid never falls back.** Hybrid fallback is intentionally narrow. It only
-falls back from Claude to Codex for auth, budget, and rate-limit subtypes. A
-normal Claude tool error should be fixed in the runner or prompt, not hidden by
-switching engines.
+**Hybrid never falls back on provider faults.** Hybrid fallback is intentionally
+narrow. It only falls back from Claude to Codex for capability failures, where
+Claude ran but produced no useful result. Auth, budget, rate-limit, and normal
+tool errors should be fixed or retried on the same engine, not hidden by
+switching providers.
 
 **Codex cannot read GitHub auth or credentials stored in the host credential store.** Keep
 review-only agents in read-only mode. For builder agents, run in a disposable

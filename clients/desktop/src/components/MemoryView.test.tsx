@@ -168,11 +168,16 @@ describe("MemoryView", () => {
     await user.click(advanced.getByRole("button", { name: /run memory check/i }));
     await user.click(advanced.getByRole("button", { name: /preview redis sync/i }));
     await user.click(advanced.getByRole("button", { name: /queue failure lessons/i }));
+    await user.click(advanced.getByRole("button", { name: /save judged lessons/i }));
 
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "brain_doctor" });
     expect(onRunLocalAction).toHaveBeenCalledWith({ action: "redis_sync_preview" });
     expect(onRunLocalAction).toHaveBeenCalledWith({
       action: "memory_harvest",
+      refreshAfter: true,
+    });
+    expect(onRunLocalAction).toHaveBeenCalledWith({
+      action: "memory_auto_promote",
       refreshAfter: true,
     });
   });

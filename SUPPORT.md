@@ -29,7 +29,7 @@ Priority order:
 - **Multi-tenant deployments.** Alfred is single-operator by design.
 - **Hosted SaaS.** Framework, not a service. We won't run agents for you.
 - **Custom Claude Code installs.** If `npm install -g @anthropic-ai/claude-code` doesn't work for you, talk to Anthropic. The CLI is theirs.
-- **Per-fleet skill sets.** [`docs/SKILLS.md`](docs/SKILLS.md) recommends a starter set. What your fleet actually needs is yours to decide.
+- **Per-fleet skill sets.** [`docs/SKILLS.md`](docs/SKILLS.md) documents the current skill boundary. What your fleet actually needs is yours to decide.
 - **AWS account setup, IAM policy authoring beyond the templates we ship.** Templates in [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md) cover the common patterns. Deeper AWS work is consultancy territory.
 
 ## Getting unstuck

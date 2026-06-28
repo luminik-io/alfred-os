@@ -231,6 +231,16 @@ DEFAULT_AGENT_CATALOG: dict[str, dict[str, str]] = {
         "role": "agent cleanup",
     },
     "cleanup": {"script": "agent-cleanup.py", "schedule": "cron:3:00", "role": "agent cleanup"},
+    "memory-harvest": {
+        "script": "memory-harvest.py",
+        "schedule": "cron:8:05",
+        "role": "memory harvest",
+    },
+    "memory-auto-promote": {
+        "script": "memory-auto-promote.py",
+        "schedule": "cron:8:20",
+        "role": "memory auto-promote",
+    },
     "code-map-refresh": {
         "script": "code-map-refresh.py",
         "schedule": "interval:21600",
@@ -1227,7 +1237,7 @@ def _engine_behavior(mode: str) -> str:
         return "Claude Code only"
     if resolved == "codex":
         return "Codex only"
-    return "Claude Code first, Codex fallback on Claude auth/limit/budget errors"
+    return "Claude Code first, Codex fallback only on capability gaps"
 
 
 def _require_engine_agent(agent: str) -> str:
@@ -1246,13 +1256,7 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"alfred engine: {e}", file=sys.stderr)
             return 2
-        mode = agent_runner.agent_engine(
-            agent,
-            legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,
-            legacy_state_file=(
-                agent_runner.STATE_ROOT / "review-engine" if agent == "rasalghul" else None
-            ),
-        )
+        mode = agent_runner.agent_engine(agent)
         print(f"{agent} engine: {mode}")
         print(f"state file: {_engine_state_file(agent)}")
         print(f"behavior: {_engine_behavior(mode)}")
@@ -1261,13 +1265,7 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
     headers = ("agent", "engine", "behavior")
     rows = []
     for agent in _engine_agent_codenames():
-        mode = agent_runner.agent_engine(
-            agent,
-            legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,
-            legacy_state_file=(
-                agent_runner.STATE_ROOT / "review-engine" if agent == "rasalghul" else None
-            ),
-        )
+        mode = agent_runner.agent_engine(agent)
         rows.append((agent, mode, _engine_behavior(mode)))
     widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
@@ -1288,8 +1286,6 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
     target = _engine_state_file(agent)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(mode + "\n", encoding="utf-8")
-    if agent == "rasalghul":
-        (agent_runner.STATE_ROOT / "review-engine").write_text(mode + "\n", encoding="utf-8")
     print(f"alfred: {agent} engine set to {mode}")
     print(f"alfred: wrote {target}")
     return 0
@@ -1297,13 +1293,7 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
 
 def _print_engine_roster() -> None:
     for agent in _engine_agent_codenames():
-        mode = agent_runner.agent_engine(
-            agent,
-            legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,
-            legacy_state_file=(
-                agent_runner.STATE_ROOT / "review-engine" if agent == "rasalghul" else None
-            ),
-        )
+        mode = agent_runner.agent_engine(agent)
         print(f"engine {agent}: {mode} ({_engine_behavior(mode)})")
 
 
@@ -2358,7 +2348,7 @@ def main(argv: list[str] | None = None) -> int:
     p_engine_status.set_defaults(func=cmd_engine_status)
     p_engine_set = engine_sub.add_parser("set", help="set one agent's engine")
     p_engine_set.add_argument("agent")
-    p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid", "both"])
+    p_engine_set.add_argument("mode", choices=["claude", "codex", "hybrid"])
     p_engine_set.set_defaults(func=cmd_engine_set)
 
     p_claude = sub.add_parser("claude", help="manage Claude Code account routing")

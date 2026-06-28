@@ -45,6 +45,36 @@ def _run_harvest(tmp_path: Path, db: Path, *args: str) -> subprocess.CompletedPr
     )
 
 
+@pytest.mark.parametrize(
+    ("script", "sentinel"),
+    [
+        ("memory-harvest.py", "[MEMORY-HARVEST-DOCTOR-OK]"),
+        ("memory-auto-promote.py", "[MEMORY-AUTO-PROMOTE-DOCTOR-OK]"),
+    ],
+)
+def test_memory_wrappers_doctor_mode_short_circuits(
+    tmp_path: Path, script: str, sentinel: str
+) -> None:
+    db = tmp_path / "brain.db"
+    env = {
+        **os.environ,
+        "ALFRED_DOCTOR": "1",
+        "ALFRED_HOME": str(tmp_path / "alfred"),
+        "ALFRED_FLEET_BRAIN_DB": str(db),
+    }
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "bin" / script), "--json"],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=20,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert sentinel in result.stdout
+    assert not db.exists()
+
+
 def test_memory_harvest_queues_reviewable_candidates(tmp_path: Path) -> None:
     db = tmp_path / "brain.db"
     brain = FleetBrain(db_path=db)

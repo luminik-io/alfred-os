@@ -11,6 +11,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
+def _clean_env(**overrides: str) -> dict[str, str]:
+    env = {**os.environ, **overrides}
+    env.pop("WORKSPACE_ROOT", None)
+    return env
+
+
 def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     home = tmp_path / "home"
     alfred = tmp_path / "alfred"
@@ -50,7 +56,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
 
     res = subprocess.run(
         ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
-        env={**os.environ, "HOME": str(home), "ALFRED_HOME": str(alfred)},
+        env=_clean_env(HOME=str(home), ALFRED_HOME=str(alfred)),
         capture_output=True,
         text=True,
         timeout=10,
@@ -97,7 +103,7 @@ def test_agent_launch_expands_double_quoted_home_path_values(tmp_path):
 
     res = subprocess.run(
         ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
-        env={**os.environ, "HOME": str(home)},
+        env=_clean_env(HOME=str(home)),
         capture_output=True,
         text=True,
         timeout=10,
@@ -333,6 +339,124 @@ def test_deploy_defers_reload_for_running_jobs(tmp_path):
         line for line in launchctl_log.read_text().splitlines() if "alfred.new.plist" in line
     ]
     assert alfred_new_calls == []
+
+
+def test_deploy_follows_pointer_from_explicit_alfredrc(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    stale_alfred = tmp_path / "stale-alfred"
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    fakebin = tmp_path / "fakebin"
+    launch_rc = tmp_path / "launch.alfredrc"
+    custom_rc = tmp_path / "custom.alfredrc"
+    src.mkdir()
+    home.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+    launch_rc.write_text(
+        f"ALFREDRC={custom_rc}\nALFRED_HOME={stale_alfred}\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(
+        f"ALFRED_HOME={alfred}\nWORKSPACE_ROOT={workspace}\n",
+        encoding="utf-8",
+    )
+    launchctl_log = tmp_path / "launchctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
+    (fakebin / "launchctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(launchctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "launchctl").chmod(0o755)
+    env = os.environ.copy()
+    env.pop("ALFRED_HOME", None)
+    env.pop("WORKSPACE_ROOT", None)
+    env.update(
+        {
+            "HOME": str(home),
+            "ALFREDRC": str(launch_rc),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        }
+    )
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (alfred / "launchd" / "alfredrc.path").read_text().strip() == str(custom_rc)
+    assert (alfred / "launchd" / "source-repo.txt").read_text().strip() == str(src)
+    assert not stale_alfred.exists()
+
+
+def test_deploy_expands_home_specifier_from_persisted_alfredrc_pointer(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    fakebin = tmp_path / "fakebin"
+    custom_rc = home / "custom.alfredrc"
+    src.mkdir()
+    home.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (home / ".alfred" / "launchd").mkdir(parents=True)
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+    (home / ".alfred" / "launchd" / "alfredrc.path").write_text(
+        "%h/custom.alfredrc\n",
+        encoding="utf-8",
+    )
+    custom_rc.write_text(
+        f"ALFRED_HOME={alfred}\nWORKSPACE_ROOT={workspace}\n",
+        encoding="utf-8",
+    )
+    launchctl_log = tmp_path / "launchctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
+    (fakebin / "launchctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(launchctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "launchctl").chmod(0o755)
+    env = os.environ.copy()
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFREDRC", None)
+    env.pop("WORKSPACE_ROOT", None)
+    env.update(
+        {
+            "HOME": str(home),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        }
+    )
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert (alfred / "launchd" / "alfredrc.path").read_text().strip() == str(custom_rc)
+    assert (alfred / "launchd" / "source-repo.txt").read_text().strip() == str(src)
 
 
 def test_agent_launch_prefers_alfred_home_venv_python(tmp_path):

@@ -27,6 +27,15 @@ def _brain_script() -> Path:
     return HERE / "alfred-brain.py"
 
 
+def _doctor_mode() -> bool:
+    return str(os.environ.get("ALFRED_DOCTOR", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _run_harvest(args: argparse.Namespace) -> dict[str, Any]:
     cmd = [
         sys.executable,
@@ -155,6 +164,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if _doctor_mode():
+        print("[MEMORY-HARVEST-DOCTOR-OK]")
+        return 0
+
     args = build_parser().parse_args(argv)
     try:
         payload = _run_harvest(args)

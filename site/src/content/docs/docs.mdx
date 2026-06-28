@@ -31,10 +31,11 @@ You do not sit in front of Claude or Codex and keep prompting every step. You gi
 
 That work needs durable coordination: Slack threads and specs that can become scoped GitHub issues, per-firing worktree isolation, role-based engine routing across Claude Code and Codex, review handoff, hard spend caps, and a state machine that keeps multiple agents from colliding. It runs on a Mac or Linux box you choose and uses CLI auth you already pay for.
 
-Batman is the architect for cross-repo work. Lucius implements scoped issues.
-Drake plans smaller work. A starter install can begin with Lucius, Drake, Ras
-al Ghul, and agent-cleanup, then enable Batman once multi-repo work becomes
-recurring. The full roster adds Bane, Nightwing, and other specialists.
+Alfred installs the engineering loop as a fleet, not as a tiny starter that you
+assemble later. Batman is the architect for cross-repo work, Drake scopes
+requests, Lucius implements, Ra's al Ghul reviews, Bane adds tests, Nightwing
+handles high-priority review feedback, and the reliability agents keep cleanup,
+doctor, summaries, and status checks moving.
 
 Under the hood, each agent is a fresh subprocess in its own git worktree, dispatched by the host scheduler (`launchd` on macOS, `systemd --user` on Linux), isolated by per-agent IAM, bounded by per-day spend caps with a fleet-wide Claude provider-limit block.
 
@@ -74,8 +75,8 @@ flowchart TB
   <Card title="Batman: architect agent" icon="puzzle">
     Batman leads the feature above the repo-local work. It reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel.
   </Card>
-  <Card title="Local memory you approve" icon="puzzle">
-    Fleet-brain recalls repo lessons, file touches, failure patterns, and reviewable memory candidates. New lessons wait for approval before they shape future runs.
+  <Card title="Local memory with an LLM judge" icon="puzzle">
+    Fleet-brain recalls repo lessons, file touches, failure patterns, and memory candidates. Structural gates and the judge decide what is safe to promote, while the operator can still inspect or override.
   </Card>
   <Card title="Per-firing git worktree isolation" icon="puzzle">
     Each `claude -p` invocation gets a fresh worktree. No cross-firing pollution; safe to crash mid-run.
@@ -92,13 +93,13 @@ flowchart TB
 
 <LinkCard
   title="Install Alfred"
-  description="Fast setup for an existing dev machine, plus a guided path for a fresh host. The wizard can configure a one-repo or multi-repo starter fleet without manual prompt or label copying."
+  description="Desktop-first onboarding for most users, plus a terminal path for headless hosts. Both paths configure the full local engineering fleet."
   href="/getting-started/install/"
 />
 
 <LinkCard
   title="Let Claude Code or Codex install it"
-  description="A copy-paste prompt for AI-assisted setup: explicit repos, starter fleet, no guessed secrets, auth checks before scheduled firings."
+  description="A copy-paste prompt for AI-assisted setup: explicit repos, full fleet, no guessed secrets, auth checks before scheduled firings."
   href="/getting-started/ai-assisted-install/"
 />
 
@@ -140,7 +141,7 @@ flowchart TB
 
 <LinkCard
   title="Meet the fleet"
-  description="The starter fleet and the full engineering roster: Batman, Lucius, Drake, Ra's al Ghul, Bane, and the rest. What each codename does and how work flows between them."
+  description="The full engineering roster: Batman, Lucius, Drake, Ra's al Ghul, Bane, Nightwing, and the rest. What each codename does and how work flows between them."
   href="/concepts/fleet/"
 />
 
@@ -167,7 +168,7 @@ The full [roadmap](/about/roadmap/) tracks what is in flight.
 
 ## Status
 
-Latest release: v0.5.3. Alfred ships a local coding-agent fleet for solo builders: install, starter setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, a self-healing reliability core, Slack reporting, isolated worktree execution, FleetBrain GitHub polling, worker heartbeats, Redis Agent Memory recall, a code-structure memory layer over MCP, reviewable and autonomously-captured memory, planning-memory recall, and a signed native Mac/Linux client with a public download page and a Homebrew cask.
+Latest release: v0.5.3. Alfred ships a local coding-agent fleet for solo builders: install, full-fleet setup, prompt seeding, GitHub label setup, specs-assisted workspace patterns, doctor, dry-run, Linux/systemd or macOS launchd scheduling, Claude/Codex engine routing, a self-healing reliability core, Slack reporting, isolated worktree execution, FleetBrain GitHub polling, worker heartbeats, Redis Agent Memory recall, a code-structure memory layer over MCP, autonomously captured memory candidates, planning-memory recall, and a signed native Mac/Linux client with a public download page and a Homebrew cask.
 
 The signed desktop app and Linux packages are published on the latest release, so
 `brew install --cask alfred-os` installs the app and `brew install alfred-os`

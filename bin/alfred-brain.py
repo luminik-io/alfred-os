@@ -94,14 +94,18 @@ from fleet_brain import (  # noqa: E402
     FleetBrain,
     MemoryPromotionError,
     default_db_path,
+    direct_auto_promote_env,
 )
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 
 
-def _build_brain(args: argparse.Namespace) -> FleetBrain:
-    db_path = args.db or os.environ.get("ALFRED_FLEET_BRAIN_DB")
-    return FleetBrain(db_path=db_path) if db_path else FleetBrain()
+def _build_brain(args: argparse.Namespace, env: dict[str, str] | None = None) -> FleetBrain:
+    if args.db:
+        return FleetBrain(db_path=args.db, env=env)
+    if env is not None:
+        return FleetBrain.from_env(env)
+    return FleetBrain()
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -584,18 +588,29 @@ def cmd_harvest(args: argparse.Namespace) -> int:
 
 
 def cmd_auto_promote(args: argparse.Namespace) -> int:
-    brain = _build_brain(args)
-    summary = brain.auto_promote_candidates(
-        threshold=args.threshold,
-        max_per_run=args.max_per_run,
-    )
+    env_src = direct_auto_promote_env()
+    previous_env = {key: os.environ.get(key) for key in env_src}
+    os.environ.update(env_src)
+    try:
+        brain = _build_brain(args, env_src)
+        summary = brain.auto_promote_candidates(
+            threshold=args.threshold,
+            max_per_run=args.max_per_run,
+            env=env_src,
+        )
+    finally:
+        for key, previous in previous_env.items():
+            if previous is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = previous
     if args.json:
         print(json.dumps(summary, indent=2, sort_keys=True))
         return 0
     if not summary["enabled"]:
         print(
-            "alfred-brain: auto-promotion is disarmed. Set ALFRED_AUTO_PROMOTE=1 "
-            "to arm it (ALFRED_AUTO_PROMOTE_KILL=1 overrides).",
+            "alfred-brain: auto-promotion is disabled. Remove ALFRED_AUTO_PROMOTE=0 "
+            "or unset ALFRED_AUTO_PROMOTE_KILL=1 to let the LLM judge save lessons.",
             file=sys.stderr,
         )
         return 0
@@ -1018,7 +1033,7 @@ def _short(value: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "..."
 
 
-def _candidate_to_dict(candidate) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _candidate_to_dict(candidate) -> dict[str, object]:
     return {
         "id": candidate.id,
         "codename": candidate.codename,
@@ -1041,7 +1056,7 @@ def _candidate_to_dict(candidate) -> dict[str, object]:  # type: ignore[no-untyp
     }
 
 
-def _failure_to_dict(event) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _failure_to_dict(event) -> dict[str, object]:
     return {
         "id": event.id,
         "codename": event.codename,
@@ -1055,7 +1070,7 @@ def _failure_to_dict(event) -> dict[str, object]:  # type: ignore[no-untyped-def
     }
 
 
-def _github_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _github_item_to_dict(item) -> dict[str, object]:
     return {
         "id": item.id,
         "repo": item.repo,
@@ -1075,7 +1090,7 @@ def _github_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-
     }
 
 
-def _bundle_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _bundle_item_to_dict(item) -> dict[str, object]:
     return {
         "id": item.id,
         "bundle_slug": item.bundle_slug,
@@ -1091,7 +1106,7 @@ def _bundle_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-
     }
 
 
-def _worker_to_dict(worker) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _worker_to_dict(worker) -> dict[str, object]:
     return {
         "id": worker.id,
         "codename": worker.codename,
@@ -1287,13 +1302,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_auto_promote = sub.add_parser(
         "auto-promote",
-        help="promote high-confidence, judge-approved candidates (ALFRED_AUTO_PROMOTE)",
+        help="promote high-confidence, LLM-judge-approved candidates",
     )
     p_auto_promote.add_argument(
         "--threshold",
         type=float,
         default=None,
-        help="Confidence bar (default ALFRED_AUTO_PROMOTE_THRESHOLD or 0.9).",
+        help="Confidence bar (default ALFRED_AUTO_PROMOTE_THRESHOLD or 0.5).",
     )
     p_auto_promote.add_argument(
         "--max-per-run",

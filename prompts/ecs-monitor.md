@@ -1,7 +1,7 @@
 <!-- alfred:auto-seed v1 (delete this line to activate this file as operator guidance) -->
 <!--
   Role: ecs-monitor
-  Codename: operator-customizable. The starter fleet ships this role as a
+  Codename: operator-customizable. The fleet catalog ships this role as a
   generic deployment-health monitor.
 
   Placeholder convention: load this template via agent_runner.load_prompt().

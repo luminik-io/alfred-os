@@ -80,7 +80,6 @@ from .agent_events import (
 # --------------------------------------------------------------------------
 from .config import (
     ENGINE_CHOICES,
-    HYBRID_FALLBACK_SUBTYPES,
     PROVIDER_LIMIT_SUBTYPES,
     _agent_env_slug,
     _env_present,
@@ -97,6 +96,11 @@ from .config import (
     optional_env_int,
     reported_subtype,
     set_dry_run,
+)
+from .context_governor import (
+    ContextGovernance,
+    context_governor_enabled,
+    govern_prompt_context,
 )
 
 # --------------------------------------------------------------------------
@@ -375,7 +379,6 @@ __all__ = [
     "today_str",
     # config
     "ENGINE_CHOICES",
-    "HYBRID_FALLBACK_SUBTYPES",
     "PROVIDER_LIMIT_SUBTYPES",
     "agent_engine",
     "codex_sandbox_for_agent",
@@ -388,6 +391,9 @@ __all__ = [
     "optional_env_int",
     "reported_subtype",
     "set_dry_run",
+    "ContextGovernance",
+    "context_governor_enabled",
+    "govern_prompt_context",
     # reliability
     "BreakerStatus",
     "CircuitBreaker",

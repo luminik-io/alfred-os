@@ -718,7 +718,8 @@ export type NativeAction =
   | "code_memory_status"
   | "redis_status"
   | "redis_sync_preview"
-  | "memory_harvest";
+  | "memory_harvest"
+  | "memory_auto_promote";
 
 export type GithubAuthLoginDetails = {
   device_url: string | null;

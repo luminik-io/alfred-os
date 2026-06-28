@@ -28,7 +28,7 @@ Engine modes:
 |---|---|
 | `claude` | Use Claude Code only. |
 | `codex` | Use Codex only. |
-| `hybrid` | Use Claude Code first. Fall back to Codex when Claude returns `error_budget`, `error_rate_limit`, or `error_authentication`. |
+| `hybrid` | Use Claude Code first. Retry transient failures on Claude, and fall back to Codex only when Claude ran but produced no useful result. |
 
 ```sh
 alfred engine status
@@ -43,11 +43,9 @@ alfred auth status
 Resolution order for one codename:
 
 1. `ALFRED_<CODENAME>_ENGINE`
-2. Optional legacy env var for migrated fleets
-3. Fleet-wide `ALFRED_ENGINE`, useful for testing
-4. `$ALFRED_HOME/state/engines/<codename>`
-5. Optional legacy state file
-6. The codename's default, usually `hybrid`
+2. Fleet-wide `ALFRED_ENGINE`, useful for testing
+3. `$ALFRED_HOME/state/engines/<codename>`
+4. The codename's default, usually `hybrid`
 
 ## Optional Codex routing
 
@@ -163,9 +161,9 @@ Claude Code can run against your **subscription usage** rather than direct API t
 | Pro | One operator, occasional agent runs, manual code work in parallel |
 | Max 5x / 20x | Continuous fleet, multiple codename agents on frequent cadences |
 
-A "turn" is roughly one model response. A typical Lucius firing on a small backend issue burns 30-80 turns. A multi-file refactor can hit 150+. Empirically, Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. Add Bane (test coverage), Drake (planner), Ra's al Ghul (review), Nightwing (review-fix), and you exceed Pro quota in a day.
+A "turn" is roughly one model response. A typical Lucius firing on a small backend issue burns 30-80 turns. A multi-file refactor can hit 150+. Empirically, Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. The installed full fleet can exceed Pro quota quickly when several codenames run on frequent cadences.
 
-Recommendation: start on Pro to validate the framework, upgrade to Max once you've got more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you separate work across two accounts when you operate that way.
+Recommendation: start on Pro to validate the framework with conservative cadences, upgrade to Max once you have more than 2 codenames firing daily. The `alfred claude` swap pattern below also lets you separate work across two accounts when you operate that way.
 
 When the provider usage cap trips mid-firing, the framework treats it as a fleet-wide event. `set_global_block(hours=1, reason="...")` poisons the run-permission file at `$ALFRED_HOME/state/global-blocked-until.json`. Every other agent's first preflight check sees the block and exits silently. After an hour, the block expires and the fleet resumes.
 

@@ -118,7 +118,7 @@ Use code repos in the first write path:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/api,my-org/web,my-org/mobile \
   --slack-webhook skip
 ```

@@ -262,8 +262,8 @@ candidate backlog, failure history, GitHub poll freshness, and bundle counts.
 
 `alfred brain promotions` lists high-confidence candidates with evidence, tags,
 or warning/blocker severity. You can promote and reject these by hand, but the
-armed autonomous path below is the intended way candidates become lessons; this
-view is for inspecting the queue and handling anything the judge held.
+autonomous path below is the intended way candidates become lessons; this view
+is for inspecting the queue and handling anything the judge held.
 
 `alfred brain failure-patterns` groups repeated non-success outcomes by
 codename, repo, subtype, and engine, then classifies the likely cause. The
@@ -288,19 +288,22 @@ are queued or the run fails, and leaves promotion to the autonomous path or the
 operator. Add it to `launchd/agents.conf` or `systemd` when you want Alfred to
 build the candidate queue automatically without expanding prompt recall silently.
 
-## Autonomous capture and save (off until armed)
+## Autonomous capture and save
 
 The intent is that memory captures AND saves itself through the LLMs, rather
 than waiting on a human review queue. `alfred brain auto-promote`
 (`FleetBrain.auto_promote_candidates`) makes the LLM the primary save decision.
-It is a NO-OP unless you arm `ALFRED_AUTO_PROMOTE`; `ALFRED_AUTO_PROMOTE_KILL=1`
-forces it off even when armed, and a disarmed run reads and writes nothing.
+It is enabled by default when `ALFRED_AUTO_PROMOTE` is unset, blank, or a
+recognized truthy value (`1`, `true`, `yes`, `on`, `enabled`). Set
+`ALFRED_AUTO_PROMOTE=0` for a normal opt-out, or `ALFRED_AUTO_PROMOTE_KILL=1`
+to halt it immediately. Any other nonblank `ALFRED_AUTO_PROMOTE` value fails
+closed. A disabled run reads and writes nothing.
 
-When armed, each pending candidate must still carry evidence and not conflict
-with another unreviewed version of the same lesson. The structural confidence
+Each pending candidate must still carry evidence and not conflict with another
+unreviewed version of the same lesson. The structural confidence
 bar (default 0.5, env `ALFRED_AUTO_PROMOTE_THRESHOLD`) is only a light
 pre-filter so any evidenced candidate reaches the real decision-maker: an LLM
-safety judge (`lib/memory_judge.py`, default ON when armed, gated by
+safety judge (`lib/memory_judge.py`, default ON, gated by
 `ALFRED_AUTO_PROMOTE_LLM_JUDGE`). The judge reads the candidate's
 topic/body/evidence and:
 
@@ -327,9 +330,9 @@ the cap), and the candidate-side conflict check.
 
 A saved candidate is promoted through the same `promote_memory_candidate` path
 as a manual promotion, recorded with `reviewer="auto"` so the batch stays
-auditable. As with any promotion, the lesson lands in the fleet-brain store and
-reaches Redis Agent Memory through the runner's `direct` reflection mode or an
-explicit `alfred brain redis-sync`.
+auditable. Auto-promoted lessons are written to Redis Agent Memory Server under
+a deterministic candidate-derived memory id, so the write is idempotent and can
+be reverted with the auto-promotion rollback lever.
 
 ## Read-only MCP bridge
 

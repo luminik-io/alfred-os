@@ -7,8 +7,7 @@ This module owns the 12-factor env-var contract:
   three flavours of boolean env-var test.
 * Engine-selection helpers (``normalize_engine``, ``agent_engine``,
   ``engine_preflight_bins``) and the engine-mode constants
-  (``ENGINE_CHOICES``, ``PROVIDER_LIMIT_SUBTYPES``,
-  ``HYBRID_FALLBACK_SUBTYPES``).
+  (``ENGINE_CHOICES``, ``PROVIDER_LIMIT_SUBTYPES``).
 * Codex sandbox resolution per agent (``codex_sandbox_for_agent``).
 * Doctor + dry-run mode flags (``doctor_mode``, ``is_dry_run``,
   ``set_dry_run``, ``dry_run_log``).
@@ -28,7 +27,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 
 from .paths import CLAUDE_BIN, CODEX_BIN, STATE_ROOT
 
@@ -40,37 +38,15 @@ ENGINE_CHOICES: frozenset[str] = frozenset({"claude", "codex", "hybrid"})
 PROVIDER_LIMIT_SUBTYPES: frozenset[str] = frozenset({"error_budget", "error_rate_limit"})
 """Subtypes that mean we hit a provider's quota / rate-limit wall."""
 
-HYBRID_FALLBACK_SUBTYPES: frozenset[str] = PROVIDER_LIMIT_SUBTYPES | frozenset(
-    {"error_authentication"}
-)
-"""Subtypes that should trigger a Claude->Codex fallback in hybrid mode."""
-
 
 def reported_subtype(result: object) -> str:
-    """Return the subtype an agent should REPORT as the failure's root cause.
+    """Return the raw subtype an agent should report.
 
-    Hybrid mode falls back from Claude to codex on a provider-limit or auth
-    failure. When the fallback itself then fails, the returned ``ClaudeResult``
-    carries codex's subtype, which can be a misleading ``error_rate_limit``
-    that hides the original trigger. This was a real outage: a Claude 401
-    (token missing from the runtime env) pushed every firing to codex, codex
-    hit its weekly cap, and the whole thing surfaced as ``error_rate_limit``
-    instead of "your Claude credential is unreachable".
-
-    The honest headline is the TRIGGER. We promote ``fallback_from_subtype``
-    when it is an auth failure (operator-actionable, distinct from codex's
-    own wall). A provider-limit trigger that fell back to another provider
-    limit stays as-is: both ends are genuinely rate-limited, so reporting
-    the codex subtype is not misleading.
-
-    Accepts any object exposing ``subtype`` / ``fallback_from_subtype`` so
-    this module need not import :mod:`result` (avoids an import cycle).
+    Hybrid fallback no longer rewrites auth or quota failures through a second
+    provider. The result subtype is therefore the honest headline; any
+    ``fallback_from_subtype`` is audit context, not a replacement.
     """
-    subtype = getattr(result, "subtype", "") or ""
-    trigger = getattr(result, "fallback_from_subtype", None)
-    if trigger == "error_authentication" and subtype != "error_authentication":
-        return trigger
-    return subtype
+    return getattr(result, "subtype", "") or ""
 
 
 # --------------------------------------------------------------------------
@@ -166,17 +142,12 @@ def optional_env_int(name: str, *, minimum: int = 1, maximum: int | None = None)
 def normalize_engine(raw: str | None, *, default: str = "hybrid") -> str:
     """Coerce an engine-mode string to one of ``ENGINE_CHOICES``.
 
-    The legacy alias ``both`` maps to ``hybrid``. Anything outside the
-    allow-list falls back to ``default`` (and that is itself normalized).
+    Anything outside the allow-list falls back to ``default``.
     """
     value = (raw or "").strip().lower()
-    if value == "both":
-        return "hybrid"
     if value in ENGINE_CHOICES:
         return value
     fallback = (default or "hybrid").strip().lower()
-    if fallback == "both":
-        return "hybrid"
     return fallback if fallback in ENGINE_CHOICES else "hybrid"
 
 
@@ -184,8 +155,6 @@ def agent_engine(
     agent: str,
     *,
     default: str = "hybrid",
-    legacy_env: str | None = None,
-    legacy_state_file: Path | None = None,
     environ: dict[str, str] | None = None,
 ) -> str:
     """Resolve the configured engine for one agent.
@@ -193,17 +162,13 @@ def agent_engine(
     Precedence:
 
     1. ``ALFRED_<AGENT>_ENGINE``
-    2. an optional legacy env var, e.g. ``ALFRED_REVIEW_ENGINE``
-    3. ``ALFRED_ENGINE`` for fleet-wide testing
-    4. ``${ALFRED_HOME}/state/engines/<agent>``
-    5. an optional legacy state file
-    6. ``default``
+    2. ``ALFRED_ENGINE`` for fleet-wide testing
+    3. ``${ALFRED_HOME}/state/engines/<agent>``
+    4. ``default``
 
     Args:
         agent: codename.
         default: fallback when nothing is configured.
-        legacy_env: deprecated env-var name to consult after the canonical one.
-        legacy_state_file: deprecated path to consult after the canonical one.
         environ: env mapping override (defaults to ``os.environ``).
 
     Returns:
@@ -212,20 +177,17 @@ def agent_engine(
     env = environ if environ is not None else os.environ
     safe_agent = agent.strip().lower().replace("_", "-")
     env_name = f"ALFRED_{_agent_env_slug(safe_agent)}_ENGINE"
-    for name in (env_name, legacy_env, "ALFRED_ENGINE"):
+    for name in (env_name, "ALFRED_ENGINE"):
         if name and env.get(name, "").strip():
             return normalize_engine(env.get(name), default=default)
 
     state_file = STATE_ROOT / "engines" / safe_agent
-    for path in (state_file, legacy_state_file):
-        if not path:
-            continue
-        try:
-            raw = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
-        if raw:
-            return normalize_engine(raw, default=default)
+    try:
+        raw = state_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        raw = ""
+    if raw:
+        return normalize_engine(raw, default=default)
     return normalize_engine(None, default=default)
 
 

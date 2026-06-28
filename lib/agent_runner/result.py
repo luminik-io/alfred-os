@@ -117,11 +117,9 @@ _RATE_LIMIT_RESULT_RE = re.compile(
     # disabled Claude subscription access for Claude Code · Use an
     # Anthropic API key instead, or ask your admin to enable access"),
     # but the actual cause is the cap, and the response shape is the
-    # same as a rate limit. Treating it as ``error_rate_limit`` makes
-    # hybrid agents fall back to codex automatically; without this
-    # match the result classifier falls through to generic
-    # ``error_api`` which is not in HYBRID_FALLBACK_SUBTYPES and the
-    # firing fails hard.
+    # same as a rate limit. Treating it as ``error_rate_limit`` lets
+    # the retry/breaker layer handle it as a provider wall instead of a
+    # generic API failure with misleading operator guidance.
     r"|\bdisabled Claude subscription access\b"
     r"|\bClaude subscription access for Claude Code\b"
     r"|\bsubscription access.{0,40}Claude Code\b",
@@ -154,11 +152,10 @@ class ClaudeResult:
     # legacy fields keep working unchanged.
     stop_reason: str | None = None
     error_message: str | None = None
-    # Set on a fallback result (codex after a Claude failure in hybrid
-    # mode) to the subtype of the Claude failure that TRIGGERED the
-    # fallback. Lets callers report the root cause: if Claude 401'd and
-    # codex then rate-limited, the honest headline is the auth failure,
-    # not codex's downstream rate_limit. ``None`` when no fallback ran.
+    # Set on a fallback result (Codex after a Claude capability failure in
+    # hybrid mode) to the subtype of the Claude failure that triggered the
+    # fallback. This is audit context; it no longer rewrites the reported
+    # result subtype. ``None`` when no fallback ran.
     fallback_from_subtype: str | None = None
 
 

@@ -144,10 +144,10 @@ export ALFRED_REDIS_MEMORY_NAMESPACE=alfred
 
 Keep `fleet` in the chain unless you are deliberately running without the local
 review queue and operational ledger. The default reflection mode stores
-agent-proposed memories as FleetBrain candidates first; when `ALFRED_AUTO_PROMOTE`
-is armed an LLM judge saves the safe ones autonomously, otherwise they wait for
-review (see `docs/FLEET_BRAIN.md`). Redis is the promoted lesson store;
-FleetBrain is the queue, ledger, and recall fallback.
+agent-proposed memories as FleetBrain candidates first; the LLM judge then saves
+safe ones autonomously unless `ALFRED_AUTO_PROMOTE=0` opts out (see
+`docs/FLEET_BRAIN.md`). Redis is the promoted lesson store; FleetBrain is the
+queue, ledger, and recall fallback.
 
 Redis Agent Memory runs as a pure vector store. The bundled server has every
 server-side LLM text process turned off (discrete-memory extraction, topic
@@ -209,9 +209,9 @@ firing "lucius" starts, asks memory.recall(codename="lucius", repo="acme-org/api
 
 firing finishes, queues a memory candidate (default candidate mode):
   -> FleetBrain stores the proposed lesson as a candidate
-  -> when ALFRED_AUTO_PROMOTE is armed, alfred brain auto-promote lets an LLM
-     judge save safe and behavior-changing candidates autonomously (see
-     docs/FLEET_BRAIN.md); promotion routes the lesson toward Redis
+  -> alfred brain auto-promote lets an LLM judge save safe and
+     behavior-changing candidates autonomously unless ALFRED_AUTO_PROMOTE=0
+     opts out (see docs/FLEET_BRAIN.md); promotion routes the lesson toward Redis
   -> alfred brain redis-sync back-fills older promoted lessons into Redis
 
 if ALFRED_MEMORY_REFLECTION_MODE=direct:

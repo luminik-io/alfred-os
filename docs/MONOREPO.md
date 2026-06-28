@@ -41,7 +41,7 @@ Or via the installer:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos my-org/my-monorepo \
   --slack-webhook skip
 ```

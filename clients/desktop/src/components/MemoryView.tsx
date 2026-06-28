@@ -335,6 +335,21 @@ function AdvancedPanel({
                 {nativeBusy === "memory_harvest:fleet" ? "Harvesting" : "Queue failure lessons"}
               </span>
             </button>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={nativeBusy === "memory_auto_promote:fleet"}
+              onClick={() =>
+                onRunLocalAction({ action: "memory_auto_promote", refreshAfter: true })
+              }
+            >
+              <Sparkles size={16} aria-hidden="true" />
+              <span>
+                {nativeBusy === "memory_auto_promote:fleet"
+                  ? "Judging"
+                  : "Save judged lessons"}
+              </span>
+            </button>
           </div>
         ) : (
           <p className="console-note console-note--inline">
