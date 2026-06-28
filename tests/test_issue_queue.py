@@ -151,6 +151,24 @@ def test_allowed_queue_repos_honors_empty_active_queue_scope(tmp_path: Path, mon
     assert iq.allowed_queue_repos() == set()
 
 
+def test_allowed_queue_repos_strips_runtime_env_inline_comments(tmp_path: Path, monkeypatch):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(
+        "ALFRED_QUEUE_REPOS=org/allowed # org/disabled disabled\n",
+        encoding="utf-8",
+    )
+
+    assert iq.allowed_queue_repos() == {"org/allowed"}
+
+
 def test_allowed_queue_repos_honors_empty_active_board_scope(tmp_path: Path, monkeypatch):
     home = tmp_path / "runtime"
     monkeypatch.setenv("HOME", str(tmp_path))

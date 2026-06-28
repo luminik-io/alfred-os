@@ -37,6 +37,34 @@ QUEUE_ACTIONS = ("queue", "hold", "done")
 _ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS",)
 
 
+def _strip_inline_comment(value: str) -> str:
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
 def _runtime_config_entry(key: str) -> tuple[bool, str]:
     """Return ``(present, value)`` from process env / active runtime .env."""
 
@@ -52,7 +80,8 @@ def _runtime_config_entry(key: str) -> tuple[bool, str]:
                 line = line.removeprefix("export ").strip()
             name, _, raw_value = line.partition("=")
             if name.strip() == key:
-                return True, decode_env_value(raw_value.strip()).strip()
+                value = _strip_inline_comment(raw_value).strip()
+                return True, decode_env_value(value).strip()
     except OSError:
         pass
     return False, ""
