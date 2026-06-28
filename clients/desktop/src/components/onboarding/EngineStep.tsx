@@ -34,6 +34,9 @@ export function EngineStep({
   const codeMemoryReady = Boolean(
     codeMemory?.enabled && codeMemory.binary.resolved && codeMemory.index_present,
   );
+  const scopedCodeRepos = codeMemory?.repos.selected ?? codeMemory?.repos.configured ?? [];
+  const codeRepoScopeLabel =
+    codeMemory?.repos.source === "configured" ? "Configured repos" : "Auto-discovered repos";
   const codeMemoryTone = !codeMemory?.enabled
     ? "off"
     : codeMemoryReady
@@ -134,11 +137,9 @@ export function EngineStep({
                   <dd>{codeMemory.index_dir}</dd>
                 </div>
                 <div className="grid gap-0.5">
-                  <dt className="font-medium text-foreground">Scoped repos</dt>
+                  <dt className="font-medium text-foreground">{codeRepoScopeLabel}</dt>
                   <dd>
-                    {codeMemory.repos.configured.length
-                      ? codeMemory.repos.configured.join(", ")
-                      : "none configured yet"}
+                    {scopedCodeRepos.length ? scopedCodeRepos.join(", ") : "none found yet"}
                   </dd>
                 </div>
               </dl>

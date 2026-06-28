@@ -64,6 +64,20 @@ _CODE_MEMORY_VERSION_RE = re.compile(
     r'^CODE_MEMORY_VERSION="\$\{ALFRED_CODE_MEMORY_VERSION:-([^}]+)\}"'
 )
 _CODE_MEMORY_REPO_RE = re.compile(r'^CODE_MEMORY_REPO="\$\{ALFRED_CODE_MEMORY_REPO:-([^}]+)\}"')
+_CODE_MEMORY_DISCOVERY_LIMIT = 25
+_CODE_MEMORY_DISCOVERY_IGNORES = {
+    ".archive",
+    ".cache",
+    ".external",
+    ".external-submissions",
+    ".venv",
+    ".worktrees",
+    "build",
+    "dist",
+    "node_modules",
+    "target",
+    "venv",
+}
 
 _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
@@ -304,7 +318,7 @@ def code_memory_status() -> dict[str, Any]:
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
-    configured_repos = _code_memory_repos(launcher_env)
+    repo_scope = _code_memory_repo_scope(launcher_env)
     index_present = _dir_has_entries(index_dir)
     pin = _code_memory_pin(launcher_env)
 
@@ -327,7 +341,7 @@ def code_memory_status() -> dict[str, Any]:
         "repo": pin["repo"],
         "index_dir": str(index_dir),
         "index_present": index_present,
-        "repos": {"configured": configured_repos, "count": len(configured_repos)},
+        "repos": repo_scope,
         "detail": detail,
     }
 
@@ -414,6 +428,74 @@ def _code_memory_repos(env: dict[str, str]) -> list[str]:
         seen.add(name)
         out.append(name)
     return out
+
+
+def _code_memory_workspace(env: dict[str, str]) -> Path:
+    root = Path(_code_memory_config(env, "WORKSPACE_ROOT", str(Path.home() / "code"))).expanduser()
+    subdir = _code_memory_config(env, "ALFRED_WORKSPACE_SUBDIR") or _code_memory_config(
+        env, "WORKSPACE_SUBDIR"
+    )
+    return root / subdir if subdir else root
+
+
+def _code_memory_discovery_limit(env: dict[str, str]) -> int:
+    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT")
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return _CODE_MEMORY_DISCOVERY_LIMIT
+    return value if value > 0 else _CODE_MEMORY_DISCOVERY_LIMIT
+
+
+def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
+    workspace = _code_memory_workspace(env)
+    limit = _code_memory_discovery_limit(env)
+    found: list[str] = []
+    if not workspace.is_dir():
+        return found
+    for root, dirs, _files in os.walk(workspace):
+        dirs[:] = sorted(d for d in dirs if d not in _CODE_MEMORY_DISCOVERY_IGNORES)
+        if ".git" not in dirs:
+            continue
+        repo = Path(root)
+        try:
+            relative_parts = repo.relative_to(workspace).parts
+        except ValueError:
+            continue
+        if any(part in _CODE_MEMORY_DISCOVERY_IGNORES for part in relative_parts):
+            continue
+        found.append(str(repo.relative_to(workspace)))
+        dirs.remove(".git")
+        if len(found) >= limit:
+            break
+    return found
+
+
+def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
+    workspace = _code_memory_workspace(env)
+    return [name for name in configured if (workspace / name).is_dir()]
+
+
+def _code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
+    configured = _code_memory_repos(env)
+    configured_existing = _existing_code_memory_configured_repos(env, configured)
+    discovered: list[str] = [] if configured_existing else _discover_code_memory_repos(env)
+    selected = configured_existing or discovered
+    if configured_existing:
+        source = "configured"
+    elif configured:
+        source = "auto-fallback"
+    else:
+        source = "auto"
+    return {
+        "configured": configured,
+        "configured_existing": configured_existing,
+        "discovered": discovered,
+        "selected": selected,
+        "source": source,
+        "count": len(selected),
+        "limit": _code_memory_discovery_limit(env),
+    }
 
 
 def _code_memory_binary(env: dict[str, str]) -> dict[str, Any]:
