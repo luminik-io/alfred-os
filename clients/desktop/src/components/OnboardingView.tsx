@@ -804,16 +804,35 @@ export function OnboardingView({
 
   const skipStep = useCallback(
     (key: OnboardingStepKey) => {
-      setSkipped((prev) => {
-        const next = new Set(prev);
-        next.add(key);
-        return next;
-      });
-      const idx = ONBOARDING_STEP_ORDER.indexOf(key);
-      const following = ONBOARDING_STEP_ORDER[idx + 1] ?? null;
-      if (following) goToStep(following);
+      void (async () => {
+        const idx = ONBOARDING_STEP_ORDER.indexOf(key);
+        const following = ONBOARDING_STEP_ORDER[idx + 1] ?? null;
+        if (!following) return;
+        const targetIndex = ONBOARDING_STEP_ORDER.indexOf(following);
+        const fleetIndex = ONBOARDING_STEP_ORDER.indexOf("fleet");
+        if (targetIndex > fleetIndex && !stepSatisfied("fleet")) {
+          if (stepKey === "fleet") {
+            const saved = await ensureFleetChoiceSaved();
+            if (!saved) return;
+            if (stepKeyRef.current !== "fleet") return;
+          } else {
+            goToStep("fleet", { manual: true });
+            setNotice({
+              tone: "error",
+              message: "Save the fleet naming choice before continuing.",
+            });
+            return;
+          }
+        }
+        setSkipped((prev) => {
+          const next = new Set(prev);
+          next.add(key);
+          return next;
+        });
+        goToStep(following);
+      })();
     },
-    [goToStep],
+    [ensureFleetChoiceSaved, goToStep, stepKey, stepSatisfied],
   );
 
   // Auto-advance once when a step's detection lands while the user is sitting on
