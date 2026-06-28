@@ -312,7 +312,7 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
         BRIDGE_REPOS_ENV: value,
     }
     runtime_env = _setup_runtime_env()
-    existing_queue = sorted(_repos_from_env(runtime_env, (QUEUE_REPOS_ENV,)))
+    existing_queue = _effective_queue_repos_for_save(runtime_env)
     current_board = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
     selected = set(repos)
     preserve_existing_queue = (
@@ -326,6 +326,15 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
     else:
         values = {QUEUE_REPOS_ENV: value, **values}
     return values
+
+
+def _effective_queue_repos_for_save(runtime_env: dict[str, str]) -> list[str]:
+    """Queue scope setup must preserve before writing board repo changes."""
+
+    runtime_queue = _repos_from_env(runtime_env, (QUEUE_REPOS_ENV,))
+    if runtime_queue or _has_config_value(runtime_env, QUEUE_REPOS_ENV):
+        return sorted(runtime_queue)
+    return sorted(allowed_queue_repos())
 
 
 # --------------------------------------------------------------------------- #

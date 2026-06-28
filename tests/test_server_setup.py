@@ -254,7 +254,7 @@ def test_bootstrap_status_uses_active_serve_home_for_board_repo_selection(
     assert status["ready"] is True
 
 
-def test_persist_selected_repos_writes_active_runtime_home_without_importing_launcher_queue_scope(
+def test_persist_selected_repos_writes_active_home_while_preserving_launcher_queue_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -278,14 +278,14 @@ def test_persist_selected_repos_writes_active_runtime_home_without_importing_lau
     env_path = home / ".env"
     assert result["env_path"] == str(env_path)
     env_text = env_path.read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
-    assert "ALFRED_QUEUE_REPOS=old/repo" not in env_text
+    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
 
     rc_text = rc.read_text(encoding="utf-8")
-    assert "export ALFRED_QUEUE_REPOS=acme/web" in rc_text
-    assert "export ALFRED_QUEUE_REPOS=old/repo" not in rc_text
+    assert "export ALFRED_QUEUE_REPOS=old/repo" in rc_text
+    assert "export ALFRED_QUEUE_REPOS=acme/web" not in rc_text
     assert "export ALFRED_SHIPPED_REPOS=acme/web" in rc_text
     assert "export ALFRED_BRIDGE_REPOS=acme/web" in rc_text
     assert setup_mod.setup_board_repos() == ["acme/web"]
@@ -381,3 +381,43 @@ def test_persist_selected_repos_preserves_active_narrow_queue_scope(
     assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+
+
+def test_persist_selected_repos_preserves_rc_queue_scope_when_runtime_has_board_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    launcher_home = tmp_path / "launcher-runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    (tmp_path / ".alfredrc").write_text(
+        f"export ALFRED_HOME={launcher_home}\nexport ALFRED_QUEUE_REPOS=prod/safe\n",
+        encoding="utf-8",
+    )
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "ALFRED_SHIPPED_REPOS=prod/api,prod/web",
+                "ALFRED_BRIDGE_REPOS=prod/api,prod/web",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    setup_mod.persist_selected_repos(["Prod/API", "Prod/Mobile"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=prod/safe" in env_text
+    assert "ALFRED_QUEUE_REPOS=prod/api,prod/mobile" not in env_text
+    assert "ALFRED_SHIPPED_REPOS=prod/api,prod/mobile" in env_text
+    assert "ALFRED_BRIDGE_REPOS=prod/api,prod/mobile" in env_text
+
+    rc_text = (tmp_path / ".alfredrc").read_text(encoding="utf-8")
+    assert "export ALFRED_QUEUE_REPOS=prod/safe" in rc_text
+    assert "export ALFRED_SHIPPED_REPOS=prod/api,prod/mobile" in rc_text
