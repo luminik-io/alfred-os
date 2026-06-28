@@ -642,6 +642,38 @@ describe("useRosterTheme", () => {
     expect(result.current.saveError).toBeNull();
   });
 
+  it("preserves an offline local-only warning when an older save resolves", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+    let resolveSave: (value: RosterThemeResponse) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: true } },
+    );
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    rerender({ connected: false });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+
+    expect(result.current.saveError).toContain("Not connected");
+
+    await act(async () => {
+      resolveSave(serverState({ theme: "justice-league" }));
+    });
+
+    expect(result.current.saveError).toContain("Not connected");
+  });
+
   // Thread: "Stale Hydration Overwrites Edit". A change made on a runtime
   // whose hydration GET is still in flight must not be reverted when that GET
   // resolves: the operator's edit owns the runtime state immediately.

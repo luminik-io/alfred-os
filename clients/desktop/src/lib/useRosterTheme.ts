@@ -157,7 +157,9 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
   const clearRuntimeSaveError = useCallback(
     (url: string) => {
       saveErrorsByUrlRef.current.delete(url);
-      if (saveErrorUrlRef.current === url || baseUrlRef.current === url) {
+      if (saveErrorUrlRef.current === url) {
+        showSaveErrorForCurrentRuntime();
+      } else if (connectedRef.current && baseUrlRef.current === url) {
         showSaveErrorForCurrentRuntime();
       }
     },
@@ -396,13 +398,17 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
     setHydrationRequestSeq((seq) => seq + 1);
   }, [baseUrl, connected]);
 
+  const reportedHydrating =
+    hydrating ||
+    Boolean(baseUrl && connected && hydratedUrlRef.current !== baseUrl && !hydrationError);
+
   return {
     rosterTheme,
     customNames,
     setRosterTheme,
     setCustomNames,
     saveError,
-    hydrating,
+    hydrating: reportedHydrating,
     hydrationError,
     retryHydration,
   };
