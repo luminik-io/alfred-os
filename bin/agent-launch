@@ -22,8 +22,9 @@
 #                             scheduled firing instead of silently 401ing.
 #
 # Already-exported variables (real environment, or set by an earlier file) are
-# never clobbered, so a value in .alfredrc or the scheduler unit still wins
-# over the same key in .env.
+# not clobbered, so a value in .alfredrc or the scheduler unit still wins over
+# the same key in .env. Memory auto-promote stop controls are the exception:
+# an emergency opt-out or kill switch in .env must override stale enables.
 
 set -euo pipefail
 
@@ -35,8 +36,29 @@ fi
 SCRIPT="$1"
 shift
 
+memory_auto_promote_stop_control_active() {
+  local key="$1" token
+  token="$(printf '%s' "$2" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')"
+  [ -n "$token" ] || return 1
+  case "$key" in
+    ALFRED_AUTO_PROMOTE)
+      case "$token" in
+        1|true|yes|on|enabled) return 1 ;;
+        *) return 0 ;;
+      esac
+      ;;
+    ALFRED_AUTO_PROMOTE_KILL)
+      case "$token" in
+        0|false|no|off|disabled) return 1 ;;
+        *) return 0 ;;
+      esac
+      ;;
+  esac
+  return 1
+}
+
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" line key value quote_style
+  local file="$1" no_clobber="${2:-}" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -78,16 +100,23 @@ load_env_file() {
         continue
         ;;
     esac
-    # In no-clobber mode, an already-exported value (real environment or an
-    # earlier-loaded file) wins. Keeps .env a gap-filler, not an override.
-    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
-      continue
-    fi
     quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
     if [ "$quote_style" != "single" ]; then
       value="${value//\$\{HOME\}/$HOME}"
       value="${value//\$HOME/$HOME}"
+    fi
+    # In no-clobber mode, an already-exported value (real environment or an
+    # earlier-loaded file) wins. Keeps .env a gap-filler, not an override,
+    # except for fail-closed memory stop controls.
+    if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
+      existing_value="${!key}"
+      if memory_auto_promote_stop_control_active "$key" "$existing_value"; then
+        continue
+      fi
+      if ! memory_auto_promote_stop_control_active "$key" "$value"; then
+        continue
+      fi
     fi
     export "$key=$value"
   done < "$file"
