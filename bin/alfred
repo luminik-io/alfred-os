@@ -1175,7 +1175,7 @@ def _engine_behavior(mode: str) -> str:
         return "Claude Code only"
     if resolved == "codex":
         return "Codex only"
-    return "Claude Code first, Codex fallback on Claude auth/limit/budget errors"
+    return "Claude Code first, Codex fallback only on capability gaps"
 
 
 def _require_engine_agent(agent: str) -> str:

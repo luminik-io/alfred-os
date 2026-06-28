@@ -227,6 +227,8 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
     assert res.returncode == 0, res.stderr
     for agent in ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin"):
         assert agent in res.stdout
+    assert "Codex fallback only on capability gaps" in res.stdout
+    assert "auth/limit/budget" not in res.stdout
 
 
 def test_cli_codex_status_reports_binary_and_engines(tmp_path):

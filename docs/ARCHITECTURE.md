@@ -132,7 +132,7 @@ flowchart TB
     setblock --> gpoison
 ```
 
-The spend ledger (`state.py:SpendState`) is the per-agent per-day file the cap checks read: `turns_today`, `cost_usd_today`, `consecutive_failures`, and friends, auto-resetting at midnight via the per-day filename. The global block defaults to a one-hour window (`maybe_set_global_block_for_result`) and only trips for the `claude` engine, since Codex provider limits are handled as silent hybrid fallbacks instead.
+The spend ledger (`state.py:SpendState`) is the per-agent per-day file the cap checks read: `turns_today`, `cost_usd_today`, `consecutive_failures`, and friends, auto-resetting at midnight via the per-day filename. The global block defaults to a one-hour window (`maybe_set_global_block_for_result`) and trips only when a Claude-backed invocation reports a provider limit. Shipped agents check the block before dispatch, so the pause is fleet-wide until it expires.
 
 ## Slack conversational flow
 

@@ -59,7 +59,7 @@ transport faults behind a different provider.
 
 When a Claude-backed firing returns `error_rate_limit` or `error_budget`, the runner also calls `set_global_block(hours=1, reason=...)`. That writes `$ALFRED_HOME/state/global-blocked-until.json`, which every other Claude-backed firing reads at the top of `main()`. They print `[<AGENT>-GLOBAL-BLOCKED]` and exit 0 for the next hour. The block stops the stampede; without it, the whole fleet would spend the hour firing into the same rate-limit wall.
 
-Hybrid agents still respect the global block before they start a Claude-backed firing. Codex-only reviewer lanes keep running independently when Claude is paused.
+All shipped agents check the global block before dispatch today, regardless of engine mode. The block is a fleet-wide pause, not a Claude-only router bypass.
 
 ## Default routing matrix
 
@@ -101,7 +101,7 @@ On the roadmap:
 - **Ollama and other local engines**: for teams that want every firing on-host with no provider call at all. Trade-off is model quality; reasonable for utility roles.
 - **Anthropic native agents**: when the upstream Agent Teams or Memory Tool primitives stabilize, Alfred will lean on them rather than re-implementing them.
 
-Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and a subtype-mapping table so hybrid fallback knows which failures to swallow.
+Each new engine needs three things to land: a CLI binary on PATH, a deterministic non-interactive prompt mode that returns structured results, and classifier coverage so retry, breaker, and fallback policy treat failures honestly.
 
 ## See also
 
