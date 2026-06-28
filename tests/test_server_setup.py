@@ -120,6 +120,23 @@ def test_install_inventory_does_not_mix_launcher_config_into_active_default_home
     monkeypatch.delenv("ALFRED_HOME", raising=False)
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    for key in (
+        "ALFRED_QUEUE_REPOS",
+        "ALFRED_SHIPPED_REPOS",
+        "ALFRED_BRIDGE_REPOS",
+        "SLACK_WEBHOOK_URL",
+        "SLACK_WEBHOOK_SECRET_ID",
+        "SLACK_BOT_TOKEN",
+        "ALFRED_SLACK_BOT_TOKEN_SECRET_ID",
+        "SLACK_APP_TOKEN",
+        "ALFRED_SLACK_APP_TOKEN",
+        "ALFRED_REDIS_MEMORY_URL",
+        "ALFRED_REDIS_MEMORY_NAMESPACE",
+        "ALFRED_AMS_HOST",
+        "ALFRED_AMS_PORT",
+        "ALFRED_AMS_REDIS_URL",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
     (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={launcher_home}\n", encoding="utf-8")
     env_path = launcher_home / ".env"
