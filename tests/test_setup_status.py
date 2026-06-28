@@ -109,6 +109,34 @@ def test_bootstrap_status_reports_configured_code_memory(
     assert code_memory["detail"] == "Code-memory binary and index are present."
 
 
+def test_bootstrap_status_checks_code_memory_home_cache_for_index(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    binary = tmp_path / "codebase-memory-mcp"
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+    index_dir = tmp_path / "legacy-index"
+    code_home = tmp_path / "code-memory-home"
+    graph_dir = code_home / ".cache" / "codebase-memory-mcp"
+    graph_dir.mkdir(parents=True)
+    (graph_dir / "graph.db").write_text("ok", encoding="utf-8")
+
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_BIN", str(binary))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_INDEX_DIR", str(index_dir))
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_HOME", str(code_home))
+
+    payload = setup_mod.bootstrap_status()
+
+    code_memory = payload["code_memory"]
+    assert code_memory["index_dir"] == str(index_dir)
+    assert code_memory["index_home"] == str(code_home)
+    assert code_memory["graph_dir"] == str(graph_dir)
+    assert code_memory["index_present"] is True
+    assert code_memory["detail"] == "Code-memory binary and index are present."
+
+
 def test_bootstrap_status_reads_code_memory_launcher_env_files(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

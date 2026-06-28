@@ -318,12 +318,14 @@ def code_memory_status() -> dict[str, Any]:
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
     binary = _code_memory_binary(launcher_env)
     index_dir = _code_memory_index_dir(launcher_env)
+    index_home = _code_memory_home(launcher_env, index_dir)
+    graph_dir = _code_memory_graph_dir(index_home)
     repo_scope = (
         _code_memory_repo_scope(launcher_env)
         if enabled
         else _disabled_code_memory_repo_scope(launcher_env)
     )
-    index_present = _dir_has_entries(index_dir)
+    index_present = _dir_has_entries(index_dir) or _dir_has_entries(graph_dir)
     pin = _code_memory_pin(launcher_env)
 
     if not enabled:
@@ -344,6 +346,8 @@ def code_memory_status() -> dict[str, Any]:
         "version_pin": pin["version"],
         "repo": pin["repo"],
         "index_dir": str(index_dir),
+        "index_home": str(index_home),
+        "graph_dir": str(graph_dir),
         "index_present": index_present,
         "repos": repo_scope,
         "detail": detail,
@@ -417,6 +421,17 @@ def _code_memory_index_dir(env: dict[str, str]) -> Path:
     if raw.strip():
         return Path(raw).expanduser()
     return _alfred_home(env) / "state" / "code-memory"
+
+
+def _code_memory_home(env: dict[str, str], index_dir: Path) -> Path:
+    raw = _code_memory_config(env, "ALFRED_CODE_MEMORY_HOME")
+    if raw.strip():
+        return Path(raw).expanduser()
+    return index_dir
+
+
+def _code_memory_graph_dir(index_home: Path) -> Path:
+    return index_home / ".cache" / _CODE_MEMORY_BIN_NAME
 
 
 def _code_memory_repos(env: dict[str, str]) -> list[str]:
