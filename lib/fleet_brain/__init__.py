@@ -310,11 +310,14 @@ def _load_auto_promote_env_file(
     env: dict[str, str],
     *,
     allow_alfredrc_pointer: bool = False,
+    override_existing: bool = False,
+    protected_keys: set[str] | None = None,
 ) -> None:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return
+    protected = protected_keys or set()
     for raw_line in lines:
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -335,24 +338,33 @@ def _load_auto_promote_env_file(
                 continue
             if _auto_promote_stop_control_active(key, env[key]):
                 continue
-            if not _auto_promote_stop_control_active(key, value):
+            if not _auto_promote_stop_control_active(key, value) and (
+                not override_existing or key in protected
+            ):
                 continue
         env[key] = value
 
 
 def direct_auto_promote_env() -> dict[str, str]:
     env = dict(os.environ)
+    process_keys = set(os.environ)
     selected_rc = Path(env.get("ALFREDRC") or "~/.alfredrc").expanduser()
     env["ALFREDRC"] = str(selected_rc)
     _load_auto_promote_env_file(
         selected_rc,
         env,
         allow_alfredrc_pointer="ALFREDRC" not in os.environ,
+        protected_keys=process_keys,
     )
     pointed_rc = Path(env.get("ALFREDRC") or str(selected_rc)).expanduser()
     if pointed_rc != selected_rc:
         env["ALFREDRC"] = str(pointed_rc)
-        _load_auto_promote_env_file(pointed_rc, env)
+        _load_auto_promote_env_file(
+            pointed_rc,
+            env,
+            override_existing=True,
+            protected_keys=process_keys,
+        )
     env.setdefault("ALFRED_HOME", str(Path("~/.alfred").expanduser()))
     _load_auto_promote_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
     return env

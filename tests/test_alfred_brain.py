@@ -104,6 +104,11 @@ def test_cli_auto_promote_loads_persisted_env_before_opening_brain(
         def __init__(self, db_path: str | None = None) -> None:
             built_db_paths.append(db_path)
 
+        @classmethod
+        def from_env(cls, env: dict[str, str]):
+            received_envs.append(env)
+            return cls(db_path=env.get("ALFRED_FLEET_BRAIN_DB"))
+
         def auto_promote_candidates(
             self,
             *,
@@ -121,7 +126,59 @@ def test_cli_auto_promote_loads_persisted_env_before_opening_brain(
     assert rc == 0
     assert built_db_paths == [str(custom_db)]
     assert received_envs[0] is not None
-    assert received_envs[0]["ALFRED_AUTO_PROMOTE"] == "0"
+    assert received_envs[-1]["ALFRED_AUTO_PROMOTE"] == "0"
+    assert json.loads(capsys.readouterr().out)["enabled"] is False
+
+
+def test_cli_auto_promote_uses_persisted_alfred_home_for_default_brain(
+    cli_mod: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_AUTO_PROMOTE=0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_FLEET_BRAIN_DB", raising=False)
+    monkeypatch.delenv("ALFRED_AUTO_PROMOTE", raising=False)
+    built_db_paths: list[str | None] = []
+    received_envs: list[dict[str, str] | None] = []
+
+    class FakeBrain:
+        def __init__(self, db_path: str | None = None) -> None:
+            built_db_paths.append(db_path)
+
+        @classmethod
+        def from_env(cls, env: dict[str, str]):
+            received_envs.append(env)
+            return cls(db_path=str(Path(env["ALFRED_HOME"]) / "fleet-brain.db"))
+
+        def auto_promote_candidates(
+            self,
+            *,
+            threshold: float | None = None,
+            max_per_run: int | None = None,
+            env: dict[str, str] | None = None,
+        ) -> dict[str, object]:
+            received_envs.append(env)
+            return {"enabled": False, "promoted": [], "considered": 0}
+
+    monkeypatch.setattr(cli_mod, "FleetBrain", FakeBrain)
+
+    rc = cli_mod.main(["auto-promote", "--json"])
+
+    assert rc == 0
+    assert built_db_paths == [str(runtime / "fleet-brain.db")]
+    assert received_envs[-1] is not None
+    assert received_envs[-1]["ALFRED_HOME"] == str(runtime)
     assert json.loads(capsys.readouterr().out)["enabled"] is False
 
 

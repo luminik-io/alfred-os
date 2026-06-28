@@ -101,9 +101,11 @@ from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 
 
 def _build_brain(args: argparse.Namespace, env: dict[str, str] | None = None) -> FleetBrain:
-    env_src = env if env is not None else os.environ
-    db_path = args.db or env_src.get("ALFRED_FLEET_BRAIN_DB")
-    return FleetBrain(db_path=db_path) if db_path else FleetBrain()
+    if args.db:
+        return FleetBrain(db_path=args.db, env=env)
+    if env is not None:
+        return FleetBrain.from_env(env)
+    return FleetBrain()
 
 
 def cmd_status(args: argparse.Namespace) -> int:
