@@ -396,6 +396,20 @@ def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):
     assert "marshall engine: codex" in status.stdout
 
 
+def test_cli_engine_set_rasalghul_uses_canonical_engine_state_only(tmp_path):
+    alfred = tmp_path / "alfred"
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+    }
+
+    res = _run_cli("engine", "set", "rasalghul", "codex", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    assert (alfred / "state" / "engines" / "rasalghul").read_text().strip() == "codex"
+    assert not (alfred / "state" / "review-engine").exists()
+
+
 def test_cli_review_engine_alias_is_not_exposed(tmp_path):
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred"),

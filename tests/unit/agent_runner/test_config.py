@@ -25,10 +25,10 @@ def test_optional_env_int_returns_none_when_unset(fresh_agent_runner, monkeypatc
     assert ar.optional_env_int("BAR", minimum=10) == 10
 
 
-def test_normalize_engine_legacy_both_alias(fresh_agent_runner):
-    """The legacy ``both`` alias collapses to ``hybrid``."""
+def test_normalize_engine_accepts_only_current_names(fresh_agent_runner):
+    """Unknown engine names fall back instead of carrying legacy aliases."""
     ar = fresh_agent_runner
-    assert ar.normalize_engine("both") == "hybrid"
+    assert ar.normalize_engine("both", default="codex") == "codex"
     assert ar.normalize_engine("CODEX") == "codex"
     assert ar.normalize_engine("garbage", default="codex") == "codex"
     assert ar.normalize_engine(None) == "hybrid"
@@ -40,6 +40,13 @@ def test_agent_engine_env_precedence(fresh_agent_runner, monkeypatch):
     monkeypatch.setenv("ALFRED_ENGINE", "codex")
     monkeypatch.setenv("ALFRED_LUCIUS_ENGINE", "claude")
     assert ar.agent_engine("lucius") == "claude"
+
+
+def test_agent_engine_ignores_removed_review_engine_alias(fresh_agent_runner, monkeypatch):
+    """Ra's al Ghul uses the same canonical engine keys as every other agent."""
+    ar = fresh_agent_runner
+    monkeypatch.setenv("ALFRED_REVIEW_ENGINE", "codex")
+    assert ar.agent_engine("rasalghul", default="claude") == "claude"
 
 
 def test_engine_preflight_bins_modes(fresh_agent_runner):

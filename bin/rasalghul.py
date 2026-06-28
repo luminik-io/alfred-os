@@ -17,7 +17,6 @@ sys.path.insert(
 )
 from agent_runner import (
     GH_ORG,
-    STATE_ROOT,
     WORKSPACE,
     WORKSPACE_ROOT,
     EventLog,
@@ -45,12 +44,7 @@ from agent_runner import (
 )
 
 AGENT = os.environ.get("AGENT_CODENAME", "rasalghul")
-RASALGHUL_ENGINE = agent_engine(
-    AGENT,
-    default="hybrid",
-    legacy_env="ALFRED_REVIEW_ENGINE",
-    legacy_state_file=STATE_ROOT / "review-engine",
-)
+RASALGHUL_ENGINE = agent_engine(AGENT, default="hybrid")
 LAUNCHD_LABEL = os.environ.get("LAUNCHD_LABEL", f"my.fleet.{AGENT}")
 
 PREFLIGHT = PreflightSpec(

@@ -401,11 +401,7 @@ def _approval_wait_status(agent: str) -> dict[str, Any]:
 def _engine(agent: str) -> str | None:
     if agent not in ENGINE_AWARE_AGENTS:
         return None
-    return agent_runner.agent_engine(
-        agent,
-        legacy_env="ALFRED_REVIEW_ENGINE" if agent == "rasalghul" else None,
-        legacy_state_file=STATE_ROOT / "review-engine" if agent == "rasalghul" else None,
-    )
+    return agent_runner.agent_engine(agent)
 
 
 def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnapshot:

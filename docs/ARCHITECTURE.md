@@ -88,7 +88,7 @@ flowchart TD
     fb -->|yes| used3
 ```
 
-The engine mode is resolved by `agent_engine` (`lib/agent_runner/config.py`) from the precedence chain `ALFRED_<AGENT>_ENGINE` then an optional legacy env var then `ALFRED_ENGINE`, defaulting to `hybrid`. `invoke_agent_engine` (`lib/agent_runner/process.py`) returns `(result, engine_used)` where `engine_used` is one of `claude`, `codex`, or `codex-fallback`.
+The engine mode is resolved by `agent_engine` (`lib/agent_runner/config.py`) from the precedence chain `ALFRED_<AGENT>_ENGINE`, then `ALFRED_ENGINE`, then `$ALFRED_HOME/state/engines/<agent>`, defaulting to `hybrid`. `invoke_agent_engine` (`lib/agent_runner/process.py`) returns `(result, engine_used)` where `engine_used` is one of `claude`, `codex`, or `codex-fallback`.
 
 Hybrid means Claude first, Codex only on a fallback subtype. `HYBRID_FALLBACK_SUBTYPES` (`config.py`) is the provider-limit set (`error_budget`, `error_rate_limit`) plus the other transient failure subtypes. Codex does not expose Claude's allow-list, max-turn, or resume-session semantics, so `codex_invoke` rejects those kwargs rather than implying they were enforced; its default posture is a read-only sandbox with no approval prompts.
 

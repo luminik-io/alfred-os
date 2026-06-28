@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 
 from .paths import CLAUDE_BIN, CODEX_BIN, STATE_ROOT
 
@@ -166,17 +165,12 @@ def optional_env_int(name: str, *, minimum: int = 1, maximum: int | None = None)
 def normalize_engine(raw: str | None, *, default: str = "hybrid") -> str:
     """Coerce an engine-mode string to one of ``ENGINE_CHOICES``.
 
-    The legacy alias ``both`` maps to ``hybrid``. Anything outside the
-    allow-list falls back to ``default`` (and that is itself normalized).
+    Anything outside the allow-list falls back to ``default``.
     """
     value = (raw or "").strip().lower()
-    if value == "both":
-        return "hybrid"
     if value in ENGINE_CHOICES:
         return value
     fallback = (default or "hybrid").strip().lower()
-    if fallback == "both":
-        return "hybrid"
     return fallback if fallback in ENGINE_CHOICES else "hybrid"
 
 
@@ -184,8 +178,6 @@ def agent_engine(
     agent: str,
     *,
     default: str = "hybrid",
-    legacy_env: str | None = None,
-    legacy_state_file: Path | None = None,
     environ: dict[str, str] | None = None,
 ) -> str:
     """Resolve the configured engine for one agent.
@@ -193,17 +185,13 @@ def agent_engine(
     Precedence:
 
     1. ``ALFRED_<AGENT>_ENGINE``
-    2. an optional legacy env var, e.g. ``ALFRED_REVIEW_ENGINE``
-    3. ``ALFRED_ENGINE`` for fleet-wide testing
-    4. ``${ALFRED_HOME}/state/engines/<agent>``
-    5. an optional legacy state file
-    6. ``default``
+    2. ``ALFRED_ENGINE`` for fleet-wide testing
+    3. ``${ALFRED_HOME}/state/engines/<agent>``
+    4. ``default``
 
     Args:
         agent: codename.
         default: fallback when nothing is configured.
-        legacy_env: deprecated env-var name to consult after the canonical one.
-        legacy_state_file: deprecated path to consult after the canonical one.
         environ: env mapping override (defaults to ``os.environ``).
 
     Returns:
@@ -212,20 +200,17 @@ def agent_engine(
     env = environ if environ is not None else os.environ
     safe_agent = agent.strip().lower().replace("_", "-")
     env_name = f"ALFRED_{_agent_env_slug(safe_agent)}_ENGINE"
-    for name in (env_name, legacy_env, "ALFRED_ENGINE"):
+    for name in (env_name, "ALFRED_ENGINE"):
         if name and env.get(name, "").strip():
             return normalize_engine(env.get(name), default=default)
 
     state_file = STATE_ROOT / "engines" / safe_agent
-    for path in (state_file, legacy_state_file):
-        if not path:
-            continue
-        try:
-            raw = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
-        if raw:
-            return normalize_engine(raw, default=default)
+    try:
+        raw = state_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        raw = ""
+    if raw:
+        return normalize_engine(raw, default=default)
     return normalize_engine(None, default=default)
 
 
