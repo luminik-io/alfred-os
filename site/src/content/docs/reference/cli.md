@@ -4,7 +4,7 @@ description: install.sh, deploy.sh, doctor.sh, and the alfred CLI.
 ---
 
 The Alfred CLI covers the local fleet control surface: install, deploy,
-doctor, starter setup, status, runner-gate enablement, pause/resume, manual
+doctor, full-fleet setup, status, runner-gate enablement, pause/resume, manual
 runs, engine selection, Claude/Codex auth checks, Claude account management, and shipped-work summaries.
 
 ## `install.sh`
@@ -47,8 +47,8 @@ Configures the scheduled fleet after the base install.
 
 ```sh
 ./bin/alfred-init.py
-./bin/alfred-init.py --non-interactive --agents starter --repos owner/repo --slack-webhook skip
-./bin/alfred-init.py --non-interactive --agents starter --repos owner/api,owner/web --slack-webhook skip
+./bin/alfred-init.py --non-interactive --agents all --repos owner/repo --slack-webhook skip
+./bin/alfred-init.py --non-interactive --agents all --repos owner/api,owner/web --slack-webhook skip
 ```
 
 Homebrew wrapper:
@@ -57,12 +57,12 @@ Homebrew wrapper:
 alfred-init
 ```
 
-`--agents` accepts `starter`, `all`, or comma-separated codenames. `starter`
-enables Drake, Lucius, Ra's al Ghul, and agent-cleanup. `--repos` scopes every
-enabled repo-operating agent to explicit repos and is required for safe
-non-interactive setup when more than one repo is visible. The repo owner must
-match `GH_ORG`; shipped agents store bare repo names and build `GH_ORG/repo`
-when they fire.
+`--agents` accepts `all`, `starter`, or comma-separated codenames. `all` is the
+default full engineering fleet. `starter` is an explicit small lab setup with
+Drake, Lucius, Ra's al Ghul, and agent-cleanup. `--repos` scopes every enabled
+repo-operating agent to explicit repos and is required for safe non-interactive
+setup when more than one repo is visible. The repo owner must match `GH_ORG`;
+shipped agents store bare repo names and build `GH_ORG/repo` when they fire.
 
 ## `bin/alfred-batman-setup.py`
 
@@ -182,7 +182,8 @@ and issue-claim overrides. `telemetry` controls anonymous usage totals:
 can stay installed; without an endpoint, or after opt-out, it exits cleanly and
 sends nothing.
 `shipped` reports merged PRs, issues, LOC, and
-model/config changes across `ALFRED_SHIPPED_SUMMARY_REPOS` or explicit `--repo`
+model/config changes across the period-specific shipped-summary repo env, the
+shared `ALFRED_SHIPPED_SUMMARY_REPOS` fallback, or explicit `--repo`
 values.
 
 `dry-run` is the scheduler-free trust check. It resolves any codename and prints

@@ -30,7 +30,7 @@ Override paths:
     ALFRED_DOCTOR=1               print [ALFRED-INIT-DOCTOR-OK] and exit
     --non-interactive             same as the env var
     --config <path>               read answers from JSON (skip prompts)
-    --agents <comma>              starter, all, or comma-separated codenames
+    --agents <comma>              all/default, starter, or comma-separated codenames
     --repos <comma>               repo selection for non-interactive setup
     --slack-webhook <url|skip>    skip the Slack prompt
 
@@ -165,6 +165,25 @@ CODENAME_TO_ROLE: dict[str, str] = {
 
 STARTER_ROLES = ("planner", "feature_dev", "pr_review", "agent_cleanup")
 OPT_IN_ROLES = {"cross_repo_coordinator"}
+CONFIG_GATED_ROLE_ENVS = {
+    "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),
+    "ops_morning": ("ALFRED_GORDON_ECS_CLUSTER",),
+}
+ROLE_REPO_ENV_KEYS = {
+    "agent_cleanup": ("ALFRED_CLAIM_SWEEP_REPOS",),
+    "automerge": ("ALFRED_AUTOMERGE_REPOS",),
+    "code_map_refresh": ("ALFRED_CODE_MAP_REPOS",),
+    "morning_brief": ("ALFRED_MORNING_BRIEF_REPOS",),
+    "shipped_summary_daily": ("ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",),
+    "shipped_summary_weekly": ("ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",),
+}
+MORNING_BRIEF_EXCLUDED_ROLES = {
+    "morning_brief",
+    "fleet_recap_morning",
+    "fleet_recap_evening",
+    "shipped_summary_daily",
+    "shipped_summary_weekly",
+}
 
 # The only strings that count as an explicit opt-in for a privacy-sensitive
 # consent flag. Anything else (including "false", "0", "no", "", or any other
@@ -423,12 +442,10 @@ def have(binary: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def read_alfredrc(path: Path) -> dict[str, str]:
-    """Parse KEY=VALUE pairs from ~/.alfredrc. Quotes/exports are tolerated."""
+def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
+    """Parse KEY=VALUE pairs from alfredrc text. Quotes/exports are tolerated."""
     out: dict[str, str] = {}
-    if not path.exists():
-        return out
-    for raw in path.read_text().splitlines():
+    for raw in raw_text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -450,6 +467,35 @@ def read_alfredrc(path: Path) -> dict[str, str]:
         if k:
             out[k] = v
     return out
+
+
+def read_alfredrc(path: Path) -> dict[str, str]:
+    """Parse KEY=VALUE pairs from ~/.alfredrc. Quotes/exports are tolerated."""
+    if not path.exists():
+        return {}
+    return _parse_alfredrc_text(path.read_text())
+
+
+def read_unmanaged_alfredrc(path: Path) -> dict[str, str]:
+    """Parse only operator-authored ~/.alfredrc values above the managed block."""
+    if not path.exists():
+        return {}
+    raw = path.read_text()
+    managed = ALFREDRC_BANNER_RE.search(raw)
+    if managed:
+        raw = raw[: managed.start()]
+    return _parse_alfredrc_text(raw)
+
+
+def read_managed_alfredrc(path: Path) -> dict[str, str]:
+    """Parse only the alfred-init managed block from ~/.alfredrc."""
+    if not path.exists():
+        return {}
+    raw = path.read_text()
+    managed = ALFREDRC_BANNER_RE.search(raw)
+    if not managed:
+        return {}
+    return _parse_alfredrc_text(raw[managed.end() :])
 
 
 def quote_alfredrc_value(value: str) -> str:
@@ -520,32 +566,40 @@ def discover_agents(bin_dir: Path) -> list[str]:
 
 
 def starter_roles(available: list[str]) -> list[str]:
-    """Return the recommended cold-start fleet from the discovered runners."""
+    """Return the explicit small starter fleet from the discovered runners."""
     starter = [role for role in STARTER_ROLES if role in available]
     return starter or list(available[:1])
+
+
+def recommended_roles(available: list[str]) -> list[str]:
+    """Return the default full fleet from the discovered runners."""
+    return list(available)
 
 
 def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
     """Resolve --agents into role keys while preserving catalog order.
 
     Accepted values:
-      - starter / recommended
-      - all
+      - all / recommended / default
+      - starter (explicit minimal setup)
       - comma-separated codenames, role keys, or script stems
     """
     value = (raw or "").strip()
     if not value:
-        return starter_roles(available)
+        return recommended_roles(available)
     lowered = value.lower()
-    if lowered in {"starter", "recommended", "default"}:
+    if lowered == "starter":
         return starter_roles(available)
+    if lowered in {"recommended", "default"}:
+        return recommended_roles(available)
     if lowered == "all":
-        return list(available)
+        return recommended_roles(available)
 
     requested = {tok.strip().lower() for tok in value.split(",") if tok.strip()}
     if "all" in requested:
-        return list(available)
-    starter_tokens = {"starter", "recommended", "default"}
+        return recommended_roles(available)
+    starter_tokens = {"starter"}
+    alias_tokens = {"recommended", "default"}
     starter_requested = bool(requested & starter_tokens)
     matched: list[str] = starter_roles(available) if starter_requested else []
     for role in available:
@@ -559,7 +613,15 @@ def roles_from_agents_arg(raw: str, available: list[str]) -> list[str]:
         requested
         - {token for role in matched for token in (role.lower(), AGENT_CATALOG[role][0].lower())}
         - starter_tokens
+        - alias_tokens
     )
+    ignored_aliases = requested & alias_tokens
+    if ignored_aliases:
+        warn(
+            "Ignoring mixed --agents alias value(s): "
+            + ", ".join(sorted(ignored_aliases))
+            + ". Use the alias by itself, or use 'all' for the full fleet."
+        )
     if unknown:
         warn(f"Ignoring unknown --agents value(s): {', '.join(sorted(unknown))}")
     return matched
@@ -597,6 +659,20 @@ def selected_repo_union(state: WizardState) -> list[str]:
     return out
 
 
+def role_uses_repos(role: str) -> bool:
+    """True when setup should collect repos for a role."""
+    return AGENT_CATALOG[role][2] or role in ROLE_REPO_ENV_KEYS
+
+
+def morning_brief_agents(state: WizardState) -> list[str]:
+    """Default codenames included in the scheduled morning brief."""
+    return [
+        state.codename_for(role)
+        for role in state.enabled_roles
+        if role not in MORNING_BRIEF_EXCLUDED_ROLES
+    ]
+
+
 def seed_prompt_templates(state: WizardState) -> list[Path]:
     """Copy starter prompt templates into ALFRED_HOME for enabled agents.
 
@@ -626,28 +702,47 @@ def seed_prompt_templates(state: WizardState) -> list[Path]:
 
 
 def write_opt_in_gate(state: WizardState) -> list[str]:
-    """Persist selected opt-in agents to the runner gate file.
+    """Leave runner-gated agents disabled during fleet generation.
 
-    Default-enabled agents do not need to be listed. Batman does.
+    The full-fleet install should make Batman visible, seed its prompt and
+    env, and render its scheduler row, but it must not arm cross-repo execution
+    as a side effect of accepting defaults. Operators opt in explicitly with
+    ``alfred enable <codename>`` after reviewing the cross-repo gate.
     """
-    wanted = [state.codename_for(role) for role in state.enabled_roles if role in OPT_IN_ROLES]
-    if not wanted:
+    return []
+
+
+def _configured_env_values(state: WizardState) -> dict[str, str]:
+    """Return env values scheduled agents will actually receive.
+
+    ``agent-launch`` reads ``~/.alfredrc`` and ``$ALFRED_HOME/.env`` at firing
+    time. Transient values in the installer shell do not count unless this
+    wizard is also about to write them through ``role_to_extras`` to the same
+    launch rc file the scheduled wrappers read.
+    """
+    values: dict[str, str] = {}
+    launch_rc = Path.home() / ".alfredrc"
+    with contextlib.suppress(OSError):
+        values.update(read_unmanaged_alfredrc(launch_rc))
+    with contextlib.suppress(OSError):
+        for key, value in read_alfredrc(state.alfred_home / ".env").items():
+            values.setdefault(key, value)
+    if _same_path(state.alfredrc, launch_rc):
+        values.update(env_assignments_for(state))
+    return values
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve() == right.expanduser().resolve()
+
+
+def schedule_blockers_for_role(state: WizardState, role: str) -> list[str]:
+    """Return required runtime env vars missing for an agent schedule row."""
+    required = CONFIG_GATED_ROLE_ENVS.get(role, ())
+    if not required:
         return []
-    gate = state.alfred_home / "state" / "fleet" / "enabled.txt"
-    existing: list[str] = []
-    if gate.exists():
-        for raw in gate.read_text().splitlines():
-            line = raw.split("#", 1)[0].strip()
-            if line and line not in existing:
-                existing.append(line)
-    out = sorted(set(existing) | set(wanted))
-    gate.parent.mkdir(parents=True, exist_ok=True)
-    gate.write_text(
-        "# Alfred runner gate. Opt-in agents listed here are allowed to run.\n"
-        + "\n".join(out)
-        + "\n"
-    )
-    return wanted
+    values = _configured_env_values(state)
+    return [name for name in required if not values.get(name, "").strip()]
 
 
 # ---------------------------------------------------------------------------
@@ -687,7 +782,17 @@ def render_agents_conf(state: WizardState) -> str:
             log_stem = f"alfred.{codename}"
         label = f"alfred.{codename}"
         role_text = desc.split(" (", 1)[0]
-        lines.append(f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}")
+        row = f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}"
+        blockers = schedule_blockers_for_role(state, role)
+        if blockers:
+            lines.append(
+                "# gated until configured: "
+                f"{codename} needs {', '.join(blockers)} in ~/.alfredrc, "
+                "$ALFRED_HOME/.env, or --config role_extras"
+            )
+            lines.append(f"#{row}")
+        else:
+            lines.append(row)
     # Proof-telemetry is not an AGENT_CATALOG role, so it is not in
     # enabled_roles. Emit its scheduler row only when an ingest URL exists.
     # Without a URL, the reporter is a clean no-op and scheduling it would only
@@ -721,8 +826,15 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
             if role == "cross_repo_coordinator":
                 out["BATMAN_SCAN_REPOS"] = ",".join(runtime_repos)
                 out["BATMAN_ROLLOUT_ORDER"] = ",".join(runtime_repos)
+            elif role in ROLE_REPO_ENV_KEYS:
+                for env_key in ROLE_REPO_ENV_KEYS[role]:
+                    out[env_key] = ",".join(runtime_repos)
             else:
                 out[f"ALFRED_{default_slug}_REPOS"] = ",".join(runtime_repos)
+        if role == "morning_brief":
+            agents = morning_brief_agents(state)
+            if agents:
+                out["ALFRED_MORNING_BRIEF_AGENTS"] = ",".join(agents)
         for k, v in state.role_to_extras.get(role, {}).items():
             out[k] = v
         if state.use_aws and codename in state.aws_agent_profiles:
@@ -1090,45 +1202,26 @@ def step_5_pick_agents(
         ok(f"Enabled {len(state.enabled_roles)} agents from --agents.")
         return
     print()
-    print("  Available agents (Enter = recommended starter fleet):")
-    print("    [starter]  shipped fleet defaults")
-    print(
-        "    (opt-in)   shipped but disabled by default; needs `alfred enable <codename>` to fire"
-    )
+    print("  Available agents (Enter = full fleet):")
+    print("    [full]     enabled by the default full-fleet setup")
+    print("    [starter]  explicit small setup for lab installs only")
+    print("    (gated)    selected by full fleet, but still protected by a runner or config gate")
     starter = set(starter_roles(available))
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
-        marker = "[starter]" if role in starter else "         "
-        suffix = " (opt-in)" if role in OPT_IN_ROLES else ""
+        marker = "[starter]" if role in starter else "[full]   "
+        suffix = " (gated)" if role in OPT_IN_ROLES or role in CONFIG_GATED_ROLE_ENVS else ""
         print(f"    {marker} {codename:<20s}{suffix:<10s} {desc}")
     print()
     if non_interactive:
-        state.enabled_roles = starter_roles(available)
-        ok(f"Enabled recommended starter fleet ({len(state.enabled_roles)} agents).")
+        state.enabled_roles = recommended_roles(available)
+        ok(f"Enabled full fleet ({len(state.enabled_roles)} agents).")
         return
-    raw = ask("Choose agents: Enter for starter, 'all', or comma-separated codenames", "")
-    state.enabled_roles = roles_from_agents_arg(raw or "starter", available)
+    raw = ask("Choose agents: Enter for full fleet, 'starter', or comma-separated codenames", "")
+    state.enabled_roles = roles_from_agents_arg(raw or "all", available)
     if not state.enabled_roles:
-        warn("Nothing matched. Using the recommended starter fleet.")
-        state.enabled_roles = starter_roles(available)
-    # Multi-repo fleets benefit from Batman (cross-repo `agent:large-feature`
-    # architect with a Slack approval gate). If the operator landed on a 2+-repo
-    # org and didn't pick Batman, surface it once as a yes/no question rather
-    # than letting the agent stay hidden behind the docs (issue #104).
-    if (
-        "cross_repo_coordinator" not in state.enabled_roles
-        and "cross_repo_coordinator" in available
-        and len(state.repos) >= 2
-    ):
-        print()
-        note(
-            f"Your org has {len(state.repos)} visible repos. Batman is the cross-repo "
-            "architect (single `agent:large-feature` issue fans out into coordinated PRs "
-            "across repos, gated by a Slack approval reaction)."
-        )
-        if ask_yes_no("Add Batman to this fleet?", default=False):
-            state.enabled_roles.append("cross_repo_coordinator")
-            ok("Batman added. Remember: `alfred enable batman` after install to arm it.")
+        warn("Nothing matched. Using the full fleet.")
+        state.enabled_roles = recommended_roles(available)
     ok(f"{len(state.enabled_roles)} agents enabled.")
 
 
@@ -1174,70 +1267,70 @@ def step_7_repos(
     state: WizardState, *, repos_arg: str | None = None, non_interactive: bool
 ) -> None:
     step("Per-agent repos")
-    repo_roles = [r for r in state.enabled_roles if AGENT_CATALOG[r][2]]
+    repo_roles = [r for r in state.enabled_roles if role_uses_repos(r)]
     if not repo_roles:
-        ok("No repo-operating agents enabled; skipping.")
-        return
-
-    arg_repos: list[str] | None = None
-    if repos_arg is not None:
-        arg_repos = _resolve_repo_selection(
-            repos_arg, state.repos, gh_org=state.gh_org, allow_external=True
-        )
-        if not arg_repos and repos_arg.strip().lower() != "none":
-            fail(f"--repos did not match any visible repo: {repos_arg}")
-            sys.exit(1)
-        outside_org = [
-            repo
-            for repo in arg_repos
-            if "/" in repo
-            and state.gh_org
-            and repo.split("/", 1)[0].lower() != state.gh_org.lower()
-        ]
-        if outside_org:
-            fail(
-                "--repos must belong to GH_ORG for the shipped agents. "
-                f"Set GH_ORG accordingly or use bare repo names. Outside scope: {', '.join(outside_org)}"
+        ok("No repo-operating agents enabled; skipping repo prompts.")
+    else:
+        arg_repos: list[str] | None = None
+        if repos_arg is not None:
+            arg_repos = _resolve_repo_selection(
+                repos_arg, state.repos, gh_org=state.gh_org, allow_external=True
             )
-            sys.exit(1)
+            if not arg_repos and repos_arg.strip().lower() != "none":
+                fail(f"--repos did not match any visible repo: {repos_arg}")
+                sys.exit(1)
+            outside_org = [
+                repo
+                for repo in arg_repos
+                if "/" in repo
+                and state.gh_org
+                and repo.split("/", 1)[0].lower() != state.gh_org.lower()
+            ]
+            if outside_org:
+                fail(
+                    "--repos must belong to GH_ORG for the shipped agents. "
+                    f"Set GH_ORG accordingly or use bare repo names. Outside scope: {', '.join(outside_org)}"
+                )
+                sys.exit(1)
 
-    for role in repo_roles:
-        codename = state.codename_for(role)
-        # Honor --config role_repos (per-agent scoping) over the broader
-        # --repos / "repos" / non-interactive default-all behaviour.
-        if role in state.role_to_repos:
-            continue
-        if arg_repos is not None:
-            state.role_to_repos[role] = list(arg_repos)
-            continue
-        if non_interactive:
-            if len(state.repos) == 1:
-                state.role_to_repos[role] = list(state.repos)
+        for role in repo_roles:
+            codename = state.codename_for(role)
+            # Honor --config role_repos (per-agent scoping) over the broader
+            # --repos / "repos" / non-interactive default-all behaviour.
+            if role in state.role_to_repos:
                 continue
-            fail(
-                "Non-interactive setup with repo agents needs --repos or per-agent "
-                "role_repos in --config. Example: --repos owner/repo or --repos repo-a,repo-b"
-            )
-            sys.exit(1)
-        if not state.repos:
-            state.role_to_repos[role] = []
-            continue
-        print()
-        print(f"  Repos for {codename} ({AGENT_CATALOG[role][1]}):")
-        for i, repo in enumerate(state.repos, 1):
-            print(f"    {i:>2}. {repo}")
-        default = "all" if len(state.repos) == 1 else ""
-        while True:
-            raw = ask(
-                "Numbers, 'all', 'engineering' (excludes specs/docs), or 'none'",
-                default,
-            )
-            selected = _resolve_repo_selection(raw, state.repos, gh_org=state.gh_org)
-            if selected or (raw or "").strip().lower() == "none":
-                state.role_to_repos[role] = selected
-                break
-            fail("Select at least one repo, or type 'none' to leave this agent idle.")
+            if arg_repos is not None:
+                state.role_to_repos[role] = list(arg_repos)
+                continue
+            if non_interactive:
+                if len(state.repos) == 1:
+                    state.role_to_repos[role] = list(state.repos)
+                    continue
+                fail(
+                    "Non-interactive setup with repo agents needs --repos or per-agent "
+                    "role_repos in --config. Example: --repos owner/repo or --repos repo-a,repo-b"
+                )
+                sys.exit(1)
+            if not state.repos:
+                state.role_to_repos[role] = []
+                continue
+            print()
+            print(f"  Repos for {codename} ({AGENT_CATALOG[role][1]}):")
+            for i, repo in enumerate(state.repos, 1):
+                print(f"    {i:>2}. {repo}")
+            default = "all" if len(state.repos) == 1 else ""
+            while True:
+                raw = ask(
+                    "Numbers, 'all', 'engineering' (excludes specs/docs), or 'none'",
+                    default,
+                )
+                selected = _resolve_repo_selection(raw, state.repos, gh_org=state.gh_org)
+                if selected or (raw or "").strip().lower() == "none":
+                    state.role_to_repos[role] = selected
+                    break
+                fail("Select at least one repo, or type 'none' to leave this agent idle.")
     # Special prompts (Huntress staging URL, Gordon ECS cluster, etc.)
+    managed_defaults = read_managed_alfredrc(state.alfredrc)
     for role in state.enabled_roles:
         codename = state.codename_for(role)
         # Match by canonical Batman name even if operator renamed the codename.
@@ -1247,11 +1340,14 @@ def step_7_repos(
             continue
         extras: dict[str, str] = {}
         for env_key, label in prompts:
-            val = ask(f"{label}", "", non_interactive=non_interactive)
+            current = state.role_to_extras.get(role, {}).get(
+                env_key, managed_defaults.get(env_key, "")
+            )
+            val = ask(f"{label}", current, non_interactive=non_interactive)
             if val:
                 extras[env_key] = val
         if extras:
-            state.role_to_extras[role] = extras
+            state.role_to_extras.setdefault(role, {}).update(extras)
 
 
 def _resolve_repo_selection(
@@ -1579,6 +1675,9 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
       schedule for an agent. Key resolves the same way as
       ``role_codename``; value is in ``agents.conf`` schedule format
       (``"interval:1200"``, ``"cron:7:30"``, ``"cron:1:7:30"``).
+    - ``role_extras`` (dict[str, dict[str, str]]): per-agent env values
+      normally collected by interactive prompts, such as
+      ``ALFRED_HUNTRESS_TARGET_URL`` or ``ALFRED_GORDON_ECS_CLUSTER``.
     - ``telemetry_enabled`` (bool), ``telemetry_url`` (str): configure
       anonymous proof-telemetry non-interactively. Reporting is opt-out and
       uses Alfred's hosted collector by default. ``telemetry_url`` overrides it
@@ -1648,6 +1747,21 @@ def apply_config_overrides(state: WizardState, cfg: dict) -> None:
                 warn(f"--config role_schedule: unknown agent {raw_key!r}; ignored")
                 continue
             state.role_to_schedule[role] = str(raw_schedule)
+    if "role_extras" in cfg and isinstance(cfg["role_extras"], dict):
+        for raw_key, raw_values in cfg["role_extras"].items():
+            role = _resolve_role_key(str(raw_key))
+            if role is None:
+                warn(f"--config role_extras: unknown agent {raw_key!r}; ignored")
+                continue
+            if not isinstance(raw_values, dict):
+                warn(
+                    f"--config role_extras[{raw_key!r}]: expected object, "
+                    f"got {type(raw_values).__name__}; ignored"
+                )
+                continue
+            state.role_to_extras.setdefault(role, {}).update(
+                {str(k): str(v) for k, v in raw_values.items() if str(k).strip()}
+            )
     # Telemetry opt-out. A missing key keeps the default: enabled, using
     # Alfred's hosted collector unless telemetry_url overrides it.
     # parse_consent is strict: a quoted "false"/"0"/"no" (or anything that is

@@ -233,18 +233,23 @@ prompts or labels, pass one repo or an explicit comma-separated repo list:
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos your-org/api,your-org/web \
   --slack-webhook skip
 ```
 
-The starter fleet is Drake, Lucius, Ra's al Ghul, and agent-cleanup: plan issues,
-implement labelled issues, review PRs, and clean stale state. Slack is optional.
-The `--repos` owner must match `GH_ORG`; the runtime agents store the bare repo
-name in `~/.alfredrc` and build `GH_ORG/repo` at firing time. `alfred-init.py`
-seeds prompt templates, creates the standard GitHub labels on selected repos,
-writes the scheduler manifest (`launchd/agents.conf`), updates `~/.alfredrc`, then
-runs deploy and doctor.
+The full fleet includes the planner, architect, implementers, reviewers,
+triage, QA, release, cleanup, memory, and status agents. Slack is optional. The
+`--repos` owner must match `GH_ORG`; the runtime agents store the bare repo name
+in `~/.alfredrc` and build `GH_ORG/repo` at firing time. `alfred-init.py` seeds
+prompt templates, creates the standard GitHub labels on selected repos, writes
+the scheduler manifest (`launchd/agents.conf`), updates `~/.alfredrc`, then runs
+deploy and doctor.
+
+Config-heavy agents are visible from the start without being accidentally
+armed. Batman stays behind the runner gate until `alfred enable batman`;
+Huntress and Gordon stay as disabled scheduler rows until their required staging
+or ECS settings exist.
 
 For a framework-only install with no agents configured, use `bash deploy.sh &&
 bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See
@@ -399,7 +404,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 ## Documentation
 
 - [Install](INSTALL.md): fresh-machine walkthrough.
-- [Install tiers](docs/INSTALL_TIERS.md): `core` (standalone, headless), optional `client` (desktop), optional `slack`.
+- [Install tiers](docs/INSTALL_TIERS.md): `core` (standalone, headless), recommended `client` (desktop), optional `slack`.
 - [AI-assisted install](docs/AI_ASSISTED_INSTALL.md): copy-paste prompt for Claude Code, Codex, or another local coding assistant.
 - [Workspace patterns](docs/WORKSPACE_PATTERNS.md): one-repo, multi-repo, specs-led, and Batman planning layouts.
 - [Specs-driven development](docs/SPECS_DRIVEN_DEVELOPMENT.md): how to turn specs into issue queues, Batman plans, and reviewable PRs.
@@ -474,7 +479,7 @@ departments are the next larger surface area: [`ROADMAP.md`](ROADMAP.md).
 **Latest release: v0.5.3.** Alfred ships a local coding-agent fleet for solo
 builders. What is in the box today:
 
-- Install, starter setup, prompt seeding, GitHub label setup, specs-assisted
+- Install, full-fleet setup, prompt seeding, GitHub label setup, specs-assisted
   workspace patterns, doctor, and dry-run.
 - macOS launchd or Linux systemd scheduling, Claude/Codex engine routing, Slack
   reporting, and isolated worktree execution.
@@ -514,4 +519,3 @@ running while the mission is in flight. The public repository is
 use the same theme: Batman is the architect, Lucius is the senior developer,
 Drake scopes smaller work, Ra's al Ghul reviews PRs, Bane adds tests, and
 Nightwing handles review fixes.
-

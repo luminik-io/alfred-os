@@ -34,9 +34,9 @@ Keep `ANTHROPIC_API_KEY` unset if you want Claude Code to use Pro/Max subscripti
 | Pro | Validate the framework, occasional agent runs |
 | Max 5x / 20x | Continuous fleet, multiple codenames at frequent cadences |
 
-A typical Lucius firing on a small backend issue burns 30-80 turns. Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. Add Bane, Drake, Ra's, Nightwing and you exceed Pro quota in a day.
+A typical Lucius firing on a small backend issue burns 30-80 turns. Lucius alone running every 20 minutes against an active issue queue averages 2000-3500 turns/day. The installed full fleet can exceed Pro quota quickly when several codenames run on frequent cadences.
 
-Recommendation: Pro to validate, Max once you've got 2+ daily codenames. The two-account swap pattern below also lets you split spend.
+Recommendation: Pro to validate with conservative cadences, Max once you've got 2+ daily codenames. The two-account swap pattern below also lets you split spend.
 
 ## Engine routing
 

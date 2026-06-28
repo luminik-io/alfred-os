@@ -15,7 +15,7 @@ workspaces; the assistant needs an explicit repo list either way.
 1. Run a side-effect-safe dry-run example.
 2. Install prerequisites.
 3. Let the human complete browser auth.
-4. Configure explicit repos with the starter fleet.
+4. Configure explicit repos with the full fleet.
 5. Run doctor and show the final state.
 
 Do not let the assistant guess repo names, Slack webhooks, AWS profiles, or
@@ -44,8 +44,12 @@ Rules:
 - Keep Slack skipped unless I paste a webhook.
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
-- Use the starter fleet only: Drake, Lucius, Ra's al Ghul, and agent-cleanup.
-- Do not add Batman during first install unless I explicitly set ADD_BATMAN=true.
+- Use the full engineering fleet: Drake, Batman, Lucius, Ra's al Ghul, Bane,
+  Nightwing, Robin, Huntress, Gordon, automerge, cleanup, code-map refresh,
+  briefs, recaps, shipped summaries, and fleet doctor where available.
+- Keep Batman configured even for a one-repo install. It will only act when
+  cross-repo or parent-plan work exists and remains runner-gated until
+  `alfred enable batman`.
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.
@@ -79,12 +83,12 @@ alfred codex probe
 ```sh
 ./bin/alfred-init.py \
   --non-interactive \
-  --agents starter \
+  --agents all \
   --repos "$REPOS" \
   --slack-webhook skip
 ```
 
-This seeds prompts, creates labels, writes scheduler config, deploys the starter
+This seeds prompts, creates labels, writes scheduler config, deploys the full
 fleet, and runs doctor. `--repos` can be one repo or a comma-separated list.
 It does not create AWS profiles or Slack apps.
 
@@ -92,19 +96,7 @@ For multi-repo:
 
 ```sh
 export REPOS="my-org/api,my-org/web,my-org/mobile"
-./bin/alfred-init.py --non-interactive --agents starter --repos "$REPOS" --slack-webhook skip
-```
-
-Batman is included in Alfred, but it is not part of the starter fleet. Add it
-after the starter fleet is healthy on your selected repo scope and you have
-cross-repo `agent:large-feature` issues ready for planning.
-
-```sh
-./bin/alfred-init.py \
-  --non-interactive \
-  --agents drake,lucius,rasalghul,agent-cleanup,batman \
-  --repos "$REPOS" \
-  --slack-webhook skip
+./bin/alfred-init.py --non-interactive --agents all --repos "$REPOS" --slack-webhook skip
 ```
 
 Public Batman is multi-repo aware. The parent-issue path posts a rollout plan to

@@ -111,8 +111,8 @@ const why = [
     body: "Planning happens in a Slack thread. Reply with what you want, what should change, or questions of your own, and Alfred turns the discussion into the next task. Nothing big runs until you approve it.",
   },
   {
-    title: "Remembers what it learns, once you approve it",
-    body: "Alfred keeps notes about each repo on your machine. New lessons wait for your approval before they shape future work, so a wrong guess never gets treated as fact.",
+    title: "Builds useful memory without a queue",
+    body: "Alfred keeps notes about each repo on your machine. Structural gates and an LLM judge decide what becomes durable context, and you can still inspect or override the memory queue from Slack or the desktop app.",
   },
   {
     title: "Works on one repo or many at once",
@@ -204,7 +204,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       <SectionHeader
         eyebrow="THE DESKTOP APP"
         title="See and steer your agents from one desktop app."
-        lede="Alfred comes with an optional desktop app. See every agent and what it is working on, check how much of your Claude and Codex usage is left, and start a new request in plain English. Slack is still where you discuss and approve plans."
+        lede="Alfred Desktop is the recommended onboarding path. It detects an existing install, starts or connects to the local server, checks GitHub and engine auth, guides repo selection, and lets you choose a roster theme or custom names. Slack is still where teams discuss and approve plans."
       />
       <NativeClientShowcase />
       <p style="margin-top:24px;">
@@ -218,7 +218,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       <SectionHeader
         eyebrow="WHAT IT DOES FOR YOU"
         title="Specialist agents carry work from request to reviewed PR."
-        lede="Each agent has one plain job. You can start with planning, implementation, and review, then add test coverage, reviewer-comment fixes, and safe automerge when your process is ready."
+        lede="Each agent has one plain job, and the default install wires the whole engineering loop: planning, architecture, implementation, review, test coverage, high-priority review fixes, cleanup, summaries, and safe automerge when your policy allows it."
       />
       <div class="job-grid">
         {jobs.map((j, i) => (
@@ -253,14 +253,14 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       <SectionHeader
         eyebrow="LOCAL MEMORY"
         title="Your agents keep a record of each run."
-        lede="Alfred keeps notes on your own machine: lessons you have approved, which files agents changed, what went wrong before, and what is in progress right now. You see and approve new lessons in Slack or the desktop app before they ever shape future work."
+        lede="Alfred keeps notes on your own machine: durable lessons, file touches, failure patterns, what went wrong before, and what is in progress right now. Memory promotion is designed to run without a human babysitting every candidate, with structural gates, an LLM judge, and operator inspection when you want it."
       />
       <div class="memory-grid">
         <div class="memory-copy">
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">01</span>
             <h3 class="m-h3">Lessons wait for your approval.</h3>
-            <p>Agents and trusted teammates can suggest a lesson worth keeping. A suggestion waits for approval before it changes future work. That keeps a wrong guess from becoming part of the system.</p>
+            <p>Agents and trusted teammates can suggest a lesson worth keeping. Alfred filters candidates through structural checks and a judge before promotion, so memory keeps improving without turning every operator into a queue janitor.</p>
           </div>
           <div class="memory-point">
             <span class="memory-point__kicker m-mono">02</span>

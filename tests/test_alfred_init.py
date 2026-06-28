@@ -175,6 +175,187 @@ def test_render_agents_conf_includes_batman(init_mod, tmp_path):
     )
 
 
+def test_render_agents_conf_comments_config_gated_rows_without_env(init_mod, tmp_path, monkeypatch):
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
+    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "# gated until configured: gordon needs ALFRED_GORDON_ECS_CLUSTER" in text
+    assert "#alfred.gordon\tgordon.py\tcron:8:00" in text
+    assert "\nalfred.huntress\t" not in text
+    assert "\nalfred.gordon\t" not in text
+
+
+def test_render_agents_conf_schedules_config_gated_rows_with_config(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+    state.role_to_extras["smoke_runner"] = {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+    }
+    state.role_to_extras["ops_morning"] = {"ALFRED_GORDON_ECS_CLUSTER": "staging"}
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "#alfred.huntress" not in text
+    assert "#alfred.gordon" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.gordon\tgordon.py\tcron:8:00" in text
+
+
+def test_render_agents_conf_ignores_transient_env_for_config_gates(init_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("ALFRED_HUNTRESS_TARGET_URL", "https://staging.example.com")
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
+    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.huntress\t" not in text
+
+
+def test_render_agents_conf_honors_runtime_env_file_for_config_gates(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text(
+        "ALFRED_HUNTRESS_TARGET_URL=https://staging.example.com\n"
+    )
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "#alfred.huntress" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+
+
+def test_render_agents_conf_ignores_stale_managed_alfredrc_for_config_gates(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                "# operator settings stay above",
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
+                "",
+            ]
+        )
+    )
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
+    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.huntress\t" not in text
+
+
+def test_render_agents_conf_honors_unmanaged_alfredrc_for_config_gates(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                "ALFRED_HUNTRESS_TARGET_URL=https://handwritten.example.com",
+                init_mod.ALFREDRC_BANNER,
+                "",
+            ]
+        )
+    )
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "#alfred.huntress" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+
+
+def test_render_agents_conf_does_not_trust_alfredrc_override_for_config_gates(
+    init_mod, tmp_path, monkeypatch
+):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.alfredrc = tmp_path / "override.alfredrc"
+    state.role_to_extras["smoke_runner"] = {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+    }
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
+    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.huntress\t" not in text
+
+
+def test_step_7_repos_preserves_managed_special_prompt_defaults(init_mod, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                "# operator-owned settings",
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_HUNTRESS_TARGET_URL=https://staging.example.com",
+                "ALFRED_GORDON_ECS_CLUSTER=staging",
+                "ALFRED_GORDON_SENTRY_ORG=acme",
+                "",
+            ]
+        )
+    )
+
+    init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
+
+    assert state.role_to_extras["smoke_runner"] == {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
+    }
+    assert state.role_to_extras["ops_morning"] == {
+        "ALFRED_GORDON_ECS_CLUSTER": "staging",
+        "ALFRED_GORDON_SENTRY_ORG": "acme",
+    }
+    text = init_mod.render_agents_conf(state)
+    assert "#alfred.huntress" not in text
+    assert "#alfred.gordon" not in text
+
+
+def test_step_7_repos_keeps_config_special_prompt_over_managed_default(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
+    state.role_to_extras["smoke_runner"] = {"ALFRED_HUNTRESS_TARGET_URL": "https://new.example.com"}
+    state.alfredrc.write_text(
+        "\n".join(
+            [
+                init_mod.ALFREDRC_BANNER,
+                "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
+                "",
+            ]
+        )
+    )
+
+    init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
+
+    assert state.role_to_extras["smoke_runner"] == {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://new.example.com"
+    }
+
+
 def test_render_agents_conf_schedules_telemetry_by_default(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("feature_dev",))
     text = init_mod.render_agents_conf(state)
@@ -274,6 +455,42 @@ def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
     assert out["BATMAN_SCAN_REPOS"] == "api,web"
     assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
     assert "ALFRED_BATMAN_REPOS" not in out
+
+
+def test_env_assignments_wires_repo_scoped_utility_agents(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=(
+            "feature_dev",
+            "automerge",
+            "morning_brief",
+            "shipped_summary_daily",
+            "shipped_summary_weekly",
+            "agent_cleanup",
+            "code_map_refresh",
+        ),
+        repos={
+            "automerge": ["acme/api", "acme/web"],
+            "morning_brief": ["acme/api", "acme/web"],
+            "shipped_summary_daily": ["acme/api", "acme/web"],
+            "shipped_summary_weekly": ["acme/mobile"],
+            "agent_cleanup": ["acme/api", "acme/web"],
+            "code_map_refresh": ["acme/api", "acme/web"],
+        },
+    )
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTOMERGE_REPOS"] == "api,web"
+    assert out["ALFRED_MORNING_BRIEF_REPOS"] == "api,web"
+    assert out["ALFRED_MORNING_BRIEF_AGENTS"] == "lucius,automerge,agent-cleanup,code-map-refresh"
+    assert out["ALFRED_SHIPPED_SUMMARY_DAILY_REPOS"] == "api,web"
+    assert out["ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS"] == "mobile"
+    assert "ALFRED_SHIPPED_SUMMARY_REPOS" not in out
+    assert out["ALFRED_CLAIM_SWEEP_REPOS"] == "api,web"
+    assert out["ALFRED_CODE_MAP_REPOS"] == "api,web"
+    assert "ALFRED_CODE_MAP_REFRESH_REPOS" not in out
 
 
 def test_env_assignments_slack_env(init_mod, tmp_path):
@@ -774,6 +991,33 @@ def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
     assert state.role_to_schedule["planner"] == "cron:7:30"
 
 
+def test_apply_config_overrides_role_extras(init_mod, tmp_path):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+    )
+
+    init_mod.apply_config_overrides(
+        state,
+        {
+            "role_extras": {
+                "huntress": {
+                    "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com",
+                },
+                "ops_morning": {
+                    "ALFRED_GORDON_ECS_CLUSTER": "staging",
+                },
+            },
+        },
+    )
+
+    assert state.role_to_extras["smoke_runner"] == {
+        "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com",
+    }
+    assert state.role_to_extras["ops_morning"] == {"ALFRED_GORDON_ECS_CLUSTER": "staging"}
+
+
 def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, capsys):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
@@ -786,6 +1030,7 @@ def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, c
             "role_repos": {"not-a-real-agent": ["acme/api"]},
             "role_codename": {"also-not-real": "ghost"},
             "role_schedule": {"phantom": "interval:60"},
+            "role_extras": {"ghost": {"ENV": "value"}},
         },
     )
     assert "not-a-real-agent" not in state.role_to_repos
@@ -795,6 +1040,7 @@ def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, c
     assert "not-a-real-agent" in err
     assert "also-not-real" in err
     assert "phantom" in err
+    assert "ghost" in err
 
 
 def test_apply_config_overrides_rejects_invalid_codename(init_mod, tmp_path, capsys):
@@ -884,9 +1130,9 @@ def test_pick_agents_keeps_configured_agents(init_mod, tmp_path):
     assert state.enabled_roles == ["bug_triage"]
 
 
-def test_pick_agents_lists_opt_in_marker(init_mod, tmp_path, capsys):
-    """Issue #104: opt-in roles need a visible `(opt-in)` marker so operators
-    can tell at a glance which agents need a follow-up `alfred enable` to fire."""
+def test_pick_agents_lists_gated_marker(init_mod, tmp_path, capsys):
+    """Gated roles need a visible marker so operators can tell at a glance
+    which full-fleet agents need a follow-up `alfred enable` to fire."""
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         alfredrc=tmp_path / ".alfredrc",
@@ -901,13 +1147,13 @@ def test_pick_agents_lists_opt_in_marker(init_mod, tmp_path, capsys):
     ]
     init_mod.step_5_pick_agents(state, available, agents_arg=None, non_interactive=True)
     out = capsys.readouterr().out
-    assert "(opt-in)" in out, "Expected `(opt-in)` marker in the agent picker output"
+    assert "(gated)" in out, "Expected `(gated)` marker in the agent picker output"
     # Marker must sit on Batman's line and NOT on a starter line.
     batman_line = next(
-        (line for line in out.splitlines() if "batman" in line and "(opt-in)" in line),
+        (line for line in out.splitlines() if "batman" in line and "(gated)" in line),
         "",
     )
-    assert batman_line, "Expected the (opt-in) marker on Batman's row specifically"
+    assert batman_line, "Expected the (gated) marker on Batman's row specifically"
     starter_lines = [
         line
         for line in out.splitlines()
@@ -915,13 +1161,14 @@ def test_pick_agents_lists_opt_in_marker(init_mod, tmp_path, capsys):
     ]
     assert starter_lines, "Expected at least one starter agent row in the output"
     for line in starter_lines:
-        assert "(opt-in)" not in line, f"Starter agent row should not carry (opt-in): {line!r}"
+        assert "(gated)" not in line, f"Starter agent row should not carry (gated): {line!r}"
 
 
-def test_pick_agents_offers_batman_when_multi_repo(init_mod, tmp_path, capsys, monkeypatch):
-    """Issue #104: multi-repo fleets should be offered Batman explicitly rather
-    than relying on the operator to spot it in the catalog. Default-no preserves
-    prior behaviour for operators who decline."""
+def test_pick_agents_full_fleet_includes_batman_for_multi_repo(
+    init_mod, tmp_path, capsys, monkeypatch
+):
+    """The default full fleet includes Batman instead of asking operators to add
+    the cross-repo architect after setup."""
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         alfredrc=tmp_path / ".alfredrc",
@@ -931,38 +1178,26 @@ def test_pick_agents_offers_batman_when_multi_repo(init_mod, tmp_path, capsys, m
     state.repos = ["acme/frontend", "acme/backend", "acme/mobile"]
     available = ["feature_dev", "planner", "bug_triage", "cross_repo_coordinator"]
 
-    # Capture every prompt input() saw and the operator's reply.
-    answers_decline = iter(["", "n"])
+    answers = iter([""])
     prompts_seen: list[str] = []
 
     def fake_input(prompt: str = "") -> str:
         prompts_seen.append(prompt)
-        return next(answers_decline)
+        return next(answers)
 
     monkeypatch.setattr("builtins.input", fake_input)
     init_mod.step_5_pick_agents(state, available, agents_arg=None, non_interactive=False)
 
     out = capsys.readouterr().out
-    assert "Your org has 3 visible repos" in out
-    assert any("Add Batman to this fleet?" in p for p in prompts_seen), prompts_seen
-    assert "cross_repo_coordinator" not in state.enabled_roles
-
-    # Now the operator accepts.
-    state2 = init_mod.WizardState(
-        alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
-        repo_root=tmp_path,
-        gh_org="acme",
-    )
-    state2.repos = ["acme/frontend", "acme/backend"]
-    answers_accept = iter(["", "y"])
-    monkeypatch.setattr("builtins.input", lambda *_a, **_kw: next(answers_accept))
-    init_mod.step_5_pick_agents(state2, available, agents_arg=None, non_interactive=False)
-    assert "cross_repo_coordinator" in state2.enabled_roles
+    assert "Add Batman to this fleet?" not in out
+    assert not any("Add Batman to this fleet?" in p for p in prompts_seen), prompts_seen
+    assert "cross_repo_coordinator" in state.enabled_roles
 
 
-def test_pick_agents_skips_batman_offer_for_single_repo(init_mod, tmp_path, capsys, monkeypatch):
-    """No Batman nudge when the fleet has a single repo; it adds no value."""
+def test_pick_agents_full_fleet_includes_batman_without_extra_prompt(
+    init_mod, tmp_path, capsys, monkeypatch
+):
+    """No extra Batman nudge is needed because the full fleet already includes it."""
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         alfredrc=tmp_path / ".alfredrc",
@@ -982,7 +1217,7 @@ def test_pick_agents_skips_batman_offer_for_single_repo(init_mod, tmp_path, caps
     out = capsys.readouterr().out
     assert "Add Batman to this fleet?" not in out
     assert not any("Add Batman to this fleet?" in p for p in prompts_seen), prompts_seen
-    assert "cross_repo_coordinator" not in state.enabled_roles
+    assert "cross_repo_coordinator" in state.enabled_roles
 
 
 def test_repos_arg_rejects_repos_outside_gh_org(init_mod, tmp_path):
@@ -1089,8 +1324,13 @@ def test_starter_roles_and_agents_arg(init_mod):
         "pr_review",
         "agent_cleanup",
     ]
+    assert init_mod.recommended_roles(available) == available
+    assert init_mod.roles_from_agents_arg("", available) == available
+    assert init_mod.roles_from_agents_arg("default", available) == available
+    assert init_mod.roles_from_agents_arg("recommended", available) == available
     assert init_mod.roles_from_agents_arg("starter", available) == init_mod.starter_roles(available)
     assert init_mod.roles_from_agents_arg("all", available) == available
+    assert init_mod.roles_from_agents_arg("recommended,lucius", available) == ["feature_dev"]
     assert init_mod.roles_from_agents_arg("batman,lucius", available) == [
         "feature_dev",
         "cross_repo_coordinator",
@@ -1142,7 +1382,7 @@ def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
     assert prompt.read_text() == "custom compose prompt\n"
 
 
-def test_write_opt_in_gate_for_batman(init_mod, tmp_path):
+def test_write_opt_in_gate_does_not_arm_batman_during_setup(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
         alfredrc=tmp_path / ".alfredrc",
@@ -1150,8 +1390,8 @@ def test_write_opt_in_gate_for_batman(init_mod, tmp_path):
     )
     state.enabled_roles = ["cross_repo_coordinator"]
     written = init_mod.write_opt_in_gate(state)
-    assert written == ["batman"]
-    assert "batman" in (tmp_path / "alfred" / "state" / "fleet" / "enabled.txt").read_text()
+    assert written == []
+    assert not (tmp_path / "alfred" / "state" / "fleet" / "enabled.txt").exists()
 
 
 # ---------------------------------------------------------------------------
