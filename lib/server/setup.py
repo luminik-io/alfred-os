@@ -223,7 +223,7 @@ def setup_board_repos(env: dict[str, str] | None = None) -> list[str]:
     must therefore key off the board-visible repo knobs, not the broader queue
     allowlist.
     """
-    resolved = env or _setup_launcher_env()
+    resolved = env or _runtime_config_env()
     return sorted(_repos_from_env(resolved, _BOARD_REPO_ENV_KEYS))
 
 
@@ -1069,7 +1069,7 @@ def bootstrap_status() -> dict[str, Any]:
     """
     gh = gh_auth_status()
     engines = engine_clis()
-    launcher_env = _setup_launcher_env()
+    launcher_env = _runtime_config_env()
     repos = setup_board_repos(launcher_env)
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status()

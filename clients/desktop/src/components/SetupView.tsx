@@ -24,6 +24,7 @@ type SetupSubtab = "connection" | "collaborators" | "diagnostics";
 export function SetupView({
   baseUrl,
   loading,
+  connected,
   actionNotice,
   trustedSlack,
   busyTrustedUser,
@@ -36,6 +37,7 @@ export function SetupView({
 }: {
   baseUrl: string;
   loading: boolean;
+  connected: boolean;
   actionNotice: ActionNotice;
   trustedSlack: TrustedSlackUsersResponse | null;
   busyTrustedUser: string | null;
@@ -55,36 +57,60 @@ export function SetupView({
   const [setupError, setSetupError] = useState<string | null>(null);
   const [setupLoading, setSetupLoading] = useState(false);
   const setupRequestSeq = useRef(0);
+  const baseUrlRef = useRef(baseUrl);
+  const connectedRef = useRef(connected);
+  const connectionGenerationRef = useRef(0);
   const trustedUsers = trustedSlack?.users || [];
   const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
 
   useEffect(() => {
+    baseUrlRef.current = baseUrl;
     setServerUrl(baseUrl);
   }, [baseUrl]);
 
+  useEffect(() => {
+    connectedRef.current = connected;
+    if (!connected) {
+      connectionGenerationRef.current += 1;
+    }
+  }, [connected]);
+
   const refreshSetupStatus = useCallback(() => {
+    if (!connected) {
+      setupRequestSeq.current += 1;
+      setSetupStatus(null);
+      setSetupLoading(false);
+      return;
+    }
     const requestId = setupRequestSeq.current + 1;
     setupRequestSeq.current = requestId;
+    const requestBaseUrl = baseUrl;
+    const requestGeneration = connectionGenerationRef.current;
+    const requestIsCurrent = () =>
+      setupRequestSeq.current === requestId &&
+      baseUrlRef.current === requestBaseUrl &&
+      connectedRef.current &&
+      connectionGenerationRef.current === requestGeneration;
     setSetupLoading(true);
     setSetupError(null);
     void loadSetupStatus(baseUrl)
       .then((next) => {
-        if (setupRequestSeq.current === requestId) {
+        if (requestIsCurrent()) {
           setSetupStatus(next);
         }
       })
       .catch((err) => {
-        if (setupRequestSeq.current === requestId) {
+        if (requestIsCurrent()) {
           setSetupStatus(null);
           setSetupError(errorDetail(err) || "Could not read setup status.");
         }
       })
       .finally(() => {
-        if (setupRequestSeq.current === requestId) {
+        if (requestIsCurrent()) {
           setSetupLoading(false);
         }
       });
-  }, [baseUrl]);
+  }, [baseUrl, connected]);
 
   useEffect(() => {
     refreshSetupStatus();

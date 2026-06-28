@@ -436,13 +436,14 @@ describe("OnboardingView six-step takeover", () => {
     );
   });
 
-  it("ignores GitHub auth poll inventory after disconnecting from the same server", async () => {
+  it("ignores GitHub auth poll inventory after same-url disconnect and reconnect", async () => {
     const pending = makeStatus({
       github: { ok: false, account: null, detail: "Not signed in to GitHub." },
     });
     const pollStatus = deferred<SetupStatus>();
     const loadStatus = vi
       .spyOn(api, "loadSetupStatus")
+      .mockResolvedValue(pending)
       .mockResolvedValueOnce(pending)
       .mockReturnValueOnce(pollStatus.promise);
     const onRunLocalAction = vi.fn(async () => ({
@@ -481,6 +482,9 @@ describe("OnboardingView six-step takeover", () => {
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(2));
 
     view.rerender(<OnboardingView {...props} connected={false} />);
+    view.rerender(<OnboardingView {...props} connected />);
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(3));
+
     pollStatus.resolve(
       makeStatus({
         install: makeInstall({ alfred_home: "/tmp/stale-alfred-home" }),
