@@ -307,8 +307,18 @@ load_selected_alfredrc() {
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
-    RC_TARGETS_EFFECTIVE_HOME=1
-    ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+    if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
+      RC_TARGETS_EFFECTIVE_HOME=1
+    else
+      RC_TARGETS_EFFECTIVE_HOME=0
+    fi
+    if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+      ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+    elif [ "$RC_TARGETS_EFFECTIVE_HOME" -eq 1 ]; then
+      ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+    else
+      ALFREDRC_FILE_OVERRIDES_RUNTIME=0 load_env_file "$selected_alfredrc" alfredrc
+    fi
   fi
 }
 

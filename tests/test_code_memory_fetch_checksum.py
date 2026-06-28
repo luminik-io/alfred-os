@@ -731,5 +731,47 @@ def test_launcher_follows_alfredrc_pointer_for_code_memory(tmp_path: Path) -> No
     assert "org/stale" not in res.stderr
 
 
+def test_launcher_ignores_pointed_rc_memory_when_process_home_is_active(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    stale_runtime = tmp_path / "stale-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    stale_runtime.mkdir()
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={stale_runtime}\n"
+        "ALFRED_CODE_MEMORY_REPOS=org/stale\n"
+        "ALFRED_CODE_MEMORY_AUTOFETCH=1\n",
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text(
+        "ALFRED_CODE_MEMORY_REPOS=org/runtime\nALFRED_CODE_MEMORY_AUTOFETCH=0\n",
+        encoding="utf-8",
+    )
+    env = _launcher_env_with_workspace(tmp_path, "org/runtime", "org/stale")
+    env["ALFRED_HOME"] = str(runtime)
+    env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+    env.pop("ALFREDRC", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"rc:          {custom_rc}" in res.stderr
+    assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
+    assert "repos:       org/runtime" in res.stderr
+    assert str(stale_runtime) not in res.stderr
+    assert "org/stale" not in res.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))
