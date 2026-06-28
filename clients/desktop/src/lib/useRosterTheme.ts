@@ -139,6 +139,13 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // cast the runtime (and Slack) already use. A failed read keeps the
   // localStorage value, so an offline desktop still works.
   useEffect(() => {
+    if (saveErrorUrlRef.current && saveErrorUrlRef.current !== (baseUrl ?? null)) {
+      saveErrorUrlRef.current = null;
+      setSaveError(null);
+    }
+  }, [baseUrl]);
+
+  useEffect(() => {
     if (!baseUrl) {
       setHydrating(false);
       setHydrationError(null);
@@ -174,6 +181,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         // Keep the localStorage fallback in state for display, but do not treat it
         // as safe to persist from setup: the server's current Slack cast is still
         // unknown, so mutating would risk overwriting it with a fallback.
+        if (hydratedUrlRef.current === baseUrl) return;
         if (!cancelled && baseUrlRef.current === baseUrl) {
           setHydrationError(
             err instanceof Error && err.message
@@ -228,11 +236,6 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (url === baseUrlRef.current) {
             hydratedUrlRef.current = url;
             setHydrationError(null);
-          }
-          // Clear the surfaced error only if it belongs to THIS runtime (or is a
-          // connection-level error, tracked as null): a success for one runtime
-          // must not erase a still-unresolved failure on another.
-          if (saveErrorUrlRef.current === null || saveErrorUrlRef.current === url) {
             saveErrorUrlRef.current = null;
             setSaveError(null);
           }
@@ -252,6 +255,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (hydratedUrlRef.current === url) {
             hydratedUrlRef.current = null;
           }
+          if (url !== baseUrlRef.current) return false;
           saveErrorUrlRef.current = url;
           setSaveError(
             err instanceof Error && err.message

@@ -192,6 +192,33 @@ describe("useRosterTheme", () => {
     expect(result.current.rosterTheme).toBe("transformers");
   });
 
+  it("ignores a failed initial read after a save already won", async () => {
+    let rejectLoad: (reason?: unknown) => void = () => {};
+    loadRosterTheme.mockReturnValue(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectLoad = reject;
+      }),
+    );
+    saveRosterTheme.mockResolvedValue(serverState({ theme: "transformers" }));
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    await waitFor(() => {
+      expect(saveRosterTheme).toHaveBeenCalled();
+    });
+
+    await act(async () => {
+      rejectLoad(new Error("old GET returned 500"));
+    });
+
+    expect(result.current.rosterTheme).toBe("transformers");
+    expect(result.current.hydrationError).toBeNull();
+    expect(result.current.saveError).toBeNull();
+  });
+
   // Thread: "Preset switch clears cast". Switching to a preset must omit the
   // custom maps so the server retains the authored custom cast; sending empty
   // objects would wipe it.
@@ -413,10 +440,7 @@ describe("useRosterTheme", () => {
     });
   });
 
-  // Thread: "Cross-runtime failures vanish". A failed save on runtime A must
-  // still surface, even though a later save to runtime B bumped the shared seq.
-  // Staleness is per runtime, so B's save must not silence A's real failure.
-  it("surfaces a save failure on one runtime after a save to another is queued", async () => {
+  it("does not surface a save failure from a runtime after switching away", async () => {
     loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     let rejectA: (reason?: unknown) => void = () => {};
     saveRosterTheme
@@ -425,7 +449,8 @@ describe("useRosterTheme", () => {
           rejectA = reject;
         }),
       )
-      // Runtime B's drained save is held open so it cannot clear A's error.
+      // Runtime B's drained save is held open; A's error should still stay quiet
+      // because the current UI has moved to B.
       .mockReturnValueOnce(new Promise<RosterThemeResponse>(() => {}));
 
     const { result, rerender } = renderHook(
@@ -442,20 +467,15 @@ describe("useRosterTheme", () => {
       result.current.setRosterTheme("transformers");
     });
 
-    // A's save now fails. Its failure must surface (per-runtime staleness), not
-    // be suppressed because B's queued save advanced the shared seq.
+    // A's save now fails. The current UI is already on runtime B, so A's stale
+    // failure must not keep Fleet incomplete on B.
     await act(async () => {
       rejectA(new Error("alfred serve returned 500"));
     });
-    await waitFor(() => {
-      expect(result.current.saveError).toContain("500");
-    });
+    expect(result.current.saveError).toBeNull();
   });
 
-  // Thread: "Runtime error clears". When runtime A's save fails and runtime B's
-  // queued save later DRAINS AND SUCCEEDS, B's success must not clear A's still
-  // unresolved failure. saveError is cleared only for the runtime it belongs to.
-  it("a drained successful save on one runtime keeps another runtime's failure", async () => {
+  it("a drained successful save on the current runtime clears stale save errors", async () => {
     loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     let rejectA: (reason?: unknown) => void = () => {};
     let resolveB: (value: RosterThemeResponse) => void = () => {};
@@ -485,22 +505,21 @@ describe("useRosterTheme", () => {
       result.current.setRosterTheme("transformers");
     });
 
-    // A fails: its error surfaces, and its finally drains B's queued save.
+    // A fails after the UI has moved to B. It should stay quiet and drain B's
+    // queued save.
     await act(async () => {
       rejectA(new Error("alfred serve returned 500"));
     });
-    await waitFor(() => {
-      expect(result.current.saveError).toContain("500");
-    });
+    expect(result.current.saveError).toBeNull();
 
-    // B's drained save now succeeds. A's failure must still be surfaced.
+    // B's drained save now succeeds. The visible state remains clean for B.
     await act(async () => {
       resolveB(serverState({ theme: "transformers" }));
     });
     await waitFor(() => {
       expect(saveRosterTheme).toHaveBeenCalledTimes(2);
     });
-    expect(result.current.saveError).toContain("500");
+    expect(result.current.saveError).toBeNull();
   });
 
   // Thread: "Stale Hydration Overwrites Edit". A change made on a runtime
