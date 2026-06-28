@@ -845,6 +845,61 @@ describe("useRosterTheme", () => {
     expect(current.value?.saveError).toBeNull();
   });
 
+  it("does not resurrect stale save failures after disconnect and reconnect", async () => {
+    let rejectSave: (reason?: unknown) => void = () => {};
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+    );
+
+    const current: { value: UseRosterTheme | null } = { value: null };
+    let setConnected: (next: boolean) => void = () => {};
+    function Harness() {
+      const [connected, setConnectedState] = useState(true);
+      setConnected = setConnectedState;
+      current.value = useRosterTheme("http://127.0.0.1:7010", connected);
+      return null;
+    }
+
+    render(createElement(Harness));
+
+    await waitFor(() => {
+      expect(current.value?.rosterTheme).toBe("batman");
+    });
+
+    let saveResult: Promise<boolean> | null = null;
+    act(() => {
+      saveResult = current.value?.setRosterTheme("transformers") ?? null;
+    });
+    expect(current.value?.rosterTheme).toBe("transformers");
+
+    act(() => {
+      setConnected(false);
+    });
+    await act(async () => {
+      rejectSave(new Error("alfred serve returned 503"));
+    });
+    if (saveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(saveResult).resolves.toBe(false);
+    expect(current.value?.saveError).toBeNull();
+
+    act(() => {
+      setConnected(true);
+    });
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(current.value?.rosterTheme).toBe("batman");
+    });
+    expect(current.value?.saveError).toBeNull();
+    expect(current.value?.hydrating).toBe(false);
+  });
+
   it("re-hydrates after a superseded same-runtime POST lands after reconnect", async () => {
     let resolveOldSave: (value: RosterThemeResponse) => void = () => {};
     loadRosterTheme
@@ -1041,7 +1096,9 @@ describe("useRosterTheme", () => {
     await waitFor(() => {
       expect(result.current.rosterTheme).toBe("batman");
     });
-    expect(result.current.hydrating).toBe(false);
+    await waitFor(() => {
+      expect(result.current.hydrating).toBe(false);
+    });
 
     act(() => {
       result.current.setRosterTheme("transformers");

@@ -324,12 +324,10 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           // not silently look successful. A superseded save stays quiet; the
           // newer one reports its own outcome.
           if (seq !== latestSeqByUrlRef.current.get(url)) return false;
-          if (
-            connectedRef.current &&
-            baseUrlRef.current === url &&
-            generation !== connectionGenerationRef.current
-          ) {
-            requestHydrationReconcile(url);
+          if (generation !== connectionGenerationRef.current && baseUrlRef.current === url) {
+            if (connectedRef.current) {
+              requestHydrationReconcile(url);
+            }
             return false;
           }
           // The optimistic hydration recorded in persist() assumed this save
