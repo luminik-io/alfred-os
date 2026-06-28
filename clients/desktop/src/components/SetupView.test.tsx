@@ -78,6 +78,26 @@ afterEach(() => {
 });
 
 describe("SetupView", () => {
+  it("clears displayed setup inventory while a new server URL is loading", async () => {
+    const newRequest = deferred<SetupStatus>();
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(api, "loadSetupStatus")
+      .mockResolvedValueOnce(setupStatus("/tmp/old-alfred-home"))
+      .mockReturnValueOnce(newRequest.promise);
+
+    const view = render(renderSetup("http://127.0.0.1:7010"));
+    expect((await screen.findAllByText("/tmp/old-alfred-home")).length).toBeGreaterThan(0);
+
+    view.rerender(renderSetup("http://127.0.0.1:7011"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/old-alfred-home")).not.toBeInTheDocument();
+    });
+
+    newRequest.resolve(setupStatus("/tmp/new-alfred-home"));
+    expect((await screen.findAllByText("/tmp/new-alfred-home")).length).toBeGreaterThan(0);
+  });
+
   it("ignores stale setup inventory reads after the server URL changes", async () => {
     const oldRequest = deferred<SetupStatus>();
     const newRequest = deferred<SetupStatus>();

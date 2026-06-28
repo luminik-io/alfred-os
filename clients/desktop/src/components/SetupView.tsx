@@ -64,14 +64,28 @@ export function SetupView({
   const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
 
   useEffect(() => {
+    if (baseUrlRef.current !== baseUrl) {
+      connectionGenerationRef.current += 1;
+      setupRequestSeq.current += 1;
+      setSetupStatus(null);
+      setSetupError(null);
+      setSetupLoading(false);
+    }
     baseUrlRef.current = baseUrl;
     setServerUrl(baseUrl);
   }, [baseUrl]);
 
   useEffect(() => {
+    const wasConnected = connectedRef.current;
+    if (wasConnected !== connected) {
+      connectionGenerationRef.current += 1;
+    }
     connectedRef.current = connected;
     if (!connected) {
-      connectionGenerationRef.current += 1;
+      setupRequestSeq.current += 1;
+      setSetupStatus(null);
+      setSetupError(null);
+      setSetupLoading(false);
     }
   }, [connected]);
 

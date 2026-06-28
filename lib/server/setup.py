@@ -311,19 +311,21 @@ def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
     }
-    existing_queue = sorted(_existing_queue_repos_for_save())
+    runtime_env = _setup_runtime_env()
+    existing_queue = sorted(_repos_from_env(runtime_env, (QUEUE_REPOS_ENV,)))
+    current_board = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
     selected = set(repos)
-    if not value or not existing_queue or set(existing_queue) == selected:
-        values = {QUEUE_REPOS_ENV: value, **values}
-    else:
+    preserve_existing_queue = (
+        bool(value)
+        and bool(existing_queue)
+        and set(existing_queue) != selected
+        and set(existing_queue) != current_board
+    )
+    if preserve_existing_queue:
         values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
+    else:
+        values = {QUEUE_REPOS_ENV: value, **values}
     return values
-
-
-def _existing_queue_repos_for_save() -> set[str]:
-    repos = _repos_from_env(_setup_runtime_env(), (QUEUE_REPOS_ENV,))
-    repos.update(_repos_from_env(_setup_launcher_env(), (QUEUE_REPOS_ENV,)))
-    return repos
 
 
 # --------------------------------------------------------------------------- #

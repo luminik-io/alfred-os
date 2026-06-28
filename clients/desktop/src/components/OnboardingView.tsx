@@ -234,6 +234,11 @@ export function OnboardingView({
   useEffect(() => {
     if (baseUrlRef.current !== baseUrl) {
       connectionGenerationRef.current += 1;
+      statusRequestSeq.current += 1;
+      githubAuthRequestSeq.current += 1;
+      setStatus(null);
+      setStatusError(null);
+      setStatusLoading(false);
       setInterruptedGithubAuthFlow(
         "GitHub sign-in was interrupted. Start it again for this runtime.",
       );
@@ -245,10 +250,17 @@ export function OnboardingView({
     const wasConnected = connectedRef.current;
     if (wasConnected !== connected) {
       connectionGenerationRef.current += 1;
+      githubAuthRequestSeq.current += 1;
     }
     connectedRef.current = connected;
     if (!connected) {
+      statusRequestSeq.current += 1;
+      setStatus(null);
+      setStatusError(null);
+      setStatusLoading(false);
       setInterruptedGithubAuthFlow("GitHub sign-in was interrupted. Reconnect, then start it again.");
+    } else if (wasConnected !== connected) {
+      setInterruptedGithubAuthFlow("GitHub sign-in was interrupted. Start it again for this runtime.");
     }
   }, [connected, setInterruptedGithubAuthFlow]);
 

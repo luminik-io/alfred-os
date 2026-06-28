@@ -226,6 +226,44 @@ describe("OnboardingView six-step takeover", () => {
     expect(screen.getByText(/ready to use/i)).toBeInTheDocument();
   });
 
+  it("clears displayed welcome inventory while a new server URL is loading", async () => {
+    const newRequest = deferred<SetupStatus>();
+    vi.spyOn(api, "loadSetupStatus")
+      .mockResolvedValueOnce(
+        makeStatus({ install: makeInstall({ alfred_home: "/tmp/old-alfred-home" }) }),
+      )
+      .mockReturnValueOnce(newRequest.promise);
+
+    const view = renderOnboarding({ baseUrl: "http://127.0.0.1:7010" });
+    expect(await screen.findByText("/tmp/old-alfred-home")).toBeInTheDocument();
+
+    view.rerender(
+      <OnboardingView
+        baseUrl="http://127.0.0.1:7011"
+        loading={false}
+        connected
+        canRun
+        nativeBusy={null}
+        nativeResult={null}
+        onConnectServer={vi.fn()}
+        onStartRuntime={vi.fn()}
+        onRunLocalAction={vi.fn(async () => null)}
+        onOpenConnection={vi.fn()}
+        onSwitch={vi.fn()}
+        onRefreshBoard={vi.fn(async () => undefined)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/old-alfred-home")).not.toBeInTheDocument();
+    });
+
+    newRequest.resolve(
+      makeStatus({ install: makeInstall({ alfred_home: "/tmp/new-alfred-home" }) }),
+    );
+    expect(await screen.findByText("/tmp/new-alfred-home")).toBeInTheDocument();
+  });
+
   it("ignores stale welcome inventory reads after the server URL changes", async () => {
     const oldRequest = deferred<SetupStatus>();
     const newRequest = deferred<SetupStatus>();
@@ -484,6 +522,7 @@ describe("OnboardingView six-step takeover", () => {
     view.rerender(<OnboardingView {...props} connected={false} />);
     view.rerender(<OnboardingView {...props} connected />);
     await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText(/GitHub sign-in was interrupted/i)).toBeInTheDocument();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
     );
