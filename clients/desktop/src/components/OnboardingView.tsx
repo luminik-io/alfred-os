@@ -197,38 +197,50 @@ export function OnboardingView({
   const baseUrlRef = useRef(baseUrl);
   const connectedRef = useRef(connected);
   const connectionGenerationRef = useRef(0);
+  const githubAuthRequestSeq = useRef(0);
+
+  const setInterruptedGithubAuthFlow = useCallback((message: string) => {
+    setStatusLoading(false);
+    setGithubAuthFlow((current) =>
+      current.state === "starting" || current.state === "waiting"
+        ? {
+            ...IDLE_GITHUB_AUTH_FLOW,
+            state: "error",
+            message,
+          }
+        : current,
+    );
+  }, []);
+
+  const resetStaleGithubAuthFlow = useCallback(
+    (requestId: number, message: string) => {
+      if (githubAuthRequestSeq.current !== requestId) {
+        return;
+      }
+      setInterruptedGithubAuthFlow(message);
+    },
+    [setInterruptedGithubAuthFlow],
+  );
 
   useEffect(() => {
     if (baseUrlRef.current !== baseUrl) {
       connectionGenerationRef.current += 1;
-      setGithubAuthFlow((current) =>
-        current.state === "starting" || current.state === "waiting"
-          ? {
-              ...IDLE_GITHUB_AUTH_FLOW,
-              state: "error",
-              message: "GitHub sign-in was interrupted. Start it again for this runtime.",
-            }
-          : current,
+      githubAuthRequestSeq.current += 1;
+      setInterruptedGithubAuthFlow(
+        "GitHub sign-in was interrupted. Start it again for this runtime.",
       );
     }
     baseUrlRef.current = baseUrl;
-  }, [baseUrl]);
+  }, [baseUrl, setInterruptedGithubAuthFlow]);
 
   useEffect(() => {
     connectedRef.current = connected;
     if (!connected) {
       connectionGenerationRef.current += 1;
-      setGithubAuthFlow((current) =>
-        current.state === "starting" || current.state === "waiting"
-          ? {
-              ...IDLE_GITHUB_AUTH_FLOW,
-              state: "error",
-              message: "GitHub sign-in was interrupted. Reconnect, then start it again.",
-            }
-          : current,
-      );
+      githubAuthRequestSeq.current += 1;
+      setInterruptedGithubAuthFlow("GitHub sign-in was interrupted. Reconnect, then start it again.");
     }
-  }, [connected]);
+  }, [connected, setInterruptedGithubAuthFlow]);
 
   const refreshStatus = useCallback(async () => {
     if (!connected) {
@@ -283,6 +295,7 @@ export function OnboardingView({
       return;
     }
 
+    const requestAuthId = ++githubAuthRequestSeq.current;
     setStatusLoading(true);
     setGithubAuthFlow({
       ...IDLE_GITHUB_AUTH_FLOW,
@@ -295,11 +308,16 @@ export function OnboardingView({
     const isCurrentRequest = () =>
       connectedRef.current &&
       baseUrlRef.current === requestBaseUrl &&
-      connectionGenerationRef.current === requestGeneration;
+      connectionGenerationRef.current === requestGeneration &&
+      githubAuthRequestSeq.current === requestAuthId;
 
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
       if (!isCurrentRequest()) {
+        resetStaleGithubAuthFlow(
+          requestAuthId,
+          "GitHub sign-in was interrupted. Start it again for this runtime.",
+        );
         return;
       }
       if (!result) {
@@ -335,6 +353,10 @@ export function OnboardingView({
       );
 
       if (!isCurrentRequest()) {
+        resetStaleGithubAuthFlow(
+          requestAuthId,
+          "GitHub sign-in was interrupted. Start it again for this runtime.",
+        );
         return;
       }
       if (poll.status) {
@@ -359,6 +381,10 @@ export function OnboardingView({
       }
     } catch (err) {
       if (!isCurrentRequest()) {
+        resetStaleGithubAuthFlow(
+          requestAuthId,
+          "GitHub sign-in was interrupted. Start it again for this runtime.",
+        );
         return;
       }
       setGithubAuthFlow({
@@ -372,7 +398,7 @@ export function OnboardingView({
         setStatusLoading(false);
       }
     }
-  }, [baseUrl, canRun, connected, onRunLocalAction]);
+  }, [baseUrl, canRun, connected, onRunLocalAction, resetStaleGithubAuthFlow]);
 
   useEffect(() => {
     void refreshStatus();

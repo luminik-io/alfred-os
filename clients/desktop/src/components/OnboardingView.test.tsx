@@ -498,6 +498,9 @@ describe("OnboardingView six-step takeover", () => {
       expect(screen.queryByText("/tmp/stale-alfred-home")).not.toBeInTheDocument();
       expect(screen.queryByText(/found an alfred setup on this mac/i)).not.toBeInTheDocument();
     });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
   });
 
   it("falls back to copy-paste gh auth + recheck in browser mode", async () => {
