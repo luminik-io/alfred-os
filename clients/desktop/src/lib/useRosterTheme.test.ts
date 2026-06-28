@@ -560,6 +560,41 @@ describe("useRosterTheme", () => {
     expect(result.current.saveError).toBeNull();
   });
 
+  it("restores a runtime save failure when returning to that runtime", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+    let rejectA: (reason?: unknown) => void = () => {};
+    saveRosterTheme
+      .mockReturnValueOnce(
+        new Promise<RosterThemeResponse>((_resolve, reject) => {
+          rejectA = reject;
+        }),
+      )
+      .mockReturnValueOnce(new Promise<RosterThemeResponse>(() => {}));
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl }: { baseUrl?: string }) => useRosterTheme(baseUrl),
+      { initialProps: { baseUrl: "http://127.0.0.1:7010" } as { baseUrl?: string } },
+    );
+
+    act(() => {
+      result.current.setRosterTheme("justice-league");
+    });
+    rerender({ baseUrl: "http://127.0.0.1:7020" });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+
+    await act(async () => {
+      rejectA(new Error("alfred serve returned 500"));
+    });
+    expect(result.current.saveError).toBeNull();
+
+    rerender({ baseUrl: "http://127.0.0.1:7010" });
+    await waitFor(() => {
+      expect(result.current.saveError).toContain("500");
+    });
+  });
+
   it("a drained successful save on the current runtime clears stale save errors", async () => {
     loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     let rejectA: (reason?: unknown) => void = () => {};
@@ -686,7 +721,7 @@ describe("useRosterTheme", () => {
       resolveLoad(serverState({ theme: "justice-league" }));
     });
     expect(result.current.rosterTheme).toBe("justice-league");
-    expect(result.current.saveError).toBeNull();
+    expect(result.current.saveError).toContain("503");
   });
 
   // Thread: "Hydration still skips". If the initial server read resolves while
@@ -731,7 +766,7 @@ describe("useRosterTheme", () => {
     await waitFor(() => {
       expect(result.current.rosterTheme).toBe("justice-league");
     });
-    expect(result.current.saveError).toBeNull();
+    expect(result.current.saveError).toContain("503");
   });
 
   it("restores the saved choice when hydration retries while a save is pending", async () => {

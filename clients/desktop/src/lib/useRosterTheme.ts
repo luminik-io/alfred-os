@@ -137,16 +137,39 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
   // not clear a still-unresolved failure on runtime A, so the success path only
   // clears an error that belongs to the same runtime.
   const saveErrorUrlRef = useRef<string | null>(null);
+  const saveErrorsByUrlRef = useRef<Map<string, string>>(new Map());
+
+  const showSaveErrorForCurrentRuntime = useCallback(() => {
+    const currentUrl = connectedRef.current ? (baseUrlRef.current ?? null) : null;
+    const message = currentUrl ? (saveErrorsByUrlRef.current.get(currentUrl) ?? null) : null;
+    saveErrorUrlRef.current = message && currentUrl ? currentUrl : null;
+    setSaveError(message);
+  }, []);
+
+  const recordRuntimeSaveError = useCallback((url: string, message: string) => {
+    saveErrorsByUrlRef.current.set(url, message);
+    if (connectedRef.current && baseUrlRef.current === url) {
+      saveErrorUrlRef.current = url;
+      setSaveError(message);
+    }
+  }, []);
+
+  const clearRuntimeSaveError = useCallback(
+    (url: string) => {
+      saveErrorsByUrlRef.current.delete(url);
+      if (saveErrorUrlRef.current === url || baseUrlRef.current === url) {
+        showSaveErrorForCurrentRuntime();
+      }
+    },
+    [showSaveErrorForCurrentRuntime],
+  );
 
   // On connect, read the server's persisted choice so the picker reflects the
   // cast the runtime (and Slack) already use. A failed read keeps the
   // localStorage value, so an offline desktop still works.
   useEffect(() => {
-    if (saveErrorUrlRef.current && saveErrorUrlRef.current !== (baseUrl ?? null)) {
-      saveErrorUrlRef.current = null;
-      setSaveError(null);
-    }
-  }, [baseUrl]);
+    showSaveErrorForCurrentRuntime();
+  }, [baseUrl, connected, showSaveErrorForCurrentRuntime]);
 
   useEffect(() => {
     if (!baseUrl || !connected) {
@@ -186,8 +209,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
         setRosterThemeState(theme);
         setCustomNamesState(custom);
         setHydrationError(null);
-        saveErrorUrlRef.current = null;
-        setSaveError(null);
+        showSaveErrorForCurrentRuntime();
         writeStored(theme, custom);
       } catch (err: unknown) {
         // Keep the localStorage fallback in state for display, but do not treat it
@@ -210,7 +232,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
     return () => {
       cancelled = true;
     };
-  }, [baseUrl, connected, hydrationRequestSeq]);
+  }, [baseUrl, connected, hydrationRequestSeq, showSaveErrorForCurrentRuntime]);
 
   // Mirror every change to localStorage so the next launch is instant.
   useEffect(() => {
@@ -252,8 +274,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           setRosterThemeState(theme);
           setCustomNamesState(custom);
           setHydrationError(null);
-          saveErrorUrlRef.current = null;
-          setSaveError(null);
+          clearRuntimeSaveError(url);
           writeStored(theme, custom);
           return true;
         })
@@ -271,14 +292,13 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           if (hydratedUrlRef.current === url) {
             hydratedUrlRef.current = null;
           }
-          if (!connectedRef.current) return false;
-          if (url !== baseUrlRef.current) return false;
-          saveErrorUrlRef.current = url;
-          setSaveError(
+          const message =
             err instanceof Error && err.message
               ? `Could not save to Alfred: ${err.message}`
-              : "Could not save to Alfred. The cast is local-only until a save succeeds.",
-          );
+              : "Could not save to Alfred. The cast is local-only until a save succeeds.";
+          recordRuntimeSaveError(url, message);
+          if (!connectedRef.current) return false;
+          if (url !== baseUrlRef.current) return false;
           if (skippedHydrationUrlRef.current === url) {
             skippedHydrationUrlRef.current = null;
             setHydrationRequestSeq((requestSeq) => requestSeq + 1);
@@ -299,7 +319,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           }
         });
     },
-    [],
+    [clearRuntimeSaveError, recordRuntimeSaveError],
   );
 
   const persist = useCallback(
@@ -314,8 +334,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
         return Promise.resolve(false);
       }
       if (saveErrorUrlRef.current === baseUrl) {
-        saveErrorUrlRef.current = null;
-        setSaveError(null);
+        clearRuntimeSaveError(baseUrl);
       }
       // The operator's change now owns this runtime's state locally. Record the
       // runtime as synced immediately, before the (possibly queued) save even
@@ -342,7 +361,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       }
       return runSave(baseUrl, theme, custom, seq);
     },
-    [baseUrl, connected, runSave],
+    [baseUrl, clearRuntimeSaveError, connected, runSave],
   );
 
   const setRosterTheme = useCallback(
