@@ -310,3 +310,48 @@ def test_capability_plane_uses_explicit_skill_homes_without_resolving_home(
 
     assert skills["state"] == "ready"
     assert skills["detected"]["paths"] == [str(codex_home / "skills" / "gstack")]
+
+
+def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    codex_home = tmp_path / "codex"
+    claude_home = tmp_path / "claude"
+    codex_home.mkdir()
+    claude_home.mkdir()
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_HOME", str(claude_home))
+    monkeypatch.setattr(
+        setup_mod,
+        "gh_auth_status",
+        lambda: {"ok": True, "account": "octocat", "detail": "Signed in."},
+    )
+    monkeypatch.setattr(
+        setup_mod,
+        "engine_clis",
+        lambda: [{"name": "codex", "installed": True, "path": "/usr/local/bin/codex"}],
+    )
+    monkeypatch.setattr(setup_mod, "selected_repos", lambda: ["octocat/web"])
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        setup_mod.os.path,
+        "expanduser",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("no home")),
+    )
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+
+    payload = setup_mod.bootstrap_status()
+
+    assert payload["demo"] == {"present": False}
+    assert payload["capability_plane"]["summary"]["total"] == 3
+    assert payload["ready"] is True

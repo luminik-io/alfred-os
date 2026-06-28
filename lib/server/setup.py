@@ -135,8 +135,7 @@ def selected_repos() -> list[str]:
 # .env writer
 # --------------------------------------------------------------------------- #
 def _env_path() -> Path:
-    home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-    return Path(home) / ".env"
+    return _alfred_home(dict(os.environ)) / ".env"
 
 
 def _format_repo_value(repos: list[str]) -> str:
@@ -1129,8 +1128,7 @@ def load_demo_cards(state_root: Path | None = None) -> dict[str, list[dict[str, 
         "shipped": [],
     }
     if state_root is None:
-        base = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-        state_root = Path(base) / "state"
+        state_root = _alfred_home(dict(os.environ)) / "state"
     path = _demo_path(state_root)
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
