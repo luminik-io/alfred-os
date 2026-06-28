@@ -151,6 +151,8 @@ def selected_repos(env: dict[str, str] | None = None) -> list[str]:
     repos = _repos_from_env(runtime_env)
     if repos or any(_has_config_value(runtime_env, key) for key in _REPO_ENV_KEYS):
         return sorted(repos)
+    if _matching_launcher_env_for_runtime(runtime_env) is None:
+        return []
     return sorted(allowed_queue_repos())
 
 
@@ -274,9 +276,7 @@ def _sync_repo_values_to_rc(values: dict[str, str]) -> None:
 def _should_sync_repo_values_to_rc() -> bool:
     """Only mirror repo scope into rc when rc targets this connected runtime."""
 
-    runtime_env = _setup_runtime_env()
-    launcher_env = _setup_launcher_env()
-    return _same_runtime_home(_alfred_home(runtime_env), _alfred_home(launcher_env))
+    return _matching_launcher_env_for_runtime(_setup_runtime_env()) is not None
 
 
 def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
@@ -343,10 +343,17 @@ def _effective_queue_repos_for_save(runtime_env: dict[str, str]) -> list[str]:
     runtime_queue = _repos_from_env(runtime_env, (QUEUE_REPOS_ENV,))
     if runtime_queue or _has_config_value(runtime_env, QUEUE_REPOS_ENV):
         return sorted(runtime_queue)
-    launcher_env = _setup_launcher_env()
-    if _same_runtime_home(_alfred_home(runtime_env), _alfred_home(launcher_env)):
+    launcher_env = _matching_launcher_env_for_runtime(runtime_env)
+    if launcher_env is not None:
         return sorted(_repos_from_env(launcher_env, (QUEUE_REPOS_ENV,)))
     return []
+
+
+def _matching_launcher_env_for_runtime(runtime_env: dict[str, str]) -> dict[str, str] | None:
+    launcher_env = _setup_launcher_env()
+    if _same_runtime_home(_alfred_home(runtime_env), _alfred_home(launcher_env)):
+        return launcher_env
+    return None
 
 
 def _same_runtime_home(left: Path, right: Path) -> bool:
