@@ -329,6 +329,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
             baseUrlRef.current === url &&
             generation !== connectionGenerationRef.current
           ) {
+            requestHydrationReconcile(url);
             return false;
           }
           // The optimistic hydration recorded in persist() assumed this save

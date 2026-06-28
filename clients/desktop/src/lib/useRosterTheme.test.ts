@@ -1,8 +1,10 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
+import { createElement, useState } from "react";
+import { flushSync } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RosterThemeResponse } from "../api";
-import { useRosterTheme } from "./useRosterTheme";
+import { type UseRosterTheme, useRosterTheme } from "./useRosterTheme";
 
 // The hook talks to the runtime through these two api helpers; mock them so the
 // test can drive the server-read and server-save outcomes directly.
@@ -782,6 +784,65 @@ describe("useRosterTheme", () => {
     await waitFor(() => {
       expect(result.current.rosterTheme).toBe("transformers");
     });
+  });
+
+  it("re-hydrates after a failed same-url save crosses a fast reconnect", async () => {
+    let rejectSave: (reason?: unknown) => void = () => {};
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockReturnValueOnce(new Promise<RosterThemeResponse>(() => {}))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+    );
+
+    const current: { value: UseRosterTheme | null } = { value: null };
+    let setConnected: (next: boolean) => void = () => {};
+    function Harness() {
+      const [connected, setConnectedState] = useState(true);
+      setConnected = setConnectedState;
+      current.value = useRosterTheme("http://127.0.0.1:7010", connected);
+      return null;
+    }
+
+    render(createElement(Harness));
+
+    await waitFor(() => {
+      expect(current.value?.rosterTheme).toBe("batman");
+    });
+
+    let saveResult: Promise<boolean> | null = null;
+    act(() => {
+      saveResult = current.value?.setRosterTheme("transformers") ?? null;
+    });
+    expect(current.value?.rosterTheme).toBe("transformers");
+
+    // Render both connection generations before passive effects run, matching
+    // a fast same-url reconnect while the optimistic hydration marker remains.
+    act(() => {
+      flushSync(() => {
+        setConnected(false);
+      });
+      flushSync(() => {
+        setConnected(true);
+      });
+    });
+
+    await act(async () => {
+      rejectSave(new Error("alfred serve returned 503"));
+    });
+
+    if (saveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(saveResult).resolves.toBe(false);
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(current.value?.rosterTheme).toBe("batman");
+    });
+    expect(current.value?.saveError).toBeNull();
   });
 
   it("re-hydrates after a superseded same-runtime POST lands after reconnect", async () => {
