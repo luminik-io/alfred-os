@@ -23,7 +23,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from agent_runner.paths import decode_env_value, launcher_env
+from agent_runner.paths import decode_env_value, runtime_home as agent_runtime_home
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
 from shipped_board import _gh_bin, _gh_subprocess_env
 
@@ -58,39 +58,8 @@ def _runtime_config_entry(key: str) -> tuple[bool, str]:
     return False, ""
 
 
-def _queue_config_entry(key: str, *, allow_launcher: bool) -> tuple[bool, str]:
-    """Resolve queue config while preserving explicit empty runtime values."""
-
-    present, live_value = _runtime_config_entry(key)
-    if present:
-        return True, live_value
-    if not allow_launcher:
-        return False, ""
-    launcher = _launcher_env_for_runtime()
-    if not launcher:
-        return False, ""
-    if key in launcher:
-        return True, launcher.get(key, "").strip()
-    return False, ""
-
-
-def _launcher_env_for_runtime() -> dict[str, str] | None:
-    """Launcher env only when it targets the connected runtime home."""
-
-    launcher = launcher_env()
-    runtime_home = _runtime_home()
-    launcher_home = Path(launcher.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
-    if _same_runtime_home(runtime_home, launcher_home):
-        return launcher
-    return None
-
-
 def _runtime_home() -> Path:
-    return Path(os.environ.get("ALFRED_HOME") or "~/.alfred").expanduser()
-
-
-def _same_runtime_home(left: Path, right: Path) -> bool:
-    return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
+    return agent_runtime_home()
 
 
 def parse_issue_ref(text: str) -> tuple[str, int] | None:

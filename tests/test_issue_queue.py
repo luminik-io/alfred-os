@@ -211,7 +211,7 @@ def test_allowed_queue_repos_ignores_launcher_rc_for_different_runtime_home(
     assert iq.allowed_queue_repos() == set()
 
 
-def test_allowed_queue_repos_reads_launcher_rc_for_matching_runtime_home(
+def test_allowed_queue_repos_ignores_launcher_rc_for_matching_runtime_home(
     tmp_path: Path, monkeypatch
 ):
     home = tmp_path / "runtime"
@@ -226,7 +226,46 @@ def test_allowed_queue_repos_reads_launcher_rc_for_matching_runtime_home(
         encoding="utf-8",
     )
 
-    assert iq.allowed_queue_repos() == {"org/launcher"}
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_ignores_explicit_alfredrc_home_without_process_home(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(custom_rc))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    custom_rc.write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_ignores_default_alfredrc_home_without_process_home(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
+
+    assert iq.allowed_queue_repos() == set()
 
 
 def test_allowed_queue_repos_matches_connected_runtime_precedence(tmp_path: Path, monkeypatch):

@@ -245,6 +245,15 @@ def _env_file_entry(path: Path, key: str) -> tuple[bool, str]:
     return False, ""
 
 
+def runtime_home() -> Path:
+    """Resolve the connected runtime home."""
+
+    raw_home = os.environ.get("ALFRED_HOME", "").strip()
+    if raw_home:
+        return Path(raw_home).expanduser()
+    return Path(os.path.expanduser("~/.alfred"))
+
+
 def _same_runtime_home(left: Path, right: Path) -> bool:
     return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
 
@@ -255,8 +264,7 @@ def config_value(key: str, default: str = "") -> str:
     val = os.environ.get(key, "").strip()
     if val:
         return val
-    home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-    present, value = _env_file_entry(Path(home) / ".env", key)
+    present, value = _env_file_entry(runtime_home() / ".env", key)
     if present:
         return value
     return default

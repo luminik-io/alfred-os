@@ -329,6 +329,19 @@ def test_launcher_env_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_sco
     assert env["ALFRED_QUEUE_REPOS"] == "org/from-env"
 
 
+def test_config_value_preserves_empty_runtime_value(fresh_agent_runner, monkeypatch, tmp_path):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    home.mkdir(parents=True)
+    (home / ".env").write_text("ALFRED_SHIPPED_REPOS=\n", encoding="utf-8")
+
+    assert paths_mod.config_value("ALFRED_SHIPPED_REPOS", "fallback") == ""
+
+
 def test_today_str_uses_utc_not_local_time(fresh_agent_runner, monkeypatch):
     """The daily spend ledger filename must rotate at UTC midnight, not at
     the operator's local midnight. Otherwise a non-UTC operator firing
