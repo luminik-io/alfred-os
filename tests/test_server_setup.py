@@ -697,7 +697,7 @@ def test_persist_selected_repos_rewrites_exported_runtime_env_as_plain_env(
     assert "export ALFRED_BRIDGE_REPOS" not in env_text
 
 
-def test_persist_selected_repos_preserves_process_queue_scope_with_board_scope(
+def test_persist_selected_repos_updates_process_queue_scope_with_board_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -713,8 +713,8 @@ def test_persist_selected_repos_preserves_process_queue_scope_with_board_scope(
 
     assert not (tmp_path / ".alfredrc").exists()
     env_text = (home / ".env").read_text(encoding="utf-8")
-    assert "ALFRED_QUEUE_REPOS=old/repo" in env_text
-    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_QUEUE_REPOS=old/repo" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
 
@@ -724,6 +724,31 @@ def test_persist_selected_repos_preserves_process_queue_scope_with_board_scope(
 
     assert setup_mod.setup_board_repos() == ["acme/web"]
     assert setup_mod.selected_repos() == ["acme/web"]
+
+
+def test_persist_selected_repos_replaces_previous_ui_save_queue_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+
+    setup_mod.persist_selected_repos(["Acme/Web"])
+    setup_mod.persist_selected_repos(["Acme/API"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=acme/api" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" not in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/api" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/api" in env_text
+    assert os.environ["ALFRED_QUEUE_REPOS"] == "acme/api"
+    assert os.environ["ALFRED_SHIPPED_REPOS"] == "acme/api"
+    assert os.environ["ALFRED_BRIDGE_REPOS"] == "acme/api"
 
 
 def test_persist_selected_repos_preserves_active_narrow_queue_scope(
