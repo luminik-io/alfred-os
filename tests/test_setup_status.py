@@ -228,3 +228,49 @@ def test_capability_plane_reports_ready_external_layers(
     assert by_key["engineering_skills"]["detected"]["paths"] == [
         str(codex_home / "skills" / "gstack")
     ]
+
+
+def test_capability_plane_reads_context_compression_from_runtime_env_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / ".env").write_text("ALFRED_CONTEXT_COMPRESSION=0\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.setattr(
+        setup_mod.shutil,
+        "which",
+        lambda name, **_kwargs: "/opt/homebrew/bin/headroom" if name == "headroom" else None,
+    )
+
+    payload = setup_mod.capability_status()
+    context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
+
+    assert context["state"] == "available"
+    assert context["installed"] is True
+    assert context["enabled"] is False
+
+
+def test_capability_plane_uses_explicit_skill_homes_without_resolving_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    codex_home = tmp_path / "codex"
+    claude_home = tmp_path / "claude"
+    (codex_home / "skills" / "gstack").mkdir(parents=True)
+    (claude_home / "skills").mkdir(parents=True)
+    monkeypatch.delenv("HOME", raising=False)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_HOME", str(claude_home))
+    monkeypatch.setattr(
+        setup_mod.Path,
+        "home",
+        staticmethod(lambda: (_ for _ in ()).throw(RuntimeError("no home"))),
+    )
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+
+    payload = setup_mod.capability_status()
+    skills = {item["key"]: item for item in payload["capabilities"]}["engineering_skills"]
+
+    assert skills["state"] == "ready"
+    assert skills["detected"]["paths"] == [str(codex_home / "skills" / "gstack")]

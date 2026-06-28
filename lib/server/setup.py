@@ -351,7 +351,10 @@ def code_memory_status() -> dict[str, Any]:
     }
 
 
-def capability_status(code_memory: dict[str, Any] | None = None) -> dict[str, Any]:
+def capability_status(
+    code_memory: dict[str, Any] | None = None,
+    launcher_env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """Return Alfred's local capability plane without installing anything.
 
     The native setup flow needs one stable contract for "what makes this fleet
@@ -360,11 +363,12 @@ def capability_status(code_memory: dict[str, Any] | None = None) -> dict[str, An
     explicit use, and which optional packages are still missing.
     """
 
+    launcher_env = launcher_env or _code_memory_launcher_env()
     code_memory = code_memory or code_memory_status()
     capabilities = [
         _code_graph_capability(code_memory),
-        _context_compression_capability(),
-        _engineering_skills_capability(),
+        _context_compression_capability(launcher_env),
+        _engineering_skills_capability(launcher_env),
     ]
     counts = {
         "ready": sum(1 for item in capabilities if item["state"] == "ready"),
@@ -446,12 +450,10 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _context_compression_capability() -> dict[str, Any]:
-    search = os.pathsep.join(
-        _engine_search_path() + tuple(os.environ.get("PATH", "").split(os.pathsep))
-    )
+def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
+    search = os.pathsep.join(_engine_search_path() + tuple(env.get("PATH", "").split(os.pathsep)))
     binary = shutil.which("headroom", path=search)
-    enabled = _env_flag(os.environ, "ALFRED_CONTEXT_COMPRESSION", default=bool(binary))
+    enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=bool(binary))
     if binary and enabled:
         state = "ready"
         detail = "Headroom CLI is installed and context compression is enabled."
@@ -480,8 +482,8 @@ def _context_compression_capability() -> dict[str, Any]:
     )
 
 
-def _engineering_skills_capability() -> dict[str, Any]:
-    paths = _installed_skill_paths()
+def _engineering_skills_capability(env: Mapping[str, str]) -> dict[str, Any]:
+    paths = _installed_skill_paths(env)
     installed = bool(paths)
     if installed:
         state = "ready"
@@ -515,11 +517,8 @@ def _env_flag(env: Mapping[str, str], key: str, *, default: bool) -> bool:
     return raw.strip().lower() not in _FALSEY
 
 
-def _installed_skill_paths() -> list[Path]:
-    roots = [
-        Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser() / "skills",
-        Path(os.environ.get("CLAUDE_HOME", str(Path.home() / ".claude"))).expanduser() / "skills",
-    ]
+def _installed_skill_paths(env: Mapping[str, str]) -> list[Path]:
+    roots = _skill_roots(env)
     patterns = (
         "gstack",
         "gstack-*",
@@ -540,6 +539,45 @@ def _installed_skill_paths() -> list[Path]:
     return sorted(out, key=lambda p: str(p))
 
 
+def _skill_roots(env: Mapping[str, str]) -> list[Path]:
+    home = _safe_home(env)
+    roots: list[Path] = []
+    codex_home = env.get("CODEX_HOME", "").strip()
+    claude_home = env.get("CLAUDE_HOME", "").strip()
+    if codex_home:
+        path = _safe_expand_path(codex_home)
+        if path:
+            roots.append(path / "skills")
+    elif home:
+        roots.append(home / ".codex" / "skills")
+    if claude_home:
+        path = _safe_expand_path(claude_home)
+        if path:
+            roots.append(path / "skills")
+    elif home:
+        roots.append(home / ".claude" / "skills")
+    return roots
+
+
+def _safe_home(env: Mapping[str, str]) -> Path | None:
+    raw = env.get("HOME", "").strip()
+    if raw:
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+    try:
+        return Path.home()
+    except RuntimeError:
+        return None
+
+
+def _safe_expand_path(raw: str) -> Path | None:
+    try:
+        return Path(raw).expanduser()
+    except RuntimeError:
+        return None
+
+
 def _engine_search_path() -> tuple[str, ...]:
     return (
         os.path.expanduser("~/.local/bin"),
@@ -556,10 +594,14 @@ def _code_memory_launcher_env() -> dict[str, str]:
     env = dict(os.environ)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    _load_launcher_env_file(Path.home() / ".alfredrc", env)
+    home = _safe_home(env)
+    if home:
+        _load_launcher_env_file(home / ".alfredrc", env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
-    _load_launcher_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
+    alfred_home = _safe_expand_path(env["ALFRED_HOME"])
+    if alfred_home:
+        _load_launcher_env_file(alfred_home / ".env", env)
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
     return env
@@ -583,7 +625,9 @@ def _load_launcher_env_file(path: Path, env: dict[str, str]) -> None:
         if not _ENV_KEY_RE.match(key):
             continue
         decoded = decode_env_value(value.strip())
-        decoded = decoded.replace("${HOME}", str(Path.home())).replace("$HOME", str(Path.home()))
+        home = _safe_home(env)
+        if home:
+            decoded = decoded.replace("${HOME}", str(home)).replace("$HOME", str(home))
         env[key] = decoded
 
 
