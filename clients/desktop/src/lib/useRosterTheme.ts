@@ -85,7 +85,7 @@ export type UseRosterTheme = {
   retryHydration: () => void;
 };
 
-export function useRosterTheme(baseUrl?: string): UseRosterTheme {
+export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): UseRosterTheme {
   const [rosterTheme, setRosterThemeState] = useState<RosterThemeId>(readStoredTheme);
   const [customNames, setCustomNamesState] = useState<CustomRosterNames>(readStoredCustom);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -105,6 +105,8 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // connected runtime before it records hydration.
   const baseUrlRef = useRef<string | undefined>(baseUrl);
   baseUrlRef.current = baseUrl;
+  const connectedRef = useRef(connected);
+  connectedRef.current = connected;
   // Serialize saves so a fast A -> B switch cannot land out of order. Each call
   // bumps `saveSeqRef`; only the latest seq decides the agreed state. While a
   // POST is in flight, later choices are queued and sent next, so the server's
@@ -147,7 +149,9 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   }, [baseUrl]);
 
   useEffect(() => {
-    if (!baseUrl) {
+    if (!baseUrl || !connected) {
+      hydratedUrlRef.current = null;
+      skippedHydrationUrlRef.current = null;
       setHydrating(false);
       setHydrationError(null);
       return;
@@ -190,7 +194,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         // as safe to persist from setup: the server's current Slack cast is still
         // unknown, so mutating would risk overwriting it with a fallback.
         if (hydratedUrlRef.current === baseUrl) return;
-        if (!cancelled && baseUrlRef.current === baseUrl) {
+        if (!cancelled && baseUrlRef.current === baseUrl && connectedRef.current) {
           setHydrationError(
             err instanceof Error && err.message
               ? `Could not load saved fleet names from Alfred: ${err.message}`
@@ -198,7 +202,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           );
         }
       } finally {
-        if (!cancelled && baseUrlRef.current === baseUrl) {
+        if (!cancelled && baseUrlRef.current === baseUrl && connectedRef.current) {
           setHydrating(false);
         }
       }
@@ -206,7 +210,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
     return () => {
       cancelled = true;
     };
-  }, [baseUrl, hydrationRequestSeq]);
+  }, [baseUrl, connected, hydrationRequestSeq]);
 
   // Mirror every change to localStorage so the next launch is instant.
   useEffect(() => {
@@ -241,6 +245,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // Only record hydration when this save targeted the runtime the
           // desktop is still connected to; a save that completed against a
           // runtime we have since left must not mark the current one synced.
+          if (!connectedRef.current) return false;
           if (url !== baseUrlRef.current) return false;
           hydratedUrlRef.current = url;
           skippedHydrationUrlRef.current = null;
@@ -263,6 +268,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           if (hydratedUrlRef.current === url) {
             hydratedUrlRef.current = null;
           }
+          if (!connectedRef.current) return false;
           if (url !== baseUrlRef.current) return false;
           saveErrorUrlRef.current = url;
           setSaveError(
@@ -295,7 +301,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
 
   const persist = useCallback(
     (theme: RosterThemeId, custom: CustomRosterNames): Promise<boolean> => {
-      if (!baseUrl) {
+      if (!baseUrl || !connected) {
         // Offline change: keep it in memory/localStorage but do NOT mark the
         // hook hydrated. When the runtime later connects, the hydration effect
         // must still read the server's persisted cast rather than skip it.
@@ -333,7 +339,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       }
       return runSave(baseUrl, theme, custom, seq);
     },
-    [baseUrl, runSave],
+    [baseUrl, connected, runSave],
   );
 
   const setRosterTheme = useCallback(
@@ -355,12 +361,12 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   );
 
   const retryHydration = useCallback(() => {
-    if (!baseUrl) return;
+    if (!baseUrl || !connected) return;
     hydratedUrlRef.current = null;
     skippedHydrationUrlRef.current = null;
     setHydrationError(null);
     setHydrationRequestSeq((seq) => seq + 1);
-  }, [baseUrl]);
+  }, [baseUrl, connected]);
 
   return {
     rosterTheme,

@@ -103,6 +103,7 @@ function App() {
     runLocalAction,
     startRuntime,
   } = useAlfred();
+  const runtimeConnected = Boolean(snapshot) && !error;
 
   const { theme, toggle: toggleTheme, themeName, setThemeName, mode, setMode } =
     useTheme();
@@ -115,7 +116,7 @@ function App() {
     hydrating: rosterHydrating,
     hydrationError: rosterHydrationError,
     retryHydration: retryRosterHydration,
-  } = useRosterTheme(baseUrl);
+  } = useRosterTheme(baseUrl, runtimeConnected);
   const [customThemeEditorOpen, setCustomThemeEditorOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   // The Setup tab splits into Setup (get Alfred running) and Settings (appearance
@@ -332,7 +333,7 @@ function App() {
               <SetupView
                 baseUrl={baseUrl}
                 loading={loading}
-                connected={Boolean(snapshot) && !error}
+                connected={runtimeConnected}
                 actionNotice={noticeFor("setup")}
                 trustedSlack={snapshot?.trustedSlack || null}
                 busyTrustedUser={busyTrustedUser}
@@ -348,7 +349,7 @@ function App() {
             <OnboardingView
               baseUrl={baseUrl}
               loading={loading}
-              connected={Boolean(snapshot) && !error}
+              connected={runtimeConnected}
               canRun={supportsNativeActions()}
               nativeBusy={nativeBusy}
               nativeResult={nativeResult}

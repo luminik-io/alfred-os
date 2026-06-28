@@ -307,6 +307,9 @@ export function OnboardingView({
     if (wasConnected !== connected) {
       connectionGenerationRef.current += 1;
       githubAuthRequestSeq.current += 1;
+      fleetSaveSeq.current += 1;
+      setFleetSavePending(false);
+      setFleetTouchedUrl(null);
     }
     connectedRef.current = connected;
     if (!connected) {

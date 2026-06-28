@@ -141,6 +141,63 @@ describe("useRosterTheme", () => {
     });
   });
 
+  it("does not hydrate or save while the runtime URL is disconnected", async () => {
+    loadRosterTheme.mockResolvedValue(serverState({ theme: "justice-league" }));
+    saveRosterTheme.mockResolvedValue(serverState({ theme: "transformers" }));
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: false } },
+    );
+
+    expect(result.current.hydrating).toBe(false);
+    expect(loadRosterTheme).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    expect(result.current.saveError).toContain("Not connected");
+    expect(saveRosterTheme).not.toHaveBeenCalled();
+
+    rerender({ connected: true });
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledWith("http://127.0.0.1:7010");
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("justice-league");
+    });
+  });
+
+  it("retries hydration on a same-url reconnect after a load failure", async () => {
+    loadRosterTheme
+      .mockRejectedValueOnce(new Error("runtime returned 500"))
+      .mockResolvedValueOnce(serverState({ theme: "transformers" }));
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.hydrationError).toContain("runtime returned 500");
+    });
+
+    rerender({ connected: false });
+    await waitFor(() => {
+      expect(result.current.hydrationError).toBeNull();
+    });
+    rerender({ connected: true });
+
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("transformers");
+    });
+  });
+
   // Thread: "Rejected Saves Look Successful". A 403 (or any rejection) from the
   // save must surface through saveError instead of being silently swallowed.
   it("surfaces a save failure rather than looking successful", async () => {
