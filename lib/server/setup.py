@@ -31,6 +31,7 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -69,6 +70,24 @@ _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
 # so a demo card can never be mistaken for (or acted on as) real fleet work.
 DEMO_REPO = "alfred/demo"
+
+_CAPABILITY_SOURCES: dict[str, dict[str, str]] = {
+    "code_graph": {
+        "source": "DeusData/codebase-memory-mcp",
+        "url": "https://github.com/DeusData/codebase-memory-mcp",
+        "license": "MIT",
+    },
+    "context_compression": {
+        "source": "headroomlabs-ai/headroom",
+        "url": "https://github.com/headroomlabs-ai/headroom",
+        "license": "Apache-2.0",
+    },
+    "engineering_skills": {
+        "source": "garrytan/gstack, vercel-labs/agent-skills, addyosmani/agent-skills",
+        "url": "https://github.com/garrytan/gstack",
+        "license": "MIT",
+    },
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -332,6 +351,195 @@ def code_memory_status() -> dict[str, Any]:
     }
 
 
+def capability_status(code_memory: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return Alfred's local capability plane without installing anything.
+
+    The native setup flow needs one stable contract for "what makes this fleet
+    enterprise-ready" instead of a scattering of bespoke probes. This detector
+    stays read-only: it reports what is present, what Alfred can safely fetch on
+    explicit use, and which optional packages are still missing.
+    """
+
+    code_memory = code_memory or code_memory_status()
+    capabilities = [
+        _code_graph_capability(code_memory),
+        _context_compression_capability(),
+        _engineering_skills_capability(),
+    ]
+    counts = {
+        "ready": sum(1 for item in capabilities if item["state"] == "ready"),
+        "actionable": sum(
+            1
+            for item in capabilities
+            if item["state"] in {"installable", "missing", "needs_index", "available"}
+        ),
+        "disabled": sum(1 for item in capabilities if item["state"] == "disabled"),
+    }
+    return {
+        "version": 1,
+        "summary": counts | {"total": len(capabilities)},
+        "capabilities": capabilities,
+    }
+
+
+def _capability_base(
+    key: str,
+    *,
+    title: str,
+    category: str,
+    recommended: bool,
+    state: str,
+    detail: str,
+    installed: bool,
+    enabled: bool,
+    install_hint: str,
+    detected: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    source = _CAPABILITY_SOURCES[key]
+    return {
+        "key": key,
+        "title": title,
+        "category": category,
+        "recommended": recommended,
+        "state": state,
+        "installed": installed,
+        "enabled": enabled,
+        "detail": detail,
+        "detected": detected or {},
+        "install_hint": install_hint,
+        "source": source,
+    }
+
+
+def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
+    binary = code_memory.get("binary") or {}
+    enabled = bool(code_memory.get("enabled"))
+    installed = bool(binary.get("resolved"))
+    indexed = bool(code_memory.get("index_present"))
+    if not enabled:
+        state = "disabled"
+    elif installed and indexed:
+        state = "ready"
+    elif installed:
+        state = "needs_index"
+    elif code_memory.get("autofetch"):
+        state = "installable"
+    else:
+        state = "missing"
+    return _capability_base(
+        "code_graph",
+        title="Code graph memory",
+        category="memory",
+        recommended=True,
+        state=state,
+        installed=installed,
+        enabled=enabled,
+        detail=str(code_memory.get("detail") or ""),
+        detected={
+            "binary": binary,
+            "index_dir": code_memory.get("index_dir"),
+            "index_present": indexed,
+            "repos": code_memory.get("repos"),
+            "version_pin": code_memory.get("version_pin"),
+        },
+        install_hint="Run `alfred code-memory doctor`, then `alfred code-memory index`.",
+    )
+
+
+def _context_compression_capability() -> dict[str, Any]:
+    search = os.pathsep.join(
+        _engine_search_path() + tuple(os.environ.get("PATH", "").split(os.pathsep))
+    )
+    binary = shutil.which("headroom", path=search)
+    enabled = _env_flag(os.environ, "ALFRED_CONTEXT_COMPRESSION", default=bool(binary))
+    if binary and enabled:
+        state = "ready"
+        detail = "Headroom CLI is installed and context compression is enabled."
+    elif binary:
+        state = "available"
+        detail = "Headroom CLI is installed; enable ALFRED_CONTEXT_COMPRESSION to wire it in."
+    else:
+        state = "missing"
+        detail = (
+            "Headroom is not installed yet; Alfred can use it as a local token-compression layer."
+        )
+    return _capability_base(
+        "context_compression",
+        title="Context compression",
+        category="tokens",
+        recommended=True,
+        state=state,
+        installed=bool(binary),
+        enabled=enabled,
+        detail=detail,
+        detected={"binary": binary, "env_key": "ALFRED_CONTEXT_COMPRESSION"},
+        install_hint=(
+            "Install `headroom-ai[all]` with pip or `headroom-ai` with npm, "
+            "then run `headroom doctor`."
+        ),
+    )
+
+
+def _engineering_skills_capability() -> dict[str, Any]:
+    paths = _installed_skill_paths()
+    installed = bool(paths)
+    if installed:
+        state = "ready"
+        detail = "At least one engineering skill pack is installed for a local agent host."
+    else:
+        state = "missing"
+        detail = (
+            "No recommended engineering skill pack was found in Claude or Codex skill directories."
+        )
+    return _capability_base(
+        "engineering_skills",
+        title="Engineering skill packs",
+        category="skills",
+        recommended=True,
+        state=state,
+        installed=installed,
+        enabled=installed,
+        detail=detail,
+        detected={"paths": [str(path) for path in paths]},
+        install_hint=(
+            "Install gstack and the Vercel/Addy agent-skill packs for review, QA, "
+            "security, docs, and frontend workflows."
+        ),
+    )
+
+
+def _env_flag(env: Mapping[str, str], key: str, *, default: bool) -> bool:
+    raw = env.get(key)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in _FALSEY
+
+
+def _installed_skill_paths() -> list[Path]:
+    roots = [
+        Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser() / "skills",
+        Path(os.environ.get("CLAUDE_HOME", str(Path.home() / ".claude"))).expanduser() / "skills",
+    ]
+    patterns = (
+        "gstack",
+        "gstack-*",
+        "agent-skills",
+        "vercel-*",
+        "react-best-practices",
+        "web-design-guidelines",
+        "frontend-ui-engineering",
+    )
+    out: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        for pattern in patterns:
+            for path in root.glob(pattern):
+                if path.is_dir() and path not in seen:
+                    seen.add(path)
+                    out.append(path)
+    return sorted(out, key=lambda p: str(p))
+
+
 def _engine_search_path() -> tuple[str, ...]:
     return (
         os.path.expanduser("~/.local/bin"),
@@ -499,11 +707,14 @@ def bootstrap_status() -> dict[str, Any]:
     engines = engine_clis()
     repos = selected_repos()
     any_engine = any(e["installed"] for e in engines)
+    code_memory = code_memory_status()
+    capability_plane = capability_status(code_memory)
     return {
         "github": gh,
         "engines": engines,
         "engine_ready": any_engine,
-        "code_memory": code_memory_status(),
+        "code_memory": code_memory,
+        "capability_plane": capability_plane,
         "repos": {
             "selected": repos,
             "count": len(repos),

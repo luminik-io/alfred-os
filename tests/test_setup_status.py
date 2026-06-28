@@ -165,3 +165,66 @@ def test_bootstrap_status_respects_code_memory_disable(
     assert code_memory["enabled"] is False
     assert code_memory["autofetch"] is False
     assert code_memory["detail"] == "Code memory is disabled with ALFRED_CODE_MEMORY_MCP."
+
+
+def test_capability_plane_reports_missing_optional_layers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_AUTOFETCH", raising=False)
+
+    payload = setup_mod.capability_status()
+    by_key = {item["key"]: item for item in payload["capabilities"]}
+
+    assert payload["summary"] == {"ready": 0, "actionable": 3, "disabled": 0, "total": 3}
+    assert by_key["code_graph"]["state"] == "installable"
+    assert by_key["context_compression"]["state"] == "missing"
+    assert by_key["engineering_skills"]["state"] == "missing"
+
+
+def test_capability_plane_reports_ready_external_layers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    codex_home = tmp_path / "codex"
+    (codex_home / "skills" / "gstack").mkdir(parents=True)
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
+    monkeypatch.setenv("ALFRED_CONTEXT_COMPRESSION", "1")
+
+    def fake_which(name: str, **_kwargs: object) -> str | None:
+        return "/opt/homebrew/bin/headroom" if name == "headroom" else None
+
+    monkeypatch.setattr(setup_mod.shutil, "which", fake_which)
+    code_memory = {
+        "enabled": True,
+        "autofetch": True,
+        "binary": {
+            "resolved": True,
+            "path": "/usr/local/bin/codebase-memory-mcp",
+            "source": "path",
+            "configured": None,
+        },
+        "version_pin": "v0.8.1",
+        "repo": "DeusData/codebase-memory-mcp",
+        "index_dir": str(tmp_path / "index"),
+        "index_present": True,
+        "repos": {"configured": ["api"], "count": 1},
+        "detail": "Code-memory binary and index are present.",
+    }
+
+    payload = setup_mod.capability_status(code_memory)
+    by_key = {item["key"]: item for item in payload["capabilities"]}
+
+    assert payload["summary"]["ready"] == 3
+    assert by_key["code_graph"]["state"] == "ready"
+    assert by_key["context_compression"]["state"] == "ready"
+    assert by_key["engineering_skills"]["state"] == "ready"
+    assert by_key["engineering_skills"]["detected"]["paths"] == [
+        str(codex_home / "skills" / "gstack")
+    ]

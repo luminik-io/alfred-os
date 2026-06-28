@@ -63,6 +63,8 @@ Subcommands today:
                               `forget`, `export`).
   alfred code-memory ...      Inspect, index, or serve the optional
                               code-structure memory MCP layer.
+  alfred capabilities         Inspect local code graph, token, and skill
+                              capabilities Alfred can use during setup.
   alfred serve                Open the read-only localhost dashboard over
                               fleet state and reliability-governor actions.
   alfred slack-listener       Run the Slack-native planning listener, or
@@ -1416,6 +1418,31 @@ def cmd_code_memory(args: argparse.Namespace) -> int:
     return subprocess.run([str(script), *forwarded], check=False).returncode
 
 
+def cmd_capabilities(args: argparse.Namespace) -> int:
+    from server.setup import capability_status
+
+    payload = capability_status()
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    print("Alfred capability doctor")
+    print(f"ready {payload['summary']['ready']}/{payload['summary']['total']}")
+    for item in payload["capabilities"]:
+        marker = {
+            "ready": "OK",
+            "needs_index": "INDEX",
+            "installable": "INSTALL",
+            "available": "ENABLE",
+            "missing": "MISSING",
+            "disabled": "OFF",
+        }.get(item["state"], item["state"].upper())
+        print(f"{marker:<8} {item['title']}: {item['detail']}")
+        if item["state"] != "ready":
+            print(f"         next: {item['install_hint']}")
+    return 0
+
+
 def cmd_github_poll(args: argparse.Namespace) -> int:
     script = _HERE / "fleet-github-poll.py"
     cmd = [sys.executable, str(script)]
@@ -2439,6 +2466,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_code_memory.add_argument("code_memory_args", nargs=argparse.REMAINDER)
     p_code_memory.set_defaults(func=cmd_code_memory)
+
+    p_capabilities = sub.add_parser(
+        "capabilities",
+        help="inspect local code graph, token, and skill capabilities",
+    )
+    p_capabilities.add_argument("--json", action="store_true")
+    p_capabilities.set_defaults(func=cmd_capabilities)
 
     p_github_poll = sub.add_parser("github-poll", help="poll GitHub issues/PRs into fleet-brain")
     p_github_poll.add_argument("--repo", action="append")

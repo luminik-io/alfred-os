@@ -34,6 +34,7 @@ Current map of the public docs. Trust code first, then this index.
 - [`ENGINE_ROUTING.md`](ENGINE_ROUTING.md): per-codename Claude, Codex, or hybrid routing; precedence chain; default matrix; multi-engine roadmap.
 - [`OPERATING_THE_FLEET.md`](OPERATING_THE_FLEET.md): week-two runbook. Daily Slack rhythm, CLI recipes, sentinels, logs, "fleet went quiet" troubleshooting.
 - [`CLAUDE_CODE.md`](CLAUDE_CODE.md): Claude Code and Codex install, account routing, engine routing, and quota behavior.
+- [`CAPABILITIES.md`](CAPABILITIES.md): read-only local inventory for code graph memory, context compression, and engineering skill packs.
 - [`BENCHMARKS.md`](BENCHMARKS.md): reproducible self-benchmark harness. The fixed task suite, the four metric families read from existing telemetry, how to run before/after, and cost framed as a share of subscription quota.
 - [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md): Codex engine modes, diagnostics, runtime contract, and billing posture.
 - [`SLACK_SETUP.md`](SLACK_SETUP.md): incoming webhook, optional bot-token setup, planning listener, trusted control commands, the issue bridge, and in-thread fleet-progress thread-sync.

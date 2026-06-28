@@ -487,11 +487,41 @@ export type SetupCodeMemory = {
   detail: string;
 };
 
+export type SetupCapability = {
+  key: string;
+  title: string;
+  category: string;
+  recommended: boolean;
+  state: "ready" | "needs_index" | "installable" | "available" | "missing" | "disabled" | string;
+  installed: boolean;
+  enabled: boolean;
+  detail: string;
+  detected: Record<string, unknown>;
+  install_hint: string;
+  source: {
+    source: string;
+    url?: string;
+    license?: string;
+  };
+};
+
+export type SetupCapabilityPlane = {
+  version: number;
+  summary: {
+    ready: number;
+    actionable: number;
+    disabled: number;
+    total: number;
+  };
+  capabilities: SetupCapability[];
+};
+
 export type SetupStatus = {
   github: SetupGithub;
   engines: SetupEngine[];
   engine_ready: boolean;
   code_memory?: SetupCodeMemory;
+  capability_plane?: SetupCapabilityPlane;
   repos: { selected: string[]; count: number; keys: string[] };
   demo: { present: boolean };
   ready: boolean;

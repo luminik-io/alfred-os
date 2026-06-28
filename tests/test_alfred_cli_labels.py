@@ -242,3 +242,33 @@ def test_code_memory_command_defaults_to_doctor(
 
     assert cli_module.main(["code-memory"]) == 0
     assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
+
+
+def test_capabilities_command_emits_json(
+    cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from server import setup as setup_mod
+
+    payload = {
+        "version": 1,
+        "summary": {"ready": 1, "actionable": 0, "disabled": 0, "total": 1},
+        "capabilities": [
+            {
+                "key": "code_graph",
+                "title": "Code graph memory",
+                "category": "memory",
+                "recommended": True,
+                "state": "ready",
+                "installed": True,
+                "enabled": True,
+                "detail": "ready",
+                "detected": {},
+                "install_hint": "none",
+                "source": {"source": "DeusData/codebase-memory-mcp"},
+            }
+        ],
+    }
+    monkeypatch.setattr(setup_mod, "capability_status", lambda: payload)
+
+    assert cli_module.main(["capabilities", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == payload

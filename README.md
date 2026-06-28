@@ -416,6 +416,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 - [Plain mode](docs/PLAIN_MODE.md): the non-technical intake profile (`ALFRED_INTAKE_PROFILE=plain`).
 - [Claude Code and Codex](docs/CLAUDE_CODE.md): install, Pro vs Max, account routing, engine routing.
 - [Codex provider](docs/CODEX_PROVIDER.md): Codex engine modes, probe commands, runtime contract, and billing posture.
+- [Capability doctor](docs/CAPABILITIES.md): local code graph, context-compression, and skill-pack readiness.
 - [Slack setup](docs/SLACK_SETUP.md): webhook + AWS storage + (optional) bot token, planning listener, trusted control commands, the issue bridge, and in-thread fleet-progress thread-sync.
 - [AWS setup](docs/AWS_SETUP.md): IAM-per-agent, scoped policies.
 - [Skills](docs/SKILLS.md): recommended Claude Code skills.
@@ -514,4 +515,3 @@ running while the mission is in flight. The public repository is
 use the same theme: Batman is the architect, Lucius is the senior developer,
 Drake scopes smaller work, Ra's al Ghul reviews PRs, Bane adds tests, and
 Nightwing handles review fixes.
-
