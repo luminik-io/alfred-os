@@ -176,9 +176,7 @@ def test_allowed_queue_repos_honors_empty_active_board_scope(tmp_path: Path, mon
     assert iq.allowed_queue_repos() == set()
 
 
-def test_allowed_queue_repos_accepts_same_home_launcher_board_scope(
-    tmp_path: Path, monkeypatch
-):
+def test_allowed_queue_repos_accepts_same_home_launcher_board_scope(tmp_path: Path, monkeypatch):
     home = tmp_path / "runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("ALFRED_HOME", str(home))
