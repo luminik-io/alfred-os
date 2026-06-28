@@ -195,10 +195,15 @@ export function OnboardingView({
   const manualSteps = useRef<Set<OnboardingStepKey>>(new Set());
   const statusRequestSeq = useRef(0);
   const baseUrlRef = useRef(baseUrl);
+  const connectedRef = useRef(connected);
 
   useEffect(() => {
     baseUrlRef.current = baseUrl;
   }, [baseUrl]);
+
+  useEffect(() => {
+    connectedRef.current = connected;
+  }, [connected]);
 
   const refreshStatus = useCallback(async () => {
     if (!connected) {
@@ -244,8 +249,15 @@ export function OnboardingView({
       message: "Starting GitHub sign-in.",
     });
 
+    const requestBaseUrl = baseUrl;
+    const isCurrentRequest = () =>
+      connectedRef.current && baseUrlRef.current === requestBaseUrl;
+
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
+      if (!isCurrentRequest()) {
+        return;
+      }
       if (!result) {
         throw new Error("Could not start GitHub sign-in.");
       }
@@ -266,8 +278,8 @@ export function OnboardingView({
 
       const poll = await pollGithubAuthStatus(
         async () => {
-          const next = await loadSetupStatus(baseUrl);
-          if (baseUrlRef.current === baseUrl) {
+          const next = await loadSetupStatus(requestBaseUrl);
+          if (isCurrentRequest()) {
             setStatus(next);
           }
           return next;
@@ -278,10 +290,11 @@ export function OnboardingView({
         },
       );
 
+      if (!isCurrentRequest()) {
+        return;
+      }
       if (poll.status) {
-        if (baseUrlRef.current === baseUrl) {
-          setStatus(poll.status);
-        }
+        setStatus(poll.status);
       }
       if (poll.state === "success") {
         setGithubAuthFlow({
@@ -301,6 +314,9 @@ export function OnboardingView({
         });
       }
     } catch (err) {
+      if (!isCurrentRequest()) {
+        return;
+      }
       setGithubAuthFlow({
         ...IDLE_GITHUB_AUTH_FLOW,
         state: "error",
@@ -308,7 +324,9 @@ export function OnboardingView({
         detail: errorDetail(err),
       });
     } finally {
-      setStatusLoading(false);
+      if (isCurrentRequest()) {
+        setStatusLoading(false);
+      }
     }
   }, [baseUrl, canRun, connected, onRunLocalAction]);
 

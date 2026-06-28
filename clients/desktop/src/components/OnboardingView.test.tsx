@@ -436,6 +436,63 @@ describe("OnboardingView six-step takeover", () => {
     );
   });
 
+  it("ignores GitHub auth poll inventory after disconnecting from the same server", async () => {
+    const pending = makeStatus({
+      github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+    });
+    const pollStatus = deferred<SetupStatus>();
+    const loadStatus = vi
+      .spyOn(api, "loadSetupStatus")
+      .mockResolvedValueOnce(pending)
+      .mockReturnValueOnce(pollStatus.promise);
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["gh", "auth", "login", "--web"],
+      stdout: "",
+      stderr: "",
+      status: null,
+      success: true,
+      pid: 42,
+      message: "GitHub sign-in started. Enter the one-time code in your browser.",
+      github_auth: {
+        device_url: "https://github.com/login/device",
+        device_code: "ABCD-1234",
+        poll_interval_ms: 250,
+        timeout_ms: 1_000,
+      },
+    }));
+    const props = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      canRun: true,
+      nativeBusy: null,
+      nativeResult: null,
+      onConnectServer: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction,
+      onOpenConnection: vi.fn(),
+      onSwitch: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+    };
+    const view = render(<OnboardingView {...props} connected />);
+    const user = userEvent.setup();
+    await gotoStep(user, /^github$/i);
+
+    await user.click(await screen.findByRole("button", { name: /sign in with github/i }));
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(2));
+
+    view.rerender(<OnboardingView {...props} connected={false} />);
+    pollStatus.resolve(
+      makeStatus({
+        install: makeInstall({ alfred_home: "/tmp/stale-alfred-home" }),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/stale-alfred-home")).not.toBeInTheDocument();
+      expect(screen.queryByText(/found an alfred setup on this mac/i)).not.toBeInTheDocument();
+    });
+  });
+
   it("falls back to copy-paste gh auth + recheck in browser mode", async () => {
     vi.spyOn(api, "supportsNativeActions").mockReturnValue(false);
     const refetch = vi
