@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -14,6 +15,24 @@ if str(LIB) not in sys.path:
     sys.path.insert(0, str(LIB))
 
 import server.setup as setup_mod  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def restore_repo_env_keys() -> None:
+    """Undo live process mirrors written by repo-selection saves."""
+
+    keys = (
+        setup_mod.QUEUE_REPOS_ENV,
+        setup_mod.SHIPPED_REPOS_ENV,
+        setup_mod.BRIDGE_REPOS_ENV,
+    )
+    saved = {key: os.environ.get(key) for key in keys}
+    yield
+    for key, value in saved.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
 
 
 def test_install_inventory_reports_existing_config_without_secret_values(

@@ -792,7 +792,9 @@ def _code_memory_launcher_env() -> dict[str, str]:
 
     env = _runtime_config_env()
     if not env.get("WORKSPACE_ROOT", "").strip():
-        env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
+        home = _safe_home(env)
+        if home:
+            env["WORKSPACE_ROOT"] = str(home / "code")
     return env
 
 

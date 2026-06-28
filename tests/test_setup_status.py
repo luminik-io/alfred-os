@@ -843,6 +843,7 @@ def test_bootstrap_status_demo_fallback_survives_unresolvable_home(
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
     monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
