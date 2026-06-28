@@ -99,6 +99,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // runtime is read fresh instead of being skipped. An offline-only change
   // never records a url, so a later server read still runs.
   const hydratedUrlRef = useRef<string | null>(null);
+  const skippedHydrationUrlRef = useRef<string | null>(null);
   // The runtime the hook is currently pointed at. Kept in a ref so an
   // out-of-band save resolution can tell whether it still speaks for the
   // connected runtime before it records hydration.
@@ -166,16 +167,23 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
         // GET is still in flight; honoring only `cancelled` would let the older
         // server snapshot overwrite the freshly persisted choice. Bail once this
         // runtime is already synced so the newer save stands.
-        if (cancelled || hydratedUrlRef.current === baseUrl) return;
+        if (cancelled) return;
+        if (hydratedUrlRef.current === baseUrl) {
+          skippedHydrationUrlRef.current = baseUrl;
+          return;
+        }
         const theme = isRosterThemeId(remote.theme) ? remote.theme : DEFAULT_ROSTER_THEME;
         const custom: CustomRosterNames = {
           names: remote.custom_names ?? {},
           roles: remote.custom_roles ?? {},
         };
         hydratedUrlRef.current = baseUrl;
+        skippedHydrationUrlRef.current = null;
         setRosterThemeState(theme);
         setCustomNamesState(custom);
         setHydrationError(null);
+        saveErrorUrlRef.current = null;
+        setSaveError(null);
         writeStored(theme, custom);
       } catch (err: unknown) {
         // Keep the localStorage fallback in state for display, but do not treat it
@@ -235,6 +243,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // runtime we have since left must not mark the current one synced.
           if (url !== baseUrlRef.current) return false;
           hydratedUrlRef.current = url;
+          skippedHydrationUrlRef.current = null;
           setHydrationError(null);
           saveErrorUrlRef.current = null;
           setSaveError(null);
@@ -261,6 +270,10 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
               ? `Could not save to Alfred: ${err.message}`
               : "Could not save to Alfred. The cast is local-only until a save succeeds.",
           );
+          if (skippedHydrationUrlRef.current === url) {
+            skippedHydrationUrlRef.current = null;
+            setHydrationRequestSeq((requestSeq) => requestSeq + 1);
+          }
           return false;
         })
         .finally(() => {
@@ -344,6 +357,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const retryHydration = useCallback(() => {
     if (!baseUrl) return;
     hydratedUrlRef.current = null;
+    skippedHydrationUrlRef.current = null;
     setHydrationError(null);
     setHydrationRequestSeq((seq) => seq + 1);
   }, [baseUrl]);

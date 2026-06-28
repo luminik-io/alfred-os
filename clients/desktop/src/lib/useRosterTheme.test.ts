@@ -144,11 +144,10 @@ describe("useRosterTheme", () => {
   // Thread: "Rejected Saves Look Successful". A 403 (or any rejection) from the
   // save must surface through saveError instead of being silently swallowed.
   it("surfaces a save failure rather than looking successful", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     saveRosterTheme.mockRejectedValue(new Error("alfred serve returned 403"));
 
     const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
-    // Drain the initial hydration read so it does not interfere.
-    loadRosterTheme.mockResolvedValue(serverState());
 
     act(() => {
       result.current.setRosterTheme("transformers");
@@ -279,7 +278,7 @@ describe("useRosterTheme", () => {
   });
 
   it("clears a same-runtime save error when a newer save starts", async () => {
-    loadRosterTheme.mockResolvedValue(serverState());
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     let rejectSecond: (reason?: unknown) => void = () => {};
     saveRosterTheme
       .mockRejectedValueOnce(new Error("alfred serve returned 403"))
@@ -630,6 +629,52 @@ describe("useRosterTheme", () => {
       resolveLoad(serverState({ theme: "justice-league" }));
     });
     expect(result.current.rosterTheme).toBe("justice-league");
+    expect(result.current.saveError).toBeNull();
+  });
+
+  // Thread: "Hydration still skips". If the initial server read resolves while
+  // an optimistic save has marked the runtime hydrated, that read bails. A
+  // later save failure must start a replacement read; otherwise the hook keeps
+  // showing an unsaved local cast forever.
+  it("retries server hydration when a failed save already skipped the initial read", async () => {
+    let resolveInitialLoad: (value: RosterThemeResponse) => void = () => {};
+    let rejectSave: (reason?: unknown) => void = () => {};
+    loadRosterTheme
+      .mockReturnValueOnce(
+        new Promise<RosterThemeResponse>((resolve) => {
+          resolveInitialLoad = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(serverState({ theme: "justice-league" }));
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+    );
+
+    const { result } = renderHook(() => useRosterTheme("http://127.0.0.1:7010"));
+
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+
+    await act(async () => {
+      resolveInitialLoad(serverState({ theme: "batman" }));
+    });
+    expect(result.current.rosterTheme).toBe("transformers");
+
+    await act(async () => {
+      rejectSave(new Error("alfred serve returned 503"));
+    });
+
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("justice-league");
+    });
+    expect(result.current.saveError).toBeNull();
   });
 
   // Thread: "Queued Runtime Edit Drops". A queued edit for one runtime must not
