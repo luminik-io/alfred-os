@@ -29,12 +29,25 @@ def _stub_common(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(setup_mod, "load_demo_cards", lambda: {})
 
 
+def _isolate_launcher_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    alfred_home = tmp_path / ".alfred"
+    home.mkdir(exist_ok=True)
+    alfred_home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_CODE_MAP_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_WORKSPACE_SUBDIR", raising=False)
+    monkeypatch.delenv("WORKSPACE_SUBDIR", raising=False)
+
+
 def test_bootstrap_status_reports_code_memory_defaults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
     monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
-    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
     monkeypatch.delenv("ALFRED_CODE_MEMORY_BIN", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_MCP", raising=False)
     monkeypatch.delenv("ALFRED_CODE_MEMORY_AUTOFETCH", raising=False)
@@ -56,6 +69,7 @@ def test_bootstrap_status_reports_configured_code_memory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
     binary = tmp_path / "codebase-memory-mcp"
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
@@ -228,6 +242,27 @@ def test_capability_plane_reports_ready_external_layers(
     assert by_key["engineering_skills"]["detected"]["paths"] == [
         str(codex_home / "skills" / "gstack")
     ]
+
+
+def test_capability_plane_requires_context_compression_opt_in(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / ".alfred"))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    monkeypatch.setenv("CLAUDE_HOME", str(tmp_path / "claude"))
+    monkeypatch.delenv("ALFRED_CONTEXT_COMPRESSION", raising=False)
+    monkeypatch.setattr(
+        setup_mod.shutil,
+        "which",
+        lambda name, **_kwargs: "/opt/homebrew/bin/headroom" if name == "headroom" else None,
+    )
+
+    payload = setup_mod.capability_status()
+    context = {item["key"]: item for item in payload["capabilities"]}["context_compression"]
+
+    assert context["state"] == "available"
+    assert context["installed"] is True
+    assert context["enabled"] is False
 
 
 def test_capability_plane_reads_context_compression_from_runtime_env_file(

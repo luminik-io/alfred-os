@@ -453,7 +453,7 @@ def _code_graph_capability(code_memory: dict[str, Any]) -> dict[str, Any]:
 def _context_compression_capability(env: Mapping[str, str]) -> dict[str, Any]:
     search = os.pathsep.join(_engine_search_path() + tuple(env.get("PATH", "").split(os.pathsep)))
     binary = shutil.which("headroom", path=search)
-    enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=bool(binary))
+    enabled = _env_flag(env, "ALFRED_CONTEXT_COMPRESSION", default=False)
     if binary and enabled:
         state = "ready"
         detail = "Headroom CLI is installed and context compression is enabled."
