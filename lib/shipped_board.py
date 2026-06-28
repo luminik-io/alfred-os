@@ -27,7 +27,7 @@ import subprocess
 from datetime import UTC, datetime
 from typing import Any
 
-from agent_runner.paths import launcher_config_value
+from agent_runner.paths import config_value
 
 # Directories where the ``gh`` binary commonly lives. The fleet's cron plists
 # already render these into PATH, but the local server is hand-submitted via
@@ -228,13 +228,13 @@ def _now() -> datetime:
 
 
 def _config_value(key: str) -> str:
-    """Resolve a config value with the same precedence as ``agent-launch``.
+    """Resolve a config value from the connected ``alfred serve`` runtime.
 
     Kept as a thin alias so existing ``shipped_board._config_value`` imports
     keep working; ``GET /api/shipped`` uses it to resolve watched repos with
-    the same config the scheduled fleet enforces.
+    the same config setup status reports for the connected runtime.
     """
-    return launcher_config_value(key)
+    return config_value(key)
 
 
 def _gh_bin() -> str:

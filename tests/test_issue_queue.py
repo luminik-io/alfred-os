@@ -104,15 +104,18 @@ def test_allowed_queue_repos_accepts_fallback_env(monkeypatch):
     assert iq.allowed_queue_repos() == {"org/api", "org/web", "org/extra"}
 
 
-def test_allowed_queue_repos_reads_launcher_home_env(tmp_path: Path, monkeypatch):
+def test_allowed_queue_repos_reads_active_home_env(tmp_path: Path, monkeypatch):
     home = tmp_path / "runtime"
+    launcher_home = tmp_path / "launcher-runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
 
-    (tmp_path / ".alfredrc").write_text(f"ALFRED_HOME={home}\n", encoding="utf-8")
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={launcher_home}\nALFRED_QUEUE_REPOS=org/launcher\n", encoding="utf-8"
+    )
     env_path = home / ".env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
@@ -120,22 +123,22 @@ def test_allowed_queue_repos_reads_launcher_home_env(tmp_path: Path, monkeypatch
     assert iq.allowed_queue_repos() == {"org/runtime"}
 
 
-def test_allowed_queue_repos_matches_agent_launch_precedence(tmp_path: Path, monkeypatch):
+def test_allowed_queue_repos_matches_connected_runtime_precedence(tmp_path: Path, monkeypatch):
     home = tmp_path / "runtime"
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
-    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "org/process")
     monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
     monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
 
     (tmp_path / ".alfredrc").write_text(
-        f"ALFRED_HOME={home}\nALFRED_QUEUE_REPOS=org/rc\n", encoding="utf-8"
+        f"ALFRED_HOME={tmp_path / 'launcher'}\nALFRED_QUEUE_REPOS=org/rc\n", encoding="utf-8"
     )
     env_path = home / ".env"
     env_path.parent.mkdir(parents=True)
     env_path.write_text("ALFRED_QUEUE_REPOS=org/env\n", encoding="utf-8")
 
-    assert iq.allowed_queue_repos() == {"org/rc"}
+    assert iq.allowed_queue_repos() == {"org/process"}
 
 
 def test_close_issue_runs_gh_issue_close(monkeypatch):

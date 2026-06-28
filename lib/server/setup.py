@@ -205,7 +205,7 @@ def normalize_repo_slugs(values: Any) -> list[str]:
 
 
 def selected_repos(env: dict[str, str] | None = None) -> list[str]:
-    """The repos currently scoped to Alfred, from the config the fleet reads.
+    """The repos currently scoped to the connected Alfred runtime.
 
     Reads the queue allowlist (``allowed_queue_repos``) so the Set up surface
     shows the same scope queue/hold/close actually enforce. Sorted for a stable
@@ -331,21 +331,46 @@ def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
     config so the client can show it back transparently.
     """
     clean = normalize_repo_slugs(repos)
-    value = _format_repo_value(clean)
-    env_path = write_env_values(dict.fromkeys(_REPO_ENV_KEYS, value))
-    for key in _REPO_ENV_KEYS:
+    values = _repo_scope_values_for_save(clean)
+    env_path = write_env_values(values)
+    for key in values:
         # Mirror into the live process so the new scope is effective now. An
         # empty selection clears the override so the resolver falls back to the
         # .env value (also empty), which is the honest "nothing scoped" state.
-        if value:
-            os.environ[key] = value
+        if values[key]:
+            os.environ[key] = values[key]
         else:
             os.environ.pop(key, None)
     return {
         "repos": clean,
         "env_path": str(env_path),
-        "keys": list(_REPO_ENV_KEYS),
+        "keys": list(values),
     }
+
+
+def _repo_scope_values_for_save(repos: list[str]) -> dict[str, str]:
+    """Repo keys to persist for a setup repo save.
+
+    The onboarding repo picker owns the board-visible scope. For new installs it
+    also seeds the queue allowlist so queue/hold/done works immediately. Once an
+    operator has an explicit queue allowlist, keep that as a narrower mutation
+    boundary unless they clear all repos or the selected set already matches it.
+    """
+
+    value = _format_repo_value(repos)
+    values = {
+        SHIPPED_REPOS_ENV: value,
+        BRIDGE_REPOS_ENV: value,
+    }
+    existing_queue = _existing_queue_repos_for_save()
+    selected = set(repos)
+    if not value or not existing_queue or existing_queue == selected:
+        values = {QUEUE_REPOS_ENV: value, **values}
+    return values
+
+
+def _existing_queue_repos_for_save() -> set[str]:
+    return _repos_from_env(_runtime_config_env(), (QUEUE_REPOS_ENV,))
 
 
 # --------------------------------------------------------------------------- #
