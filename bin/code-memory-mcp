@@ -30,6 +30,8 @@
 
 set -uo pipefail
 ORIGINAL_ENV_KEYS="$(env | awk -F= '{print $1}')"
+ORIGINAL_ALFRED_HOME_PRESENT=0
+[ -n "${ALFRED_HOME+x}" ] && ORIGINAL_ALFRED_HOME_PRESENT=1
 
 env_key_was_original() {
   local key="$1"
@@ -112,6 +114,16 @@ load_env_file() {
       ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
     esac
     case "$mode" in
+      alfredrc)
+        case "$key" in
+          ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
+            [ "$RC_TARGETS_EFFECTIVE_HOME" -eq 0 ] && continue
+            ;;
+        esac
+        if [ -n "${!key+x}" ]; then
+          continue
+        fi
+        ;;
       no_clobber)
         if [ -n "${!key+x}" ]; then
           continue
@@ -147,7 +159,67 @@ expand_user_path() {
   esac
 }
 
-load_env_file "$HOME/.alfredrc" no_clobber
+normalize_runtime_home() {
+  local value expanded normalized
+  value="$1"
+  expanded="$(expand_user_path "$value")"
+  if command -v python3 >/dev/null 2>&1; then
+    normalized="$(python3 - "$expanded" <<'PY' 2>/dev/null || true
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).expanduser().resolve(strict=False))
+PY
+)"
+    if [ -n "$normalized" ]; then
+      printf '%s' "$normalized"
+      return 0
+    fi
+  fi
+  printf '%s' "$expanded"
+}
+
+read_env_key() {
+  local file="$1" wanted="$2" line key value quote_style sq="'" dq='"' splice
+  [ -f "$file" ] || return 0
+  splice="${sq}${dq}${sq}${dq}${sq}"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|\#*) continue ;;
+      export\ *) line="${line#export }" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    [ "$key" = "$wanted" ] || continue
+    quote_style="none"
+    case "$value" in
+      \'*\') quote_style="single"; value="${value#\'}"; value="${value%\'}"; value="${value//$splice/$sq}" ;;
+      \"*\") quote_style="double"; value="${value#\"}"; value="${value%\"}" ;;
+    esac
+    if [ "$quote_style" != "single" ]; then
+      value="${value//\$\{HOME\}/$HOME}"
+      value="${value//\$HOME/$HOME}"
+    fi
+    printf '%s' "$value"
+    return 0
+  done < "$file"
+}
+
+RC_TARGETS_EFFECTIVE_HOME=1
+if [ "$ORIGINAL_ALFRED_HOME_PRESENT" -eq 1 ]; then
+  ORIGINAL_ALFRED_HOME_EXPANDED="$(normalize_runtime_home "$ALFRED_HOME")"
+  RC_ALFRED_HOME="$(read_env_key "$HOME/.alfredrc" "ALFRED_HOME")"
+  if [ -n "$RC_ALFRED_HOME" ]; then
+    RC_ALFRED_HOME_EXPANDED="$(normalize_runtime_home "$RC_ALFRED_HOME")"
+  else
+    RC_ALFRED_HOME_EXPANDED="$(normalize_runtime_home "$HOME/.alfred")"
+  fi
+  if [ "$RC_ALFRED_HOME_EXPANDED" != "$ORIGINAL_ALFRED_HOME_EXPANDED" ]; then
+    RC_TARGETS_EFFECTIVE_HOME=0
+  fi
+fi
+
+load_env_file "$HOME/.alfredrc" alfredrc
 : "${ALFRED_HOME:=$HOME/.alfred}"
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 load_env_file "$ALFRED_HOME/.env" no_clobber

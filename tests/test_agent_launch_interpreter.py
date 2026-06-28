@@ -282,6 +282,39 @@ def test_agent_launch_real_env_code_memory_setting_wins_over_env_file(
     assert "REPOS=org/process" in proc.stdout
 
 
+def test_agent_launch_ignores_stale_rc_code_memory_scope_for_custom_home(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    other_runtime = tmp_path / "other-runtime"
+    home.mkdir()
+    runtime.mkdir()
+    other_runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={other_runtime}\nALFRED_CODE_MEMORY_REPOS=org/stale\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-code-memory.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n')
+    _make_executable(target)
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(runtime)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=unset" in proc.stdout
+
+
 def test_agent_launch_expands_tilde_alfred_home_before_env_file(tmp_path: Path) -> None:
     """ALFRED_HOME=~/runtime must load the runtime .env, matching setup/status."""
 

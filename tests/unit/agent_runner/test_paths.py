@@ -162,6 +162,31 @@ def test_launcher_env_preserves_real_env_code_memory_setting_over_env_file(
     assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/process"
 
 
+def test_launcher_env_skips_stale_rc_code_memory_settings_for_custom_home(
+    fresh_agent_runner, monkeypatch, tmp_path
+):
+    import agent_runner.paths as paths_mod
+
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    other_runtime = tmp_path / "other-runtime"
+    home.mkdir()
+    runtime.mkdir()
+    other_runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_CODE_MEMORY_REPOS", raising=False)
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={other_runtime}\nALFRED_CODE_MEMORY_REPOS=org/stale\n",
+        encoding="utf-8",
+    )
+
+    env = paths_mod.launcher_env()
+
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert "ALFRED_CODE_MEMORY_REPOS" not in env
+
+
 def test_launcher_env_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_scope(
     fresh_agent_runner, monkeypatch, tmp_path
 ):

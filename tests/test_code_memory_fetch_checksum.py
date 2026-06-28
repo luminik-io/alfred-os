@@ -569,5 +569,38 @@ def test_launcher_preserves_process_code_memory_over_runtime_env(tmp_path: Path)
     assert "org/new" not in res.stderr
 
 
+def test_launcher_ignores_stale_rc_code_memory_when_process_home_is_active(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime_a = tmp_path / "runtime-a"
+    runtime_b = tmp_path / "runtime-b"
+    home.mkdir()
+    runtime_a.mkdir()
+    runtime_b.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime_a}\nALFRED_CODE_MEMORY_REPOS=org/stale\n",
+        encoding="utf-8",
+    )
+    (runtime_b / ".env").write_text("ALFRED_CODE_MEMORY_AUTOFETCH=0\n", encoding="utf-8")
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(runtime_b)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+    env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert f"index-dir:   {runtime_b}/state/code-memory" in res.stderr
+    assert "repos:       (none configured)" in res.stderr
+    assert "org/stale" not in res.stderr
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

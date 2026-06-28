@@ -237,7 +237,7 @@ def launcher_env() -> dict[str, str]:
         effective_home = Path(process_home).expanduser()
         rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
         if not _same_runtime_home(effective_home, rc_home):
-            blocked_rc_keys = _REPO_SCOPE_ENV_KEYS
+            blocked_rc_keys = _SETUP_MANAGED_RUNTIME_ENV_KEYS
     if rc_env:
         load_env_file(rc_path, env, no_clobber=True, skip_keys=blocked_rc_keys)
     if not env.get("ALFRED_HOME", "").strip():
