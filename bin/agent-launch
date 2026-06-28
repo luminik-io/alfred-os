@@ -36,9 +36,48 @@ fi
 SCRIPT="$1"
 shift
 
+strip_inline_comment() {
+  local value="$1" ch quote="" escaped=0 i previous=""
+  for ((i = 0; i < ${#value}; i++)); do
+    ch="${value:i:1}"
+    if [ "$escaped" -eq 1 ]; then
+      escaped=0
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "\\" ] && [ "$quote" != "'" ]; then
+      escaped=1
+      previous="$ch"
+      continue
+    fi
+    if [ -n "$quote" ]; then
+      if [ "$ch" = "$quote" ]; then
+        quote=""
+      fi
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "'" ] || [ "$ch" = '"' ]; then
+      quote="$ch"
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "#" ] && [ -n "$previous" ] && [[ "$previous" =~ [[:space:]] ]]; then
+      printf '%s' "${value:0:i}"
+      return
+    fi
+    previous="$ch"
+  done
+  printf '%s' "$value"
+}
+
+trim_env_value() {
+  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 memory_auto_promote_stop_control_active() {
   local key="$1" token
-  token="$(printf '%s' "$2" | sed 's/[[:space:]]#.*$//;s/^[[:space:]]*//;s/[[:space:]]*$//' | tr '[:upper:]' '[:lower:]')"
+  token="$(trim_env_value "$(strip_inline_comment "$2")" | tr '[:upper:]' '[:lower:]')"
   [ -n "$token" ] || return 1
   case "$key" in
     ALFRED_AUTO_PROMOTE)
@@ -115,6 +154,7 @@ load_env_file() {
         continue
         ;;
     esac
+    value="$(trim_env_value "$(strip_inline_comment "$value")")"
     quote_style="$(env_value_quote_style "$value")"
     value="$(decode_env_value "$value")"
     if [ "$quote_style" != "single" ]; then

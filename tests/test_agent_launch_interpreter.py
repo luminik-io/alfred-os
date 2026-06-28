@@ -430,7 +430,7 @@ def test_agent_launch_follows_persisted_alfredrc_pointer(tmp_path: Path, alfred_
     custom_rc = tmp_path / "custom.alfredrc"
     custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
     (alfred_home.parent / ".alfredrc").write_text(
-        f"ALFREDRC={custom_rc}\n",
+        f"ALFREDRC={custom_rc} # scheduler rc\n",
         encoding="utf-8",
     )
     target = tmp_path / "echo-auto-promote.sh"

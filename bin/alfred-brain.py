@@ -94,13 +94,15 @@ from fleet_brain import (  # noqa: E402
     FleetBrain,
     MemoryPromotionError,
     default_db_path,
+    direct_auto_promote_env,
 )
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 from memory.redis_agent_memory import RedisAgentMemoryProvider  # noqa: E402
 
 
-def _build_brain(args: argparse.Namespace) -> FleetBrain:
-    db_path = args.db or os.environ.get("ALFRED_FLEET_BRAIN_DB")
+def _build_brain(args: argparse.Namespace, env: dict[str, str] | None = None) -> FleetBrain:
+    env_src = env if env is not None else os.environ
+    db_path = args.db or env_src.get("ALFRED_FLEET_BRAIN_DB")
     return FleetBrain(db_path=db_path) if db_path else FleetBrain()
 
 
@@ -584,10 +586,12 @@ def cmd_harvest(args: argparse.Namespace) -> int:
 
 
 def cmd_auto_promote(args: argparse.Namespace) -> int:
-    brain = _build_brain(args)
+    env_src = direct_auto_promote_env()
+    brain = _build_brain(args, env_src)
     summary = brain.auto_promote_candidates(
         threshold=args.threshold,
         max_per_run=args.max_per_run,
+        env=env_src,
     )
     if args.json:
         print(json.dumps(summary, indent=2, sort_keys=True))
@@ -1018,7 +1022,7 @@ def _short(value: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "..."
 
 
-def _candidate_to_dict(candidate) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _candidate_to_dict(candidate) -> dict[str, object]:
     return {
         "id": candidate.id,
         "codename": candidate.codename,
@@ -1041,7 +1045,7 @@ def _candidate_to_dict(candidate) -> dict[str, object]:  # type: ignore[no-untyp
     }
 
 
-def _failure_to_dict(event) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _failure_to_dict(event) -> dict[str, object]:
     return {
         "id": event.id,
         "codename": event.codename,
@@ -1055,7 +1059,7 @@ def _failure_to_dict(event) -> dict[str, object]:  # type: ignore[no-untyped-def
     }
 
 
-def _github_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _github_item_to_dict(item) -> dict[str, object]:
     return {
         "id": item.id,
         "repo": item.repo,
@@ -1075,7 +1079,7 @@ def _github_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-
     }
 
 
-def _bundle_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _bundle_item_to_dict(item) -> dict[str, object]:
     return {
         "id": item.id,
         "bundle_slug": item.bundle_slug,
@@ -1091,7 +1095,7 @@ def _bundle_item_to_dict(item) -> dict[str, object]:  # type: ignore[no-untyped-
     }
 
 
-def _worker_to_dict(worker) -> dict[str, object]:  # type: ignore[no-untyped-def]
+def _worker_to_dict(worker) -> dict[str, object]:
     return {
         "id": worker.id,
         "codename": worker.codename,

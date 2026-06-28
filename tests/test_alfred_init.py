@@ -870,6 +870,17 @@ def test_env_assignments_preserve_malformed_runtime_kill_over_stale_alfredrc(ini
     assert out["ALFRED_AUTO_PROMOTE_KILL"] == "fales"
 
 
+def test_env_assignments_preserve_runtime_judge_stop_over_stale_alfredrc(init_mod, tmp_path):
+    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
+    state.alfred_home.mkdir()
+    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n")
+    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=1\n")
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
+
+
 def test_upsert_alfredrc_idempotent(tmp_path, init_mod):
     rc = tmp_path / ".alfredrc"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")
@@ -966,11 +977,12 @@ def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
         {
             "ALFRED_AUTO_PROMOTE": "0",
             "ALFRED_AUTO_PROMOTE_KILL": "1",
+            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "treu",
             "GH_ORG": "acme",
         },
     )
 
-    assert mirrored == 2
+    assert mirrored == 3
     parsed = init_mod.read_alfredrc(launch_rc)
     assert parsed["MANUAL"] == "value"
     assert parsed["GH_ORG"] == "acme"
@@ -978,6 +990,7 @@ def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
     assert parsed["ALFREDRC"] == str(state.alfredrc)
     assert parsed["ALFRED_AUTO_PROMOTE"] == "0"
     assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert parsed["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
     text = launch_rc.read_text()
     assert text.count(init_mod.ALFREDRC_BANNER) == 1
     assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
@@ -987,15 +1000,17 @@ def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
         {
             "ALFRED_AUTO_PROMOTE": "off",
             "ALFRED_AUTO_PROMOTE_KILL": "1",
+            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0",
         },
     )
 
-    assert mirrored == 2
+    assert mirrored == 3
     parsed = init_mod.read_alfredrc(launch_rc)
     assert parsed["GH_ORG"] == "acme"
     assert parsed["ALFREDRC"] == str(state.alfredrc)
     assert parsed["ALFRED_AUTO_PROMOTE"] == "off"
     assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
+    assert parsed["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "0"
     text = launch_rc.read_text()
     assert text.count(init_mod.ALFREDRC_BANNER) == 1
     assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1

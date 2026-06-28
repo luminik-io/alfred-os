@@ -127,7 +127,7 @@ def test_render_follows_persisted_alfredrc_pointer(tmp_path):
     custom_rc = tmp_path / "custom.alfredrc"
     custom_home = tmp_path / "runtime"
     workspace = tmp_path / "workspace"
-    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc} # scheduler rc\n", encoding="utf-8")
     custom_rc.write_text(
         f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
         encoding="utf-8",

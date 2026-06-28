@@ -113,6 +113,7 @@ __all__ = [
     "WorkerStatus",
     "default_db_path",
     "densify_enabled",
+    "direct_auto_promote_env",
     "edges_for_file_touch",
     "new_id",
     "owners_for_path",
@@ -250,13 +251,32 @@ def _auto_promote_switches_allow_learning(env: Mapping[str, str] | None = None) 
     return _env_flag_default_on("ALFRED_AUTO_PROMOTE", env)
 
 
+def _strip_shell_inline_comment(value: str) -> str:
+    """Strip shell-style inline comments while preserving quoted hashes."""
+    quote: str | None = None
+    escaped = False
+    for index, ch in enumerate(value):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            continue
+        if quote:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            continue
+        if ch == "#" and index > 0 and value[index - 1].isspace():
+            return value[:index].rstrip()
+    return value
+
+
 def _env_token(raw: object) -> str:
     """Normalize env flag values, accepting shell-style trailing comments."""
-    value = str(raw).strip()
-    for index, ch in enumerate(value):
-        if ch == "#" and index > 0 and value[index - 1].isspace():
-            value = value[:index].rstrip()
-            break
+    value = _strip_shell_inline_comment(str(raw)).strip()
     return value.strip().lower()
 
 
@@ -305,7 +325,8 @@ def _load_auto_promote_env_file(
         key = key.strip()
         if not key or key[0].isdigit() or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
             continue
-        value = _decode_env_value(raw_value.strip())
+        raw_value = _strip_shell_inline_comment(raw_value).strip()
+        value = _decode_env_value(raw_value)
         if not (raw_value.startswith("'") and raw_value.endswith("'")):
             value = _expand_home(value)
         if key in env:
@@ -319,7 +340,7 @@ def _load_auto_promote_env_file(
         env[key] = value
 
 
-def _direct_auto_promote_env() -> dict[str, str]:
+def direct_auto_promote_env() -> dict[str, str]:
     env = dict(os.environ)
     selected_rc = Path(env.get("ALFREDRC") or "~/.alfredrc").expanduser()
     env["ALFREDRC"] = str(selected_rc)
@@ -335,6 +356,9 @@ def _direct_auto_promote_env() -> dict[str, str]:
     env.setdefault("ALFRED_HOME", str(Path("~/.alfred").expanduser()))
     _load_auto_promote_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
     return env
+
+
+_direct_auto_promote_env = direct_auto_promote_env
 
 
 def _env_float(name: str, default: float, env: Mapping[str, str] | None = None) -> float:

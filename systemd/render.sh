@@ -56,6 +56,45 @@ if [[ ! -f "$CONF" ]]; then
   exit 1
 fi
 
+strip_inline_comment() {
+  local value="$1" ch quote="" escaped=0 i previous=""
+  for ((i = 0; i < ${#value}; i++)); do
+    ch="${value:i:1}"
+    if [[ "$escaped" -eq 1 ]]; then
+      escaped=0
+      previous="$ch"
+      continue
+    fi
+    if [[ "$ch" == "\\" && "$quote" != "'" ]]; then
+      escaped=1
+      previous="$ch"
+      continue
+    fi
+    if [[ -n "$quote" ]]; then
+      if [[ "$ch" == "$quote" ]]; then
+        quote=""
+      fi
+      previous="$ch"
+      continue
+    fi
+    if [[ "$ch" == "'" || "$ch" == '"' ]]; then
+      quote="$ch"
+      previous="$ch"
+      continue
+    fi
+    if [[ "$ch" == "#" && -n "$previous" && "$previous" =~ [[:space:]] ]]; then
+      printf '%s' "${value:0:i}"
+      return
+    fi
+    previous="$ch"
+  done
+  printf '%s' "$value"
+}
+
+trim_env_value() {
+  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 load_env_file() {
   local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" line key value
   [[ -f "$file" ]] || return 0
@@ -73,6 +112,7 @@ load_env_file() {
         continue
         ;;
     esac
+    value="$(trim_env_value "$(strip_inline_comment "$value")")"
     case "$value" in
       \"*\") value="${value#\"}"; value="${value%\"}" ;;
       \'*\') value="${value#\'}"; value="${value%\'}" ;;

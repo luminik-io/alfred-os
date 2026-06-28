@@ -11,6 +11,12 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 
+def _clean_env(**overrides: str) -> dict[str, str]:
+    env = {**os.environ, **overrides}
+    env.pop("WORKSPACE_ROOT", None)
+    return env
+
+
 def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     home = tmp_path / "home"
     alfred = tmp_path / "alfred"
@@ -50,7 +56,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
 
     res = subprocess.run(
         ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
-        env={**os.environ, "HOME": str(home), "ALFRED_HOME": str(alfred)},
+        env=_clean_env(HOME=str(home), ALFRED_HOME=str(alfred)),
         capture_output=True,
         text=True,
         timeout=10,
@@ -97,7 +103,7 @@ def test_agent_launch_expands_double_quoted_home_path_values(tmp_path):
 
     res = subprocess.run(
         ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
-        env={**os.environ, "HOME": str(home)},
+        env=_clean_env(HOME=str(home)),
         capture_output=True,
         text=True,
         timeout=10,

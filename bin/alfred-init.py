@@ -203,7 +203,11 @@ MORNING_BRIEF_EXCLUDED_ROLES = {
     "shipped_summary_daily",
     "shipped_summary_weekly",
 }
-MEMORY_AUTO_PROMOTE_CONTROL_ENVS = ("ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_KILL")
+MEMORY_AUTO_PROMOTE_CONTROL_ENVS = (
+    "ALFRED_AUTO_PROMOTE",
+    "ALFRED_AUTO_PROMOTE_KILL",
+    "ALFRED_AUTO_PROMOTE_LLM_JUDGE",
+)
 
 # The only strings that count as an explicit opt-in for a privacy-sensitive
 # consent flag. Anything else (including "false", "0", "no", "", or any other
@@ -970,10 +974,10 @@ def memory_auto_promote_control_assignments(state: WizardState) -> dict[str, str
 
 def memory_auto_promote_stop_control_active(key: str, value: str) -> bool:
     """Return true for values that should keep default-on memory paused."""
-    token = value.strip().lower()
+    token = strip_inline_comment(value).strip().lower()
     if not token:
         return False
-    if key == "ALFRED_AUTO_PROMOTE":
+    if key in {"ALFRED_AUTO_PROMOTE", "ALFRED_AUTO_PROMOTE_LLM_JUDGE"}:
         return token not in {"1", "true", "yes", "on", "enabled"}
     if key == "ALFRED_AUTO_PROMOTE_KILL":
         return token not in {"0", "false", "no", "off", "disabled"}
