@@ -112,13 +112,19 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
   // props that launched them, not refs updated later by effects.
   const connectionGenerationRef = useRef(0);
   const connectionSnapshotRef = useRef({ baseUrl, connected });
-  const connectionRestartSeqRef = useRef(0);
+  const reconnectSeqByUrlRef = useRef<Map<string, number>>(new Map());
   if (
     connectionSnapshotRef.current.baseUrl !== baseUrl ||
     connectionSnapshotRef.current.connected !== connected
   ) {
     if (connectionSnapshotRef.current.connected !== connected) {
-      connectionRestartSeqRef.current += 1;
+      const reconnectUrl = baseUrl ?? connectionSnapshotRef.current.baseUrl;
+      if (reconnectUrl) {
+        reconnectSeqByUrlRef.current.set(
+          reconnectUrl,
+          (reconnectSeqByUrlRef.current.get(reconnectUrl) ?? 0) + 1,
+        );
+      }
     }
     connectionGenerationRef.current += 1;
     connectionSnapshotRef.current = { baseUrl, connected };
@@ -140,7 +146,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
         custom: CustomRosterNames;
         seq: number;
         generation: number;
-        restartSeq: number;
+        reconnectSeq: number;
         resolve: (saved: boolean) => void;
       }
     >
@@ -282,7 +288,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       custom: CustomRosterNames,
       seq: number,
       generation: number,
-      restartSeq: number,
+      reconnectSeq: number,
     ): Promise<boolean> => {
       // Only a custom save carries the cast. A preset switch must omit both
       // maps so the server retains the authored custom cast (it replaces the
@@ -332,7 +338,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           if (seq !== latestSeqByUrlRef.current.get(url)) return false;
           if (
             generation !== connectionGenerationRef.current &&
-            restartSeq !== connectionRestartSeqRef.current &&
+            reconnectSeq !== (reconnectSeqByUrlRef.current.get(url) ?? 0) &&
             baseUrlRef.current === url
           ) {
             if (connectedRef.current) {
@@ -378,7 +384,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
               next.custom,
               next.seq,
               next.generation,
-              next.restartSeq,
+              next.reconnectSeq,
             ).then(next.resolve);
           }
         });
@@ -404,6 +410,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
           if (hydratedUrlRef.current === baseUrl) {
             hydratedUrlRef.current = null;
           }
+          clearRuntimeSaveError(baseUrl);
         }
         saveErrorUrlRef.current = null;
         setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
@@ -422,7 +429,7 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
       hydratedUrlRef.current = baseUrl;
       const seq = ++saveSeqRef.current;
       const generation = connectionGenerationRef.current;
-      const restartSeq = connectionRestartSeqRef.current;
+      const reconnectSeq = reconnectSeqByUrlRef.current.get(baseUrl) ?? 0;
       latestSeqByUrlRef.current.set(baseUrl, seq);
       if (inFlightRef.current) {
         // A save is already running. Queue this choice under its runtime url;
@@ -439,12 +446,12 @@ export function useRosterTheme(baseUrl?: string, connected = Boolean(baseUrl)): 
             custom,
             seq,
             generation,
-            restartSeq,
+            reconnectSeq,
             resolve,
           });
         });
       }
-      return runSave(baseUrl, theme, custom, seq, generation, restartSeq);
+      return runSave(baseUrl, theme, custom, seq, generation, reconnectSeq);
     },
     [baseUrl, clearRuntimeSaveError, connected, runSave],
   );

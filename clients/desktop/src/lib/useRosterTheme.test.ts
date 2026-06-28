@@ -628,6 +628,45 @@ describe("useRosterTheme", () => {
     });
   });
 
+  it("does not use another runtime reconnect to suppress a returned runtime failure", async () => {
+    loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
+    let rejectA: (reason?: unknown) => void = () => {};
+    saveRosterTheme.mockReturnValueOnce(
+      new Promise<RosterThemeResponse>((_resolve, reject) => {
+        rejectA = reject;
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ baseUrl, connected }: { baseUrl: string; connected: boolean }) =>
+        useRosterTheme(baseUrl, connected),
+      {
+        initialProps: {
+          baseUrl: "http://127.0.0.1:7010",
+          connected: true,
+        },
+      },
+    );
+
+    let saveResult: Promise<boolean> | null = null;
+    act(() => {
+      saveResult = result.current.setRosterTheme("justice-league");
+    });
+    rerender({ baseUrl: "http://127.0.0.1:7020", connected: true });
+    rerender({ baseUrl: "http://127.0.0.1:7020", connected: false });
+    rerender({ baseUrl: "http://127.0.0.1:7020", connected: true });
+    rerender({ baseUrl: "http://127.0.0.1:7010", connected: true });
+
+    await act(async () => {
+      rejectA(new Error("alfred serve returned 500"));
+    });
+    if (saveResult === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(saveResult).resolves.toBe(false);
+    await waitFor(() => {
+      expect(result.current.saveError).toContain("500");
+    });
+  });
+
   it("a drained successful save on the current runtime clears stale save errors", async () => {
     loadRosterTheme.mockReturnValue(new Promise<RosterThemeResponse>(() => {}));
     let rejectA: (reason?: unknown) => void = () => {};
@@ -705,6 +744,51 @@ describe("useRosterTheme", () => {
     });
 
     expect(result.current.saveError).toContain("Not connected");
+  });
+
+  it("clears stale runtime save errors when an offline edit supersedes them", async () => {
+    loadRosterTheme
+      .mockResolvedValueOnce(serverState({ theme: "batman" }))
+      .mockReturnValueOnce(new Promise<RosterThemeResponse>(() => {}))
+      .mockResolvedValueOnce(serverState({ theme: "batman" }));
+    saveRosterTheme.mockRejectedValueOnce(new Error("alfred serve returned 500"));
+
+    const { result, rerender } = renderHook(
+      ({ connected }: { connected: boolean }) =>
+        useRosterTheme("http://127.0.0.1:7010", connected),
+      { initialProps: { connected: true } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.rosterTheme).toBe("batman");
+    });
+    let failedSave: Promise<boolean> | null = null;
+    act(() => {
+      failedSave = result.current.setRosterTheme("justice-league");
+    });
+    if (failedSave === null) throw new Error("setRosterTheme did not return a save promise");
+    await expect(failedSave).resolves.toBe(false);
+    await waitFor(() => {
+      expect(result.current.saveError).toContain("500");
+    });
+
+    act(() => {
+      rerender({ connected: false });
+    });
+    act(() => {
+      result.current.setRosterTheme("transformers");
+    });
+    expect(result.current.saveError).toContain("Not connected");
+
+    act(() => {
+      rerender({ connected: true });
+    });
+    await waitFor(() => {
+      expect(loadRosterTheme).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(result.current.saveError).toBeNull();
+    });
   });
 
   it("supersedes an in-flight same-runtime save when edited offline", async () => {
