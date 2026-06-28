@@ -703,8 +703,19 @@ export function OnboardingView({
       if (!saved) return;
       if (stepKeyRef.current !== "fleet") return;
     }
-    if (nextKey) goToStep(nextKey);
-  }, [ensureFleetChoiceSaved, goToStep, nextKey, stepKey]);
+    if (!nextKey) return;
+    const targetIndex = ONBOARDING_STEP_ORDER.indexOf(nextKey);
+    const fleetIndex = ONBOARDING_STEP_ORDER.indexOf("fleet");
+    if (stepKey !== "fleet" && targetIndex > fleetIndex && !stepSatisfied("fleet")) {
+      goToStep("fleet", { manual: true });
+      setNotice({
+        tone: "error",
+        message: "Save the fleet naming choice before continuing.",
+      });
+      return;
+    }
+    goToStep(nextKey);
+  }, [ensureFleetChoiceSaved, goToStep, nextKey, stepKey, stepSatisfied]);
 
   const selectStep = useCallback(
     (key: OnboardingStepKey) => {

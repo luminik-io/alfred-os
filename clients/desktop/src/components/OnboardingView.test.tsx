@@ -1091,6 +1091,43 @@ describe("OnboardingView seven-step takeover", () => {
     expect(onRosterThemeChange).toHaveBeenCalledTimes(1);
   });
 
+  it("routes footer Continue back to Fleet after reconnect clears its acknowledgement", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    const onRosterThemeChange = vi.fn(async () => true);
+    const props = onboardingProps({
+      baseUrl: "http://127.0.0.1:7010",
+      connected: true,
+      onRosterThemeChange,
+    });
+    const view = render(<OnboardingView {...props} />);
+    const user = userEvent.setup();
+
+    await gotoStep(user, /^fleet$/i);
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    await waitFor(() =>
+      expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+        /slack/i,
+      ),
+    );
+
+    view.rerender(<OnboardingView {...props} connected={false} />);
+    view.rerender(<OnboardingView {...props} connected />);
+    await user.click(screen.getByRole("button", { name: /^continue$/i }));
+
+    await waitFor(() =>
+      expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+        /fleet/i,
+      ),
+    );
+    expect(screen.getByText(/save the fleet naming choice before continuing/i)).toBeInTheDocument();
+    expect(onRosterThemeChange).toHaveBeenCalledTimes(1);
+  });
+
   it("requires saving a non-default fleet choice in this onboarding session", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
