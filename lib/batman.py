@@ -350,6 +350,26 @@ def _expand_rollout_repo_keys(rollout: list[str], affected: list[str]) -> list[s
     return out
 
 
+def _promote_explicit_rollout_targets(
+    rollout: list[str],
+    affected: list[str],
+    explicit_repo_slugs: dict[str, str],
+) -> None:
+    for repo_key in rollout:
+        if "/" not in repo_key:
+            continue
+        tail = repo_key.rsplit("/", 1)[-1]
+        for idx, target in enumerate(affected):
+            if "/" not in target and target == tail:
+                affected[idx] = repo_key
+                explicit_repo_slugs[repo_key] = repo_key
+    deduped: list[str] = []
+    for repo_key in affected:
+        if repo_key not in deduped:
+            deduped.append(repo_key)
+    affected[:] = deduped
+
+
 def _rollout_order() -> list[str]:
     """Return the configured rollout order.
 
@@ -488,6 +508,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     # 4. Resolve final order.
     rollout_order = _rollout_order()
     if rollout_override:
+        _promote_explicit_rollout_targets(rollout_override, affected, explicit_repo_slugs)
         rollout_override = _expand_rollout_repo_keys(rollout_override, affected)
         for r in rollout_override:
             if r not in affected:
@@ -1284,22 +1305,22 @@ def _parse_children_lines(block: str) -> list[tuple[str, str]]:
     return out
 
 
-def _resolve_child_repo(short: str, affected: list[str]) -> str | None:
-    """Map ``backend`` to ``owner/backend`` using the affected list.
-
-    Trailing-segment match: ``backend`` matches ``my-org/my-backend`` only
-    when no exact ``my-org/backend`` is present. Exact match wins.
-    """
+def _matching_child_repos(short: str, affected: list[str]) -> list[str]:
     short = short.lower()
     full_slug = [r for r in affected if r.lower() == short]
     if full_slug:
-        return full_slug[0]
+        return full_slug
     exact = [r for r in affected if r.split("/", 1)[-1].lower() == short]
     if exact:
-        return exact[0]
-    sub = [r for r in affected if r.split("/", 1)[-1].lower().endswith(short)]
-    if len(sub) == 1:
-        return sub[0]
+        return exact
+    return [r for r in affected if r.split("/", 1)[-1].lower().endswith(short)]
+
+
+def _resolve_child_repo(short: str, affected: list[str]) -> str | None:
+    """Map ``backend`` to one ``owner/backend`` slug using the affected list."""
+    matches = _matching_child_repos(short, affected)
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
@@ -1438,7 +1459,27 @@ def parse_parent_issue(
     bundle_label_str = label_constants.bundle_label(slug)
     base_labels = (label_constants.IMPLEMENT, bundle_label_str)
     children: list[ChildIssue] = []
+    child_resolution_findings: list[PlanReadinessFinding] = []
     for short, child_title in children_pairs:
+        matches = _matching_child_repos(short, repos)
+        if len(matches) > 1:
+            child_resolution_findings.append(
+                PlanReadinessFinding(
+                    code="ambiguous_child_repo",
+                    severity="error",
+                    message=(
+                        f"Child `{short}` matches multiple affected repositories: "
+                        f"{', '.join(matches)}. Use a fully qualified child key."
+                    ),
+                )
+            )
+            logger.warning(
+                "child %r references ambiguous repo %r (%s); skipping",
+                child_title,
+                short,
+                ", ".join(matches),
+            )
+            continue
         full = _resolve_child_repo(short, repos)
         if not full:
             logger.warning("child %r references unknown repo %r; skipping", child_title, short)
@@ -1470,7 +1511,7 @@ def parse_parent_issue(
             for note in loose_scope_notes
         ]
     else:
-        readiness_findings = _assess_plan_readiness(
+        readiness_findings = child_resolution_findings + _assess_plan_readiness(
             affected_repos=repos,
             children=children,
             done_when=done_when,

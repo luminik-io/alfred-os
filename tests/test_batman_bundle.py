@@ -129,6 +129,16 @@ def test_parse_plan_bare_rollout_uses_explicit_affected_slug():
     assert plan.repo_slugs == {"acme/backend": "acme/backend"}
 
 
+def test_parse_plan_explicit_rollout_promotes_bare_affected_repo():
+    import batman as bm
+
+    body = "## Affected Repos\n- backend\n\n## Rollout order\n- acme/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend"]
+    assert plan.repo_slugs == {"acme/backend": "acme/backend"}
+
+
 def test_parse_plan_h2_block_with_comma_separated_payload():
     """PR #121 fix: bare comma-separated payload after the H2 header
     must parse, not silently fall back to the default rollout."""
@@ -546,6 +556,28 @@ We want the same worker in two orgs.
 
     assert [child.repo for child in plan.children] == ["acme/backend", "beta/backend"]
     assert plan.affected_repos == ("acme/backend", "beta/backend")
+
+
+def test_parse_parent_issue_blocks_ambiguous_short_child_repo_key():
+    body = """
+Bundle: shared backend rollout
+
+Repos:
+- acme/backend
+- beta/backend
+
+Children:
+- backend: add the shared worker
+
+Done when:
+- Both backend repos have the shared worker.
+"""
+
+    plan = _parse_parent(body)
+
+    assert plan.children == ()
+    assert any(f.code == "ambiguous_child_repo" for f in plan.readiness_findings)
+    assert plan.readiness_blockers
 
 
 def test_parse_parent_issue_blocks_loose_shape_that_would_guess_default_rollout(
