@@ -1471,7 +1471,7 @@ def parse_parent_issue(
             # falls back to a generic "implement <slug>" stub.
             for repo_key, gh_slug in loose_repos:
                 child_title = f"{repo_key}: implement {slug or 'large-feature'}"
-                children_pairs.append((gh_slug if "/" in repo_key else repo_key, child_title))
+                children_pairs.append((gh_slug, child_title))
             if not done_when:
                 # Reuse the per-repo criteria as a done-when summary so
                 # the Slack plan post is not empty under "Done when".

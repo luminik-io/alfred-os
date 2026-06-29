@@ -598,6 +598,26 @@ We want the same worker in two orgs.
     assert plan.affected_repos == ("acme/backend", "beta/backend")
 
 
+def test_parse_parent_issue_loose_shape_keeps_bare_repo_after_explicit_same_tail():
+    body = """
+We want backend changes in the external app and the local app.
+
+## Affected Repos
+- acme/backend
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the shared worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert {child.repo for child in plan.children} == {"acme/backend", "myorg/backend"}
+    assert set(plan.affected_repos) == {"acme/backend", "myorg/backend"}
+
+
 def test_parse_parent_issue_blocks_ambiguous_short_child_repo_key():
     body = """
 Bundle: shared backend rollout
