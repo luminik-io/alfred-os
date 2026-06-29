@@ -93,12 +93,6 @@ FEATURE: Final[str] = "feature"
 ENHANCEMENT: Final[str] = "enhancement"
 """Human/product enhancement label, not an autonomous implementation gate."""
 
-# Legacy long-form alias kept for backward compatibility with downstream code
-# that imports ``LABEL_AGENT_PLAN_PENDING_APPROVAL`` directly (lib/slack_approval.py,
-# lib/batman.py, and any operator extension code that mirrored the original
-# slack_approval module's naming).
-LABEL_AGENT_PLAN_PENDING_APPROVAL: Final[str] = PLAN_PENDING_APPROVAL
-
 
 def bundle_label(slug: str) -> str:
     """Return the bundle label for a given slug.

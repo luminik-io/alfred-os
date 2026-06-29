@@ -75,7 +75,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, cast, runtime_checkable
 
-from labels import LABEL_AGENT_PLAN_PENDING_APPROVAL
+from labels import PLAN_PENDING_APPROVAL
 
 logger = logging.getLogger("alfred.slack_approval")
 
@@ -146,7 +146,7 @@ class ApprovalResult:
     reactor: str | None = None
     elapsed_s: float = 0.0
     detail: str = ""
-    label_hint: str = field(default=LABEL_AGENT_PLAN_PENDING_APPROVAL)
+    label_hint: str = field(default=PLAN_PENDING_APPROVAL)
     feedback: tuple[ThreadFeedback, ...] = ()
 
     @property
