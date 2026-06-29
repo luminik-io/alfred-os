@@ -96,12 +96,212 @@ def test_set_issue_pickup_requires_configured_allowlist(monkeypatch):
     assert "allowlist is not configured" in detail
 
 
-def test_allowed_queue_repos_accepts_fallback_env(monkeypatch):
+def test_allowed_queue_repos_ignores_board_only_env(monkeypatch):
     monkeypatch.setenv("ALFRED_HOME", "/nonexistent-alfred-home")
     monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
     monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "org/api, org/web")
     monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "org/extra")
-    assert iq.allowed_queue_repos() == {"org/api", "org/web", "org/extra"}
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_keeps_explicit_queue_scope(monkeypatch):
+    monkeypatch.setenv("ALFRED_HOME", "/nonexistent-alfred-home")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "org/queue")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "org/board")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "org/bridge")
+
+    assert iq.allowed_queue_repos() == {"org/queue"}
+
+
+def test_allowed_queue_repos_reads_active_home_env(tmp_path: Path, monkeypatch):
+    home = tmp_path / "runtime"
+    launcher_home = tmp_path / "launcher-runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={launcher_home}\nALFRED_QUEUE_REPOS=org/launcher\n", encoding="utf-8"
+    )
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
+
+    assert iq.allowed_queue_repos() == {"org/runtime"}
+
+
+def test_allowed_queue_repos_honors_empty_active_queue_scope(tmp_path: Path, monkeypatch):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_QUEUE_REPOS=org/launcher\nALFRED_SHIPPED_REPOS=org/board\n",
+        encoding="utf-8",
+    )
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_QUEUE_REPOS=\n", encoding="utf-8")
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_strips_runtime_env_inline_comments(tmp_path: Path, monkeypatch):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(
+        "ALFRED_QUEUE_REPOS=org/allowed # org/disabled disabled\n",
+        encoding="utf-8",
+    )
+
+    assert iq.allowed_queue_repos() == {"org/allowed"}
+
+
+def test_allowed_queue_repos_honors_empty_active_board_scope(tmp_path: Path, monkeypatch):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\n"
+        "ALFRED_QUEUE_REPOS=org/launcher\n"
+        "ALFRED_SHIPPED_REPOS=org/board\n"
+        "ALFRED_BRIDGE_REPOS=org/bridge\n",
+        encoding="utf-8",
+    )
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(
+        "ALFRED_SHIPPED_REPOS=\nALFRED_BRIDGE_REPOS=\n",
+        encoding="utf-8",
+    )
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_ignores_same_home_launcher_board_scope(tmp_path: Path, monkeypatch):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_SHIPPED_REPOS=org/board\n",
+        encoding="utf-8",
+    )
+    home.mkdir(parents=True)
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_ignores_launcher_rc_for_different_runtime_home(
+    tmp_path: Path, monkeypatch
+):
+    launcher_home = tmp_path / "launcher-runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path / "runtime"))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={launcher_home}\nALFRED_QUEUE_REPOS=org/launcher\n",
+        encoding="utf-8",
+    )
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_ignores_launcher_rc_for_matching_runtime_home(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={home}\nALFRED_QUEUE_REPOS=org/launcher\n",
+        encoding="utf-8",
+    )
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_ignores_explicit_alfredrc_home_without_process_home(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFREDRC", str(custom_rc))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    custom_rc.write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_ignores_default_alfredrc_home_without_process_home(
+    tmp_path: Path, monkeypatch
+):
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFREDRC", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
+
+    assert iq.allowed_queue_repos() == set()
+
+
+def test_allowed_queue_repos_matches_connected_runtime_precedence(tmp_path: Path, monkeypatch):
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "org/process")
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+
+    (tmp_path / ".alfredrc").write_text(
+        f"ALFRED_HOME={tmp_path / 'launcher'}\nALFRED_QUEUE_REPOS=org/rc\n", encoding="utf-8"
+    )
+    env_path = home / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text("ALFRED_QUEUE_REPOS=org/env\n", encoding="utf-8")
+
+    assert iq.allowed_queue_repos() == {"org/process"}
 
 
 def test_close_issue_runs_gh_issue_close(monkeypatch):

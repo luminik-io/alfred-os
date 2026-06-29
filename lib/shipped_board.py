@@ -228,14 +228,11 @@ def _now() -> datetime:
 
 
 def _config_value(key: str) -> str:
-    """Resolve a config value from the process env, falling back to
-    ``$ALFRED_HOME/.env``. Returns ``""`` when unset everywhere.
+    """Resolve a config value from the connected ``alfred serve`` runtime.
 
-    Thin alias over the canonical :func:`agent_runner.paths.config_value`. Kept
-    so existing ``shipped_board._config_value`` imports keep working; ``GET
-    /api/shipped`` uses it to resolve the watched repos with the same config the
-    rest of the fleet uses, even when launchd does not inherit the operator's
-    ``.env`` into the process environment.
+    Kept as a thin alias so existing ``shipped_board._config_value`` imports
+    keep working; ``GET /api/shipped`` uses it to resolve watched repos with
+    the same config setup status reports for the connected runtime.
     """
     return config_value(key)
 

@@ -46,6 +46,7 @@ QUEUE_REPOS_ENV = "ALFRED_QUEUE_REPOS"
 SHIPPED_REPOS_ENV = "ALFRED_SHIPPED_REPOS"
 BRIDGE_REPOS_ENV = "ALFRED_BRIDGE_REPOS"
 _REPO_ENV_KEYS = (QUEUE_REPOS_ENV, SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
+_BOARD_REPO_ENV_KEYS = (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -111,6 +112,34 @@ def decode_env_value(value: str) -> str:
     return value
 
 
+def _strip_inline_comment(value: str) -> str:
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
 def _setup_config_value(key: str, default: str = "") -> str:
     return _runtime_config_value(key, default)
 
@@ -118,6 +147,7 @@ def _setup_config_value(key: str, default: str = "") -> str:
 def _runtime_config_env() -> dict[str, str]:
     env = dict(os.environ)
     protected = {key for key, value in os.environ.items() if value.strip()}
+    protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
     raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
@@ -126,6 +156,24 @@ def _runtime_config_env() -> dict[str, str]:
         env["ALFRED_HOME"] = str(runtime_home)
     _load_launcher_env_file(runtime_home / ".env", env, protected_keys=protected)
     return env
+
+
+_SLACK_CONFIG_KEYS = (
+    "SLACK_WEBHOOK_URL",
+    "SLACK_WEBHOOK_SECRET_ID",
+    "SLACK_BOT_TOKEN",
+    "ALFRED_SLACK_BOT_TOKEN_SECRET_ID",
+    "SLACK_APP_TOKEN",
+    "ALFRED_SLACK_APP_TOKEN",
+)
+
+_MEMORY_CONFIG_KEYS = (
+    "ALFRED_REDIS_MEMORY_URL",
+    "ALFRED_REDIS_MEMORY_NAMESPACE",
+    "ALFRED_AMS_HOST",
+    "ALFRED_AMS_PORT",
+    "ALFRED_AMS_REDIS_URL",
+)
 
 
 def _runtime_config_value(key: str, default: str = "") -> str:
@@ -185,25 +233,68 @@ def normalize_repo_slugs(values: Any) -> list[str]:
     return out
 
 
-def selected_repos() -> list[str]:
-    """The repos currently scoped to Alfred, from the config the fleet reads.
+def selected_repos(env: dict[str, str] | None = None) -> list[str]:
+    """The board-visible repos selected for first-run setup.
 
-    Reads the queue allowlist (``allowed_queue_repos``) so the Set up surface
-    shows the same scope queue/hold/close actually enforce. Sorted for a stable
-    render.
+    Setup owns the board/bridge repo picker, not the narrower queue mutation
+    scope. Reading only ``ALFRED_SHIPPED_REPOS`` / ``ALFRED_BRIDGE_REPOS`` keeps
+    queue-only repos from being pre-checked and then accidentally written back as
+    board-visible repos.
     """
-    return sorted(_allowed_queue_repos())
+    if env is not None:
+        return sorted(_repos_from_env(env, _BOARD_REPO_ENV_KEYS))
+
+    runtime_env = _runtime_config_env()
+    repos = _repos_from_env(runtime_env, _BOARD_REPO_ENV_KEYS)
+    if repos or any(_has_config_key(runtime_env, key) for key in _BOARD_REPO_ENV_KEYS):
+        return sorted(repos)
+    return []
+
+
+def setup_board_repos(env: dict[str, str] | None = None) -> list[str]:
+    """Repos that make the setup board usable.
+
+    Queue-only scope is enough for hold/queue/done mutations, but the Home board
+    scans ``ALFRED_SHIPPED_REPOS`` / ``ALFRED_BRIDGE_REPOS``. Setup readiness
+    must therefore key off the board-visible repo knobs, not the broader queue
+    allowlist.
+    """
+    resolved = env or _runtime_config_env()
+    return sorted(_repos_from_env(resolved, _BOARD_REPO_ENV_KEYS))
 
 
 # --------------------------------------------------------------------------- #
 # .env writer
 # --------------------------------------------------------------------------- #
-def _env_path() -> Path:
-    return _alfred_home(dict(os.environ)) / ".env"
+def _env_path(env: dict[str, str] | None = None) -> Path:
+    resolved = env if env is not None else dict(os.environ)
+    return _alfred_home(resolved) / ".env"
+
+
+def _alfred_home(env: dict[str, str] | None = None) -> Path:
+    source = dict(os.environ) if env is None else env
+    raw = str(source.get("ALFRED_HOME", "")).strip()
+    if raw:
+        path = _safe_expand_path(raw)
+        if path:
+            return path
+        return Path(raw)
+    return _default_alfred_home(source)
 
 
 def _format_repo_value(repos: list[str]) -> str:
     return ",".join(repos)
+
+
+def _repos_from_env(
+    env: dict[str, str],
+    keys: tuple[str, ...] = _REPO_ENV_KEYS,
+) -> set[str]:
+    repos: set[str] = set()
+    for key in keys:
+        raw = _code_memory_config(env, key)
+        repos.update(normalize_repo_slugs(re.split(r"[\s,]+", raw)))
+    return repos
 
 
 def write_env_values(values: dict[str, str]) -> Path:
@@ -226,6 +317,11 @@ def write_env_values(values: dict[str, str]) -> Path:
             raise ValueError("env values may not contain newlines")
 
     path = _env_path()
+    _write_env_file_values(path, values)
+    return path
+
+
+def _write_env_file_values(path: Path, values: dict[str, str], *, export: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         existing = path.read_text(encoding="utf-8").splitlines()
@@ -237,13 +333,16 @@ def write_env_values(values: dict[str, str]) -> Path:
     for line in existing:
         stripped = line.strip()
         if stripped and not stripped.startswith("#") and "=" in stripped:
-            name = stripped.partition("=")[0].strip()
+            raw_name = stripped.partition("=")[0].strip()
+            name = raw_name.removeprefix("export ").strip()
             if name in remaining:
-                out_lines.append(f"{name}={remaining.pop(name)}")
+                prefix = "export " if export else ""
+                out_lines.append(f"{prefix}{name}={remaining.pop(name)}")
                 continue
         out_lines.append(line)
     for name, value in remaining.items():
-        out_lines.append(f"{name}={value}")
+        prefix = "export " if export else ""
+        out_lines.append(f"{prefix}{name}={value}")
 
     body = "\n".join(out_lines).rstrip("\n") + "\n"
     tmp = path.with_name(f"{path.name}.tmp")
@@ -255,34 +354,81 @@ def write_env_values(values: dict[str, str]) -> Path:
     os.replace(tmp, path)
     with suppress(OSError):
         os.chmod(path, 0o600)
-    return path
 
 
-def persist_selected_repos(repos: list[str]) -> dict[str, Any]:
+def persist_selected_repos(
+    repos: list[str],
+    *,
+    queue_repos: list[str] | None = None,
+    replace_queue_repos: bool = False,
+) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
-    Writes the queue + shipped allowlist keys to ``.env`` AND updates
-    ``os.environ`` so the change takes effect for this running server without a
-    restart (``config_value`` prefers the process env, and a fresh board /
-    queue call then sees the new scope immediately). Returns the persisted
-    config so the client can show it back transparently.
+    Writes the board allowlist keys to ``.env`` and updates ``os.environ`` so
+    the change takes effect for this running server without a restart
+    (``config_value`` prefers the process env, and a fresh board call then sees
+    the new scope immediately). Queue mutation scope is only written when the
+    caller supplies ``queue_repos`` explicitly and there is no existing queue
+    scope. Existing queue scopes are only replaced by ``replace_queue_repos``.
     """
     clean = normalize_repo_slugs(repos)
-    value = _format_repo_value(clean)
-    env_path = write_env_values(dict.fromkeys(_REPO_ENV_KEYS, value))
-    for key in _REPO_ENV_KEYS:
+    clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
+    values = _repo_scope_values_for_save(
+        clean,
+        queue_repos=clean_queue,
+        replace_queue_repos=replace_queue_repos,
+    )
+    env_path = write_env_values(values)
+    for key in values:
         # Mirror into the live process so the new scope is effective now. An
         # empty selection clears the override so the resolver falls back to the
         # .env value (also empty), which is the honest "nothing scoped" state.
-        if value:
-            os.environ[key] = value
+        if values[key]:
+            os.environ[key] = values[key]
         else:
             os.environ.pop(key, None)
     return {
         "repos": clean,
         "env_path": str(env_path),
-        "keys": list(_REPO_ENV_KEYS),
+        "keys": list(values),
     }
+
+
+def _repo_scope_values_for_save(
+    repos: list[str],
+    *,
+    queue_repos: list[str] | None = None,
+    replace_queue_repos: bool = False,
+) -> dict[str, str]:
+    """Repo keys to persist for a setup repo save.
+
+    The onboarding repo picker owns the board-visible scope. Queue scope is a
+    mutation boundary, so guided saves can seed it on fresh installs but must
+    preserve any existing queue scope. Replacing an existing queue allowlist
+    requires ``replace_queue_repos`` so board visibility cannot widen mutation
+    permissions as a side effect.
+    """
+
+    value = _format_repo_value(repos)
+    values = {
+        SHIPPED_REPOS_ENV: value,
+        BRIDGE_REPOS_ENV: value,
+    }
+    runtime_env = _runtime_config_env()
+    queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
+    if queue_repos is not None and (replace_queue_repos or not queue_scope_present):
+        return {QUEUE_REPOS_ENV: _format_repo_value(queue_repos), **values}
+
+    if queue_scope_present:
+        values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
+    return values
+
+
+def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, list[str]]:
+    runtime_queue = _repos_from_env(runtime_env, (QUEUE_REPOS_ENV,))
+    if runtime_queue or _has_config_key(runtime_env, QUEUE_REPOS_ENV):
+        return True, sorted(runtime_queue)
+    return False, []
 
 
 # --------------------------------------------------------------------------- #
@@ -373,7 +519,7 @@ def engine_clis() -> list[dict[str, Any]]:
     return out
 
 
-def code_memory_status() -> dict[str, Any]:
+def code_memory_status(env: dict[str, str] | None = None) -> dict[str, Any]:
     """Detect the optional code-structure memory layer without mutating state.
 
     ``bin/code-memory-mcp doctor`` may auto-fetch the pinned upstream binary,
@@ -382,7 +528,7 @@ def code_memory_status() -> dict[str, Any]:
     pinned launcher metadata, and the existing index directory.
     """
 
-    launcher_env = _code_memory_launcher_env()
+    launcher_env = env or _code_memory_launcher_env()
     enabled = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_MCP", default=True)
     autofetch = _config_flag(launcher_env, "ALFRED_CODE_MEMORY_AUTOFETCH", default=True)
     binary = _code_memory_binary(launcher_env)
@@ -674,22 +820,13 @@ def _join_search_path(paths: tuple[str, ...], inherited_path: str) -> str:
 
 
 def _code_memory_launcher_env() -> dict[str, str]:
-    """Return the env shape ``bin/code-memory-mcp`` sees after its loaders run."""
+    """Return setup-visible code-memory config for the connected runtime."""
 
-    env = dict(os.environ)
-    protected = {key for key, value in os.environ.items() if value.strip()}
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = str(_default_alfred_home(env))
-    home = _safe_home(env)
-    if home:
-        _load_launcher_env_file(home / ".alfredrc", env, protected_keys=protected)
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = str(_default_alfred_home(env))
-    alfred_home = _safe_expand_path(env["ALFRED_HOME"])
-    if alfred_home:
-        _load_launcher_env_file(alfred_home / ".env", env, protected_keys=protected)
-    if not env.get("ALFRED_HOME", "").strip():
-        env["ALFRED_HOME"] = str(_default_alfred_home(env))
+    env = _runtime_config_env()
+    if not env.get("WORKSPACE_ROOT", "").strip():
+        home = _safe_home(env)
+        if home:
+            env["WORKSPACE_ROOT"] = str(home / "code")
     return env
 
 
@@ -715,7 +852,7 @@ def _load_launcher_env_file(
             continue
         if key in protected_keys:
             continue
-        decoded = decode_env_value(value.strip())
+        decoded = decode_env_value(_strip_inline_comment(value).strip())
         home = _safe_home(env)
         if home:
             decoded = decoded.replace("${HOME}", str(home)).replace("$HOME", str(home))
@@ -731,16 +868,6 @@ def _config_flag(env: dict[str, str], key: str, *, default: bool) -> bool:
     if raw == "":
         return default
     return raw not in _FALSEY
-
-
-def _alfred_home(env: dict[str, str]) -> Path:
-    raw = _code_memory_config(env, "ALFRED_HOME")
-    if raw:
-        path = _safe_expand_path(raw)
-        if path:
-            return path
-        return Path(raw)
-    return _default_alfred_home(env)
 
 
 def _code_memory_index_dir(env: dict[str, str]) -> Path:
@@ -1013,14 +1140,19 @@ def bootstrap_status() -> dict[str, Any]:
     Surfaces what is connected vs missing with a next action per row:
     GitHub auth, at least one engine CLI, the watched-repo selection, and a
     demo-present flag. ``ready`` is the golden-path gate: gh authed + at least
-    one engine + at least one repo selected (no AWS / Slack required).
+    one engine + at least one board-visible repo selected and covered by queue
+    scope (no AWS / Slack required).
     """
     gh = gh_auth_status()
     engines = engine_clis()
-    repos = selected_repos()
+    runtime_env = _runtime_config_env()
+    repos = setup_board_repos(runtime_env)
+    queue_repos = _setup_queue_repos_for_status(runtime_env)
+    queue_missing = sorted(set(repos) - queue_repos)
+    queue_covers_selected = bool(repos) and not queue_missing
     any_engine = any(e["installed"] for e in engines)
-    code_memory = code_memory_status()
-    capability_plane = capability_status(code_memory)
+    code_memory = code_memory_status(runtime_env)
+    capability_plane = capability_status(code_memory, launcher_env=runtime_env)
     return {
         "github": gh,
         "engines": engines,
@@ -1032,9 +1164,187 @@ def bootstrap_status() -> dict[str, Any]:
             "count": len(repos),
             "keys": list(_REPO_ENV_KEYS),
         },
+        "queue": {
+            "ready": bool(queue_repos),
+            "count": len(queue_repos),
+            "covers_selected": queue_covers_selected,
+            "missing_selected": queue_missing,
+        },
         "demo": {"present": any(load_demo_cards().values())},
-        "ready": bool(gh["ok"] and any_engine and repos),
+        "install": install_inventory(repos=repos, env=runtime_env),
+        "ready": bool(gh["ok"] and any_engine and repos and queue_repos and queue_covers_selected),
     }
+
+
+def _setup_queue_repos_for_status(env: dict[str, str]) -> set[str]:
+    return _repos_from_env(env, (QUEUE_REPOS_ENV,))
+
+
+def install_inventory(
+    *,
+    repos: list[str] | None = None,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Read-only inventory of an existing Alfred install.
+
+    The desktop onboarding uses this to show what Alfred already found on the
+    machine. It deliberately exposes only paths, booleans, counts, and
+    plain-language detail, never secret values from ``.env`` or the server token.
+    """
+
+    from . import schedule as setup_schedule
+
+    resolved_env = env or _runtime_config_env()
+    home = _alfred_home(resolved_env)
+    env_path = home / ".env"
+    token_path = home / "state" / "server-token"
+    conf_path = _install_agents_conf_path(home)
+    scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
+    selected = repos if repos is not None else setup_board_repos(resolved_env)
+    selected_env_present = any(_has_config_key(resolved_env, key) for key in _REPO_ENV_KEYS)
+    board_env_present = any(_has_config_key(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
+    slack_configured = any(_has_config_value(resolved_env, key) for key in _SLACK_CONFIG_KEYS)
+    memory_overridden = any(_has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS)
+    memory_detail = (
+        "Custom Redis Agent Memory settings found."
+        if memory_overridden
+        else "Using bundled local Redis Agent Memory defaults."
+    )
+
+    items = [
+        _inventory_item(
+            "home",
+            "Runtime home",
+            home.exists(),
+            f"{'Found' if home.exists() else 'Will create'} {home}",
+            home,
+        ),
+        _inventory_item(
+            "env",
+            "Configuration file",
+            env_path.is_file(),
+            f"{'Found' if env_path.is_file() else 'Not created yet'} {env_path}",
+            env_path,
+        ),
+        _inventory_item(
+            "agents",
+            "Scheduled fleet",
+            bool(conf_path and conf_path.is_file()),
+            (
+                f"{len(scheduled_runs)} enabled scheduled run"
+                f"{'' if len(scheduled_runs) == 1 else 's'} in agents.conf"
+                if conf_path and conf_path.is_file()
+                else "No deployed agents.conf found yet"
+            ),
+            conf_path,
+        ),
+        _inventory_item(
+            "repos",
+            "Repository scope",
+            bool(selected),
+            (
+                f"{len(selected)} board-visible repos in {', '.join(_BOARD_REPO_ENV_KEYS)}"
+                if selected
+                else (
+                    "Queue-only repo scope found; save repositories to wire the board."
+                    if selected_env_present and not board_env_present
+                    else "No repositories selected yet"
+                )
+            ),
+            env_path if selected_env_present else None,
+        ),
+        _inventory_item(
+            "slack",
+            "Slack approvals",
+            slack_configured,
+            (
+                "Slack webhook or app tokens are configured."
+                if slack_configured
+                else "Optional. Not configured yet."
+            ),
+            env_path if slack_configured else None,
+            optional=True,
+        ),
+        _inventory_item(
+            "memory",
+            "Memory layer",
+            True,
+            memory_detail,
+            env_path if memory_overridden else None,
+        ),
+        _inventory_item(
+            "token",
+            "Desktop mutation token",
+            token_path.is_file(),
+            (
+                "Runtime token is present for desktop actions."
+                if token_path.is_file()
+                else "Start the runtime to create the desktop action token."
+            ),
+            token_path.parent,
+        ),
+    ]
+
+    initialized = any(
+        (
+            home.exists(),
+            env_path.is_file(),
+            bool(conf_path and conf_path.is_file()),
+            bool(selected),
+            token_path.is_file(),
+        )
+    )
+    return {
+        "alfred_home": str(home),
+        "env_path": str(env_path),
+        "env_present": env_path.is_file(),
+        "server_token_present": token_path.is_file(),
+        "agents_conf_path": str(conf_path) if conf_path else None,
+        "agents_conf_present": bool(conf_path and conf_path.is_file()),
+        "scheduled_runs": len(scheduled_runs),
+        "selected_repos_env_present": selected_env_present,
+        "slack_configured": slack_configured,
+        "memory_configured": memory_overridden,
+        "initialized": initialized,
+        "items": items,
+    }
+
+
+def _inventory_item(
+    key: str,
+    label: str,
+    ok: bool,
+    detail: str,
+    path: Path | None = None,
+    *,
+    optional: bool = False,
+) -> dict[str, Any]:
+    return {
+        "key": key,
+        "label": label,
+        "ok": bool(ok),
+        "detail": detail,
+        "path": str(path) if path else None,
+        "optional": optional,
+    }
+
+
+def _install_agents_conf_path(home: Path) -> Path | None:
+    for conf in (
+        home / "launchd" / "agents.conf",
+        home / "infra" / "agents" / "launchd" / "agents.conf",
+    ):
+        if conf.is_file():
+            return conf
+    return None
+
+
+def _has_config_value(env: dict[str, str], key: str) -> bool:
+    return bool(_code_memory_config(env, key))
+
+
+def _has_config_key(env: dict[str, str], key: str) -> bool:
+    return key in env
 
 
 def list_owner_repos(limit: int = 100) -> dict[str, Any]:

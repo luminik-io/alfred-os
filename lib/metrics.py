@@ -163,7 +163,7 @@ def _spend_files(state_dir: Path, codename: str, days: int) -> list[Path]:
     agent_root = state_dir / codename
     if not agent_root.is_dir():
         return []
-    cutoff = datetime.now().date() - timedelta(days=max(0, days - 1))
+    cutoff = datetime.now(UTC).date() - timedelta(days=max(0, days - 1))
     out: list[Path] = []
     for path in agent_root.glob("spend-*.json"):
         try:

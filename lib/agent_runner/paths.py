@@ -26,6 +26,7 @@ constant you need, do not subclass anything here.
 from __future__ import annotations
 
 import os
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -33,6 +34,17 @@ from pathlib import Path
 # Operator home + workspace
 # --------------------------------------------------------------------------
 HOME: Path = Path(os.path.expanduser("~"))
+_ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_REPO_SCOPE_ENV_KEYS = {
+    "ALFRED_QUEUE_REPOS",
+    "ALFRED_SHIPPED_REPOS",
+    "ALFRED_BRIDGE_REPOS",
+}
+_CODE_MEMORY_ENV_KEYS = {
+    "ALFRED_CODE_MEMORY_*",
+    "ALFRED_CODE_MAP_REPOS",
+}
+_SETUP_MANAGED_RUNTIME_ENV_KEYS = _REPO_SCOPE_ENV_KEYS | _CODE_MEMORY_ENV_KEYS
 
 ALFRED_HOME: Path = Path(os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred"))
 """Public runtime root. State, worktrees, transcripts, lib, bin live here."""
@@ -175,25 +187,236 @@ def decode_env_value(value: str) -> str:
     return value
 
 
+def _strip_inline_comment(value: str) -> str:
+    """Strip shell-style inline comments the same way ``agent-launch`` does."""
+
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
+def _env_file_entry(path: Path, key: str) -> tuple[bool, str]:
+    try:
+        with path.open(encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("export "):
+                    line = line.removeprefix("export ").strip()
+                if "=" not in line:
+                    continue
+                name, _, value = line.partition("=")
+                if name.strip() == key:
+                    value = _strip_inline_comment(value)
+                    return True, decode_env_value(value.strip()).strip()
+    except OSError:
+        pass
+    return False, ""
+
+
+def runtime_home() -> Path:
+    """Resolve the connected runtime home."""
+
+    raw_home = os.environ.get("ALFRED_HOME", "").strip()
+    if raw_home:
+        return Path(raw_home).expanduser()
+    return Path(os.path.expanduser("~/.alfred"))
+
+
+def _same_runtime_home(left: Path, right: Path) -> bool:
+    return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
+
+
 def config_value(key: str, default: str = "") -> str:
     """Resolve a config value from process env, then ``$ALFRED_HOME/.env``."""
 
     val = os.environ.get(key, "").strip()
     if val:
         return val
-    home = os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")
-    try:
-        with open(Path(home) / ".env", encoding="utf-8") as fh:
-            for raw_line in fh:
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                name, _, value = line.partition("=")
-                if name.strip() == key:
-                    return decode_env_value(value.strip())
-    except OSError:
-        pass
+    present, value = _env_file_entry(runtime_home() / ".env", key)
+    if present:
+        return value
     return default
+
+
+def launcher_env() -> dict[str, str]:
+    """Return the env shape scheduler-spawned agents see through ``agent-launch``.
+
+    The shell launcher loads ``~/.alfredrc`` first, resolves ``ALFRED_HOME``,
+    then loads ``$ALFRED_HOME/.env`` in no-clobber mode. Keep this helper in
+    lockstep with that order so server-side setup/status surfaces report the
+    same config the scheduled fleet will enforce after a restart.
+    """
+
+    home = Path(os.path.expanduser("~"))
+    env = dict(os.environ)
+    if not env.get("ALFRED_HOME", "").strip():
+        env.pop("ALFRED_HOME", None)
+    inherited_keys = set(env)
+    rc_path = _selected_alfredrc_path(env, home)
+    direct_selected_alfredrc = "ALFREDRC" in inherited_keys and bool(
+        env.get("ALFREDRC", "").strip()
+    )
+    env["ALFREDRC"] = str(rc_path)
+    rc_env: dict[str, str] = {}
+    load_env_file(rc_path, rc_env)
+    blocked_rc_keys = _blocked_setup_runtime_keys_for_rc(
+        env, rc_env, direct_selected_alfredrc, inherited_keys
+    )
+    if rc_env:
+        rc_clobber_keys = {"ALFREDRC"}
+        if direct_selected_alfredrc:
+            rc_clobber_keys.update({"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"})
+        load_env_file(
+            rc_path,
+            env,
+            no_clobber=True,
+            clobber_keys=rc_clobber_keys,
+            skip_keys=blocked_rc_keys,
+        )
+    if env.get("ALFREDRC", "").strip() and env["ALFREDRC"] != str(rc_path):
+        rc_path = _selected_alfredrc_path(env, home)
+        env["ALFREDRC"] = str(rc_path)
+        if not direct_selected_alfredrc and not env.get("ALFRED_HOME", "").strip():
+            env["ALFRED_HOME"] = str(home / ".alfred")
+        pointed_rc_env: dict[str, str] = {}
+        load_env_file(rc_path, pointed_rc_env)
+        blocked_rc_keys = _blocked_setup_runtime_keys_for_rc(
+            env, pointed_rc_env, direct_selected_alfredrc, inherited_keys
+        )
+        pointed_preserve_keys = set(inherited_keys)
+        if not direct_selected_alfredrc:
+            pointed_preserve_keys.add("ALFRED_HOME")
+        load_env_file(
+            rc_path,
+            env,
+            no_clobber=True,
+            clobber_keys={
+                "ALFRED_HOME",
+                "ALFRED_FLEET_BRAIN_DB",
+            }
+            | _SETUP_MANAGED_RUNTIME_ENV_KEYS,
+            preserve_keys=pointed_preserve_keys,
+            skip_keys=blocked_rc_keys,
+            file_overrides_existing=True,
+        )
+    if not env.get("ALFRED_HOME", "").strip():
+        env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
+    else:
+        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
+    load_env_file(
+        Path(env["ALFRED_HOME"]) / ".env",
+        env,
+        no_clobber=True,
+        clobber_keys=_SETUP_MANAGED_RUNTIME_ENV_KEYS,
+        preserve_keys=inherited_keys,
+    )
+    if not env.get("WORKSPACE_ROOT", "").strip():
+        env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
+    return env
+
+
+def _selected_alfredrc_path(env: dict[str, str], home: Path) -> Path:
+    raw = env.get("ALFREDRC", "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return home / ".alfredrc"
+
+
+def _blocked_setup_runtime_keys_for_rc(
+    env: dict[str, str],
+    rc_env: dict[str, str],
+    direct_selected_alfredrc: bool,
+    inherited_keys: set[str],
+) -> set[str] | None:
+    process_home = env.get("ALFRED_HOME", "").strip()
+    if not process_home or direct_selected_alfredrc:
+        return None
+    effective_home = Path(process_home).expanduser()
+    rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
+    if _same_runtime_home(effective_home, rc_home):
+        return None
+    return _SETUP_MANAGED_RUNTIME_ENV_KEYS
+
+
+def _env_key_matches(key: str, patterns: set[str]) -> bool:
+    if key in patterns:
+        return True
+    return "ALFRED_CODE_MEMORY_*" in patterns and key.startswith("ALFRED_CODE_MEMORY_")
+
+
+def launcher_config_value(key: str, default: str = "") -> str:
+    """Resolve one config key using ``agent-launch`` precedence."""
+
+    return launcher_env().get(key, "").strip() or default
+
+
+def load_env_file(
+    path: Path,
+    env: dict[str, str],
+    *,
+    no_clobber: bool = False,
+    clobber_keys: set[str] | None = None,
+    preserve_keys: set[str] | None = None,
+    skip_keys: set[str] | None = None,
+    file_overrides_existing: bool = False,
+) -> None:
+    """Load a dotenv/shell-rc file into ``env`` with ``agent-launch`` semantics."""
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line.removeprefix("export ").strip()
+        if "=" not in line:
+            continue
+        key, _, raw_value = line.partition("=")
+        key = key.strip()
+        if not _ENV_KEY_RE.match(key):
+            continue
+        if skip_keys is not None and _env_key_matches(key, skip_keys):
+            continue
+        can_clobber = file_overrides_existing or (
+            clobber_keys is not None and _env_key_matches(key, clobber_keys)
+        )
+        protected = preserve_keys is not None and key in preserve_keys
+        if no_clobber and key in env and (not can_clobber or protected):
+            continue
+        value = _strip_inline_comment(raw_value).strip()
+        single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"
+        decoded = decode_env_value(value)
+        if not single_quoted:
+            home = str(Path(os.path.expanduser("~")))
+            decoded = decoded.replace("${HOME}", home).replace("$HOME", home)
+        env[key] = decoded
 
 
 # --------------------------------------------------------------------------

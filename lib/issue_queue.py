@@ -18,11 +18,15 @@ works in the launchd server's bare PATH, not just the cron agents' fuller one.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import subprocess
+from pathlib import Path
 
+from agent_runner.paths import decode_env_value
+from agent_runner.paths import runtime_home as agent_runtime_home
 from labels import DO_NOT_PICKUP, IMPLEMENT, PLAN_PENDING_APPROVAL
-from shipped_board import _config_value, _gh_bin, _gh_subprocess_env
+from shipped_board import _gh_bin, _gh_subprocess_env
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +35,61 @@ _SLUG_NUM_RE = re.compile(r"^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)[#\s]+(\d+)$")
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 QUEUE_ACTIONS = ("queue", "hold", "done")
-_ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS", "ALFRED_BRIDGE_REPOS")
+_ALLOWLIST_ENV = ("ALFRED_QUEUE_REPOS",)
+
+
+def _strip_inline_comment(value: str) -> str:
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
+def _runtime_config_entry(key: str) -> tuple[bool, str]:
+    """Return ``(present, value)`` from process env / active runtime .env."""
+
+    if key in os.environ:
+        return True, os.environ.get(key, "").strip()
+    home = _runtime_home()
+    try:
+        for raw_line in (home / ".env").read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line.removeprefix("export ").strip()
+            name, _, raw_value = line.partition("=")
+            if name.strip() == key:
+                value = _strip_inline_comment(raw_value).strip()
+                return True, decode_env_value(value).strip()
+    except OSError:
+        pass
+    return False, ""
+
+
+def _runtime_home() -> Path:
+    return agent_runtime_home()
 
 
 def parse_issue_ref(text: str) -> tuple[str, int] | None:
@@ -61,9 +119,11 @@ def allowed_queue_repos() -> set[str]:
     so it must be scoped at least as tightly as the Slack issue bridge. Require
     an explicit allowlist and never infer from arbitrary GitHub access.
     """
+    queue_present, _ = _runtime_config_entry("ALFRED_QUEUE_REPOS")
+    env_names = ("ALFRED_QUEUE_REPOS",) if queue_present else _ALLOWLIST_ENV
     repos: set[str] = set()
-    for env_name in _ALLOWLIST_ENV:
-        raw = _config_value(env_name)
+    for env_name in env_names:
+        _, raw = _runtime_config_entry(env_name)
         for item in re.split(r"[\s,]+", raw):
             repo = item.strip().lower()
             if repo:
@@ -94,8 +154,7 @@ def set_issue_pickup(repo: str, number: int, *, hold: bool) -> tuple[bool, str]:
     if not allowed:
         return (
             False,
-            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS, "
-            "ALFRED_SHIPPED_REPOS, or ALFRED_BRIDGE_REPOS",
+            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS",
         )
     if repo.lower() not in allowed:
         return False, f"repo not in Alfred queue allowlist: {repo}"
@@ -171,8 +230,7 @@ def close_issue(repo: str, number: int) -> tuple[bool, str]:
     if not allowed:
         return (
             False,
-            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS, "
-            "ALFRED_SHIPPED_REPOS, or ALFRED_BRIDGE_REPOS",
+            "queue repo allowlist is not configured; set ALFRED_QUEUE_REPOS",
         )
     if repo.lower() not in allowed:
         return False, f"repo not in Alfred queue allowlist: {repo}"

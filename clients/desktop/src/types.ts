@@ -524,6 +524,30 @@ export type SetupCapabilityPlane = {
   capabilities: SetupCapability[];
 };
 
+export type SetupInstallItem = {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail: string;
+  path: string | null;
+  optional?: boolean;
+};
+
+export type SetupInstallInventory = {
+  alfred_home: string;
+  env_path: string;
+  env_present: boolean;
+  server_token_present: boolean;
+  agents_conf_path: string | null;
+  agents_conf_present: boolean;
+  scheduled_runs: number;
+  selected_repos_env_present: boolean;
+  slack_configured: boolean;
+  memory_configured: boolean;
+  initialized: boolean;
+  items: SetupInstallItem[];
+};
+
 export type SetupStatus = {
   github: SetupGithub;
   engines: SetupEngine[];
@@ -531,7 +555,14 @@ export type SetupStatus = {
   code_memory?: SetupCodeMemory;
   capability_plane?: SetupCapabilityPlane;
   repos: { selected: string[]; count: number; keys: string[] };
+  queue?: {
+    ready: boolean;
+    count: number;
+    covers_selected?: boolean;
+    missing_selected?: string[];
+  };
   demo: { present: boolean };
+  install?: SetupInstallInventory;
   ready: boolean;
   error?: string;
 };

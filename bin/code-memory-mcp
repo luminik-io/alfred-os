@@ -29,6 +29,26 @@
 # no-op (exit 0) so attaching the MCP server is always safe.
 
 set -uo pipefail
+ORIGINAL_ENV_KEYS="$(env | awk -F= '{print $1}')"
+ORIGINAL_ALFRED_HOME_PRESENT=0
+[ -n "${ALFRED_HOME+x}" ] && ORIGINAL_ALFRED_HOME_PRESENT=1
+
+if [ "$ORIGINAL_ALFRED_HOME_PRESENT" -eq 1 ] && [ -z "${ALFRED_HOME:-}" ]; then
+  unset ALFRED_HOME
+  ORIGINAL_ALFRED_HOME_PRESENT=0
+fi
+
+env_key_was_original() {
+  local key="$1"
+  case "
+$ORIGINAL_ENV_KEYS
+" in
+    *"
+$key
+"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # --- pinned upstream release ------------------------------------------------
 # The pinned version and the per-platform sha256 digests below MUST move
@@ -62,32 +82,71 @@ pinned_sha256() {
 
 log() { printf '[code-memory-mcp] %s\n' "$*" >&2; }
 
-capture_inherited_env_keys() {
-  local line key value
-  env | while IFS='=' read -r key value || [ -n "${key:-}" ]; do
-    case "$key" in
-      ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
-    esac
-    [ -n "${value:-}" ] || continue
-    printf '%s\n' "$key"
+strip_inline_comment() {
+  local value="$1" ch quote="" escaped=0 i previous=""
+  for ((i = 0; i < ${#value}; i++)); do
+    ch="${value:i:1}"
+    if [ "$escaped" -eq 1 ]; then
+      escaped=0
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "\\" ] && [ "$quote" != "'" ]; then
+      escaped=1
+      previous="$ch"
+      continue
+    fi
+    if [ -n "$quote" ]; then
+      if [ "$ch" = "$quote" ]; then
+        quote=""
+      fi
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "'" ] || [ "$ch" = '"' ]; then
+      quote="$ch"
+      previous="$ch"
+      continue
+    fi
+    if [ "$ch" = "#" ] && [ -n "$previous" ] && [[ "$previous" =~ [[:space:]] ]]; then
+      printf '%s' "${value:0:i}"
+      return
+    fi
+    previous="$ch"
   done
+  printf '%s' "$value"
 }
 
-INHERITED_ENV_KEYS="$(capture_inherited_env_keys)"
-
-is_inherited_env_key() {
-  local key="$1"
-  case "$(printf '\n%s\n' "$INHERITED_ENV_KEYS")" in
-    *"
-$key
-"*) return 0 ;;
-    *) return 1 ;;
-  esac
+trim_env_value() {
+  printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
 load_env_file() {
-  local file="$1" line key value
+  local file="$1" mode="${2:-}" line key value quote_style
   [ -f "$file" ] || return 0
+  env_value_quote_style() {
+    case "$1" in
+      \'*\') printf '%s' single ;;
+      \"*\") printf '%s' double ;;
+      *) printf '%s' none ;;
+    esac
+  }
+  decode_env_value() {
+    local value="$1" sq="'" dq='"' splice
+    splice="${sq}${dq}${sq}${dq}${sq}"
+    case "$value" in
+      \'*\')
+        value="${value#\'}"
+        value="${value%\'}"
+        value="${value//$splice/$sq}"
+        ;;
+      \"*\")
+        value="${value#\"}"
+        value="${value%\"}"
+        ;;
+    esac
+    printf '%s' "$value"
+  }
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       ''|\#*) continue ;;
@@ -98,24 +157,186 @@ load_env_file() {
     case "$key" in
       ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
     esac
-    if is_inherited_env_key "$key"; then
-      continue
-    fi
-    case "$value" in
-      \"*\") value="${value#\"}"; value="${value%\"}" ;;
-      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    case "$mode" in
+      alfredrc)
+        case "$key" in
+          ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
+            [ "$RC_TARGETS_EFFECTIVE_HOME" -eq 0 ] && continue
+            ;;
+        esac
+        if [ -n "${!key+x}" ]; then
+          if [ "$key" = "ALFREDRC" ]; then
+            :
+          elif [ "${ALFREDRC_FILE_OVERRIDES_RUNTIME:-0}" = "1" ]; then
+            case "$key" in
+              ALFRED_HOME|ALFRED_FLEET_BRAIN_DB)
+                :
+                ;;
+              ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
+                env_key_was_original "$key" && continue
+                ;;
+              *)
+                continue
+                ;;
+            esac
+          else
+            continue
+          fi
+        fi
+        ;;
+      no_clobber)
+        if [ -n "${!key+x}" ]; then
+          continue
+        fi
+        ;;
+      code_memory_override)
+        case "$key" in
+          ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
+            env_key_was_original "$key" && continue
+            ;;
+          *)
+            continue
+            ;;
+        esac
+        ;;
     esac
-    value="${value//\$\{HOME\}/$HOME}"
-    value="${value//\$HOME/$HOME}"
+    value="$(trim_env_value "$(strip_inline_comment "$value")")"
+    quote_style="$(env_value_quote_style "$value")"
+    value="$(decode_env_value "$value")"
+    if [ "$quote_style" != "single" ]; then
+      value="${value//\$\{HOME\}/$HOME}"
+      value="${value//\$HOME/$HOME}"
+    fi
     export "$key=$value"
   done < "$file"
 }
 
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
-load_env_file "$HOME/.alfredrc"
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
-load_env_file "$ALFRED_HOME/.env"
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
+expand_user_path() {
+  local value="$1"
+  case "$value" in
+    \~) printf '%s' "$HOME" ;;
+    \~/*) printf '%s/%s' "$HOME" "${value#\~/}" ;;
+    *) printf '%s' "$value" ;;
+  esac
+}
+
+normalize_runtime_home() {
+  local value expanded normalized
+  value="$1"
+  expanded="$(expand_user_path "$value")"
+  if command -v python3 >/dev/null 2>&1; then
+    normalized="$(python3 - "$expanded" <<'PY' 2>/dev/null || true
+from pathlib import Path
+import sys
+
+print(Path(sys.argv[1]).expanduser().resolve(strict=False))
+PY
+)"
+    if [ -n "$normalized" ]; then
+      printf '%s' "$normalized"
+      return 0
+    fi
+  fi
+  printf '%s' "$expanded"
+}
+
+read_env_key() {
+  local file="$1" wanted="$2" line key value quote_style sq="'" dq='"' splice
+  [ -f "$file" ] || return 0
+  splice="${sq}${dq}${sq}${dq}${sq}"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      ''|\#*) continue ;;
+      export\ *) line="${line#export }" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    [ "$key" = "$wanted" ] || continue
+    value="$(trim_env_value "$(strip_inline_comment "$value")")"
+    quote_style="none"
+    case "$value" in
+      \'*\') quote_style="single"; value="${value#\'}"; value="${value%\'}"; value="${value//$splice/$sq}" ;;
+      \"*\") quote_style="double"; value="${value#\"}"; value="${value%\"}" ;;
+    esac
+    if [ "$quote_style" != "single" ]; then
+      value="${value//\$\{HOME\}/$HOME}"
+      value="${value//\$HOME/$HOME}"
+    fi
+    printf '%s' "$value"
+    return 0
+  done < "$file"
+}
+
+rc_targets_effective_home() {
+  local selected_alfredrc="$1" direct_selected_alfredrc="$2" effective_home rc_home rc_home_expanded
+  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+    return 0
+  fi
+  if [ -z "${ALFRED_HOME:-}" ]; then
+    return 0
+  fi
+  effective_home="$(normalize_runtime_home "$ALFRED_HOME")"
+  rc_home="$(read_env_key "$selected_alfredrc" "ALFRED_HOME")"
+  if [ -n "$rc_home" ]; then
+    rc_home_expanded="$(normalize_runtime_home "$rc_home")"
+  else
+    rc_home_expanded="$(normalize_runtime_home "$HOME/.alfred")"
+  fi
+  [ "$rc_home_expanded" = "$effective_home" ]
+}
+
+load_selected_alfredrc() {
+  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" direct_selected_alfredrc=""
+  if env_key_was_original "ALFREDRC" && [ -n "${ALFREDRC:-}" ]; then
+    direct_selected_alfredrc="direct_selected_alfredrc"
+  fi
+  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
+  ALFREDRC="$selected_alfredrc"
+  export ALFREDRC
+  if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
+    RC_TARGETS_EFFECTIVE_HOME=1
+  else
+    RC_TARGETS_EFFECTIVE_HOME=0
+  fi
+  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+    ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+  else
+    ALFREDRC_FILE_OVERRIDES_RUNTIME=0 load_env_file "$selected_alfredrc" alfredrc
+  fi
+  if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
+    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
+    ALFREDRC="$selected_alfredrc"
+    export ALFREDRC
+    if [ "$direct_selected_alfredrc" != "direct_selected_alfredrc" ] && [ -z "${ALFRED_HOME:-}" ]; then
+      ALFRED_HOME="$HOME/.alfred"
+      export ALFRED_HOME
+    fi
+    if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
+      RC_TARGETS_EFFECTIVE_HOME=1
+    else
+      RC_TARGETS_EFFECTIVE_HOME=0
+    fi
+    if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
+      ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+    elif [ "$RC_TARGETS_EFFECTIVE_HOME" -eq 1 ]; then
+      ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
+    else
+      ALFREDRC_FILE_OVERRIDES_RUNTIME=0 load_env_file "$selected_alfredrc" alfredrc
+    fi
+  fi
+}
+
+RC_TARGETS_EFFECTIVE_HOME=1
+load_selected_alfredrc
+: "${ALFRED_HOME:=$HOME/.alfred}"
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
+load_env_file "$ALFRED_HOME/.env" no_clobber
+# Code-memory settings are setup-owned runtime state. Load them again so the
+# active runtime .env beats stale rc values, while explicit process overrides
+# keep winning.
+load_env_file "$ALFRED_HOME/.env" code_memory_override
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
+export ALFRED_HOME
 
 CODE_MEMORY_VERSION="${ALFRED_CODE_MEMORY_VERSION:-v0.8.1}"
 CODE_MEMORY_REPO="${ALFRED_CODE_MEMORY_REPO:-DeusData/codebase-memory-mcp}"
@@ -356,8 +577,28 @@ scope_repos() {
   return 0
 }
 
+configured_scope_summary() {
+  local raw name repos
+  raw="$(scope_raw)"
+  repos=""
+  while IFS= read -r name; do
+    name="$(trim_env_value "$name")"
+    [ -n "$name" ] || continue
+    if [ -n "$repos" ]; then
+      repos="$repos, $name"
+    else
+      repos="$name"
+    fi
+  done < <(printf '%s\n' "$raw" | tr ',' '\n')
+  printf '%s' "$repos"
+}
+
 scope_repo_summary() {
   local rel repo repos
+  if scope_raw_has_entries; then
+    configured_scope_summary
+    return 0
+  fi
   repos=""
   while IFS= read -r repo; do
     if [ "$repo" = "$WORKSPACE" ]; then
@@ -449,6 +690,8 @@ case "$CMD" in
       log "binary:  NOT RESOLVED (set ALFRED_CODE_MEMORY_BIN or enable autofetch)"
     fi
     log "version-pin: ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION}"
+    log "rc:          ${ALFREDRC:-}"
+    log "index-dir:   $INDEX_DIR"
     log "index-home:  $CODE_MEMORY_HOME"
     log "cache-dir:   $CODE_MEMORY_CACHE_DIR"
     log "workspace:   $WORKSPACE"

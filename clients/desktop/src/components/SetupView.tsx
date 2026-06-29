@@ -3,18 +3,20 @@ import {
   MemoryStick,
   Play,
   Radio,
+  RefreshCw,
   Server,
   TerminalSquare,
   UserPlus,
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { supportsNativeActions } from "../api";
+import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
-import type { TrustedSlackUsersResponse } from "../types";
+import type { SetupStatus, TrustedSlackUsersResponse } from "../types";
 import { EmptyState, PanelHeader } from "./atoms";
+import { InstallInventoryPanel } from "./onboarding/InstallInventoryPanel";
 import { Tabs, type TabItem } from "./Tabs";
 
 type SetupSubtab = "connection" | "collaborators" | "diagnostics";
@@ -22,6 +24,7 @@ type SetupSubtab = "connection" | "collaborators" | "diagnostics";
 export function SetupView({
   baseUrl,
   loading,
+  connected,
   actionNotice,
   trustedSlack,
   busyTrustedUser,
@@ -34,6 +37,7 @@ export function SetupView({
 }: {
   baseUrl: string;
   loading: boolean;
+  connected: boolean;
   actionNotice: ActionNotice;
   trustedSlack: TrustedSlackUsersResponse | null;
   busyTrustedUser: string | null;
@@ -49,12 +53,85 @@ export function SetupView({
   const [serverUrl, setServerUrl] = useState(baseUrl);
   const [trustedUserId, setTrustedUserId] = useState("");
   const [subtab, setSubtab] = useState<SetupSubtab>("connection");
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
+  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupLoading, setSetupLoading] = useState(false);
+  const setupRequestSeq = useRef(0);
+  const baseUrlRef = useRef(baseUrl);
+  const connectedRef = useRef(connected);
+  const connectionGenerationRef = useRef(0);
   const trustedUsers = trustedSlack?.users || [];
   const canAddTrusted = Boolean(trustedUserId.trim()) && !busyTrustedUser;
 
   useEffect(() => {
+    if (baseUrlRef.current !== baseUrl) {
+      connectionGenerationRef.current += 1;
+      setupRequestSeq.current += 1;
+      setSetupStatus(null);
+      setSetupError(null);
+      setSetupLoading(false);
+    }
+    baseUrlRef.current = baseUrl;
     setServerUrl(baseUrl);
   }, [baseUrl]);
+
+  useEffect(() => {
+    const wasConnected = connectedRef.current;
+    if (wasConnected !== connected) {
+      connectionGenerationRef.current += 1;
+    }
+    connectedRef.current = connected;
+    if (!connected) {
+      setupRequestSeq.current += 1;
+      setSetupStatus(null);
+      setSetupError(null);
+      setSetupLoading(false);
+    }
+  }, [connected]);
+
+  const refreshSetupStatus = useCallback(() => {
+    if (!connected) {
+      setupRequestSeq.current += 1;
+      setSetupStatus(null);
+      setSetupLoading(false);
+      return;
+    }
+    const requestId = setupRequestSeq.current + 1;
+    setupRequestSeq.current = requestId;
+    const requestBaseUrl = baseUrl;
+    const requestGeneration = connectionGenerationRef.current;
+    const requestIsCurrent = () =>
+      setupRequestSeq.current === requestId &&
+      baseUrlRef.current === requestBaseUrl &&
+      connectedRef.current &&
+      connectionGenerationRef.current === requestGeneration;
+    setSetupLoading(true);
+    setSetupError(null);
+    void loadSetupStatus(baseUrl)
+      .then((next) => {
+        if (requestIsCurrent()) {
+          setSetupStatus(next);
+        }
+      })
+      .catch((err) => {
+        if (requestIsCurrent()) {
+          setSetupStatus(null);
+          setSetupError(errorDetail(err) || "Could not read setup status.");
+        }
+      })
+      .finally(() => {
+        if (requestIsCurrent()) {
+          setSetupLoading(false);
+        }
+      });
+  }, [baseUrl, connected]);
+
+  useEffect(() => {
+    refreshSetupStatus();
+    return () => {
+      setupRequestSeq.current += 1;
+    };
+  }, [refreshSetupStatus]);
 
   const tabs: TabItem<SetupSubtab>[] = [
     { key: "connection", label: "Connection" },
@@ -80,6 +157,16 @@ export function SetupView({
               path, Slack stays the collaboration UI, and the CLI is the inspectable runtime
               underneath.
             </p>
+            <InstallInventoryPanel
+              inventory={setupStatus?.install ?? null}
+              queue={setupStatus?.queue ?? null}
+              compact
+            />
+            {setupError ? (
+              <p className="console-note">
+                Setup inventory unavailable: {setupError}
+              </p>
+            ) : null}
             <form
               className="server-connect-form"
               onSubmit={(event) => {
@@ -124,6 +211,19 @@ export function SetupView({
               >
                 <CheckCircle2 size={16} aria-hidden="true" />
                 <span>Auth check</span>
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={setupLoading}
+                onClick={refreshSetupStatus}
+              >
+                <RefreshCw
+                  size={16}
+                  aria-hidden="true"
+                  className={setupLoading ? "animate-spin" : undefined}
+                />
+                <span>{setupLoading ? "Checking" : "Recheck setup"}</span>
               </button>
             </div>
             {!canRun ? (

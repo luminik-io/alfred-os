@@ -193,26 +193,133 @@ export function OnboardingView({
   // suppressed for these so revisiting a satisfied step to read it never yanks
   // the user forward; only the natural forward flow auto-advances on detection.
   const manualSteps = useRef<Set<OnboardingStepKey>>(new Set());
+  const statusRequestSeq = useRef(0);
+  const baseUrlRef = useRef(baseUrl);
+  const connectedRef = useRef(connected);
+  const connectionGenerationRef = useRef(0);
+  const githubAuthRequestSeq = useRef(0);
+  const githubAuthFlowRequestSeq = useRef<number | null>(null);
+
+  const setInterruptedGithubAuthFlow = useCallback((message: string, requestId?: number) => {
+    setStatusLoading(false);
+    const activeFlowRequestId = githubAuthFlowRequestSeq.current;
+    const ownsFlow =
+      requestId === undefined || activeFlowRequestId === requestId || activeFlowRequestId === null;
+    if (ownsFlow) {
+      githubAuthFlowRequestSeq.current = null;
+    }
+    setGithubAuthFlow((current) => {
+      const canInterrupt = current.state === "starting" || current.state === "waiting";
+      if (!canInterrupt || !ownsFlow) {
+        return current;
+      }
+      return {
+        ...IDLE_GITHUB_AUTH_FLOW,
+        state: "error",
+        message,
+      };
+    });
+  }, []);
+
+  const resetStaleGithubAuthFlow = useCallback(
+    (requestId: number, message: string) => {
+      setInterruptedGithubAuthFlow(message, requestId);
+    },
+    [setInterruptedGithubAuthFlow],
+  );
+  const interruptStaleGithubAuthRequest = useCallback(
+    (requestId: number) => {
+      const activeFlowRequestId = githubAuthFlowRequestSeq.current;
+      if (activeFlowRequestId !== requestId && activeFlowRequestId !== null) {
+        return;
+      }
+      resetStaleGithubAuthFlow(
+        requestId,
+        "GitHub sign-in was interrupted. Start it again for this runtime.",
+      );
+    },
+    [resetStaleGithubAuthFlow],
+  );
+
+  useEffect(() => {
+    if (baseUrlRef.current !== baseUrl) {
+      connectionGenerationRef.current += 1;
+      statusRequestSeq.current += 1;
+      githubAuthRequestSeq.current += 1;
+      setStatus(null);
+      setStatusError(null);
+      setStatusLoading(false);
+      setInterruptedGithubAuthFlow(
+        "GitHub sign-in was interrupted. Start it again for this runtime.",
+      );
+    }
+    baseUrlRef.current = baseUrl;
+  }, [baseUrl, setInterruptedGithubAuthFlow]);
+
+  useEffect(() => {
+    const wasConnected = connectedRef.current;
+    if (wasConnected !== connected) {
+      connectionGenerationRef.current += 1;
+      githubAuthRequestSeq.current += 1;
+    }
+    connectedRef.current = connected;
+    if (!connected) {
+      statusRequestSeq.current += 1;
+      setStatus(null);
+      setStatusError(null);
+      setStatusLoading(false);
+      setInterruptedGithubAuthFlow("GitHub sign-in was interrupted. Reconnect, then start it again.");
+    } else if (wasConnected !== connected) {
+      setInterruptedGithubAuthFlow("GitHub sign-in was interrupted. Start it again for this runtime.");
+    }
+  }, [connected, setInterruptedGithubAuthFlow]);
 
   const refreshStatus = useCallback(async () => {
     if (!connected) {
+      statusRequestSeq.current += 1;
       setStatus(null);
+      setStatusLoading(false);
       return;
     }
+    const requestId = ++statusRequestSeq.current;
+    const requestBaseUrl = baseUrl;
+    const requestGeneration = connectionGenerationRef.current;
     setStatusLoading(true);
     try {
       const next = await loadSetupStatus(baseUrl);
-      setStatus(next);
-      setStatusError(null);
+      if (
+        statusRequestSeq.current === requestId &&
+        baseUrlRef.current === requestBaseUrl &&
+        connectedRef.current &&
+        connectionGenerationRef.current === requestGeneration
+      ) {
+        setStatus(next);
+        setStatusError(null);
+      }
     } catch (err) {
-      setStatusError(errorDetail(err) || "Could not read setup status.");
+      if (
+        statusRequestSeq.current === requestId &&
+        baseUrlRef.current === requestBaseUrl &&
+        connectedRef.current &&
+        connectionGenerationRef.current === requestGeneration
+      ) {
+        setStatusError(errorDetail(err) || "Could not read setup status.");
+      }
     } finally {
-      setStatusLoading(false);
+      if (
+        statusRequestSeq.current === requestId &&
+        baseUrlRef.current === requestBaseUrl &&
+        connectedRef.current &&
+        connectionGenerationRef.current === requestGeneration
+      ) {
+        setStatusLoading(false);
+      }
     }
   }, [baseUrl, connected]);
 
   const startGithubAuthLogin = useCallback(async () => {
     if (!canRun || !connected) {
+      githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
         ...IDLE_GITHUB_AUTH_FLOW,
         state: "error",
@@ -221,6 +328,8 @@ export function OnboardingView({
       return;
     }
 
+    const requestAuthId = ++githubAuthRequestSeq.current;
+    githubAuthFlowRequestSeq.current = requestAuthId;
     setStatusLoading(true);
     setGithubAuthFlow({
       ...IDLE_GITHUB_AUTH_FLOW,
@@ -228,8 +337,21 @@ export function OnboardingView({
       message: "Starting GitHub sign-in.",
     });
 
+    const requestBaseUrl = baseUrl;
+    const requestGeneration = connectionGenerationRef.current;
+    const isCurrentRequest = () =>
+      connectedRef.current &&
+      baseUrlRef.current === requestBaseUrl &&
+      connectionGenerationRef.current === requestGeneration &&
+      githubAuthRequestSeq.current === requestAuthId;
+
     try {
       const result = await onRunLocalAction({ action: "github_auth_login" });
+      const pollBelongsToCurrentRuntime = isCurrentRequest();
+      if (!pollBelongsToCurrentRuntime) {
+        interruptStaleGithubAuthRequest(requestAuthId);
+        return;
+      }
       if (!result) {
         throw new Error("Could not start GitHub sign-in.");
       }
@@ -250,8 +372,10 @@ export function OnboardingView({
 
       const poll = await pollGithubAuthStatus(
         async () => {
-          const next = await loadSetupStatus(baseUrl);
-          setStatus(next);
+          const next = await loadSetupStatus(requestBaseUrl);
+          if (isCurrentRequest()) {
+            setStatus(next);
+          }
           return next;
         },
         {
@@ -260,6 +384,11 @@ export function OnboardingView({
         },
       );
 
+      if (!isCurrentRequest()) {
+        interruptStaleGithubAuthRequest(requestAuthId);
+        return;
+      }
+      githubAuthFlowRequestSeq.current = null;
       if (poll.status) {
         setStatus(poll.status);
       }
@@ -281,6 +410,11 @@ export function OnboardingView({
         });
       }
     } catch (err) {
+      if (!isCurrentRequest()) {
+        interruptStaleGithubAuthRequest(requestAuthId);
+        return;
+      }
+      githubAuthFlowRequestSeq.current = null;
       setGithubAuthFlow({
         ...IDLE_GITHUB_AUTH_FLOW,
         state: "error",
@@ -288,9 +422,11 @@ export function OnboardingView({
         detail: errorDetail(err),
       });
     } finally {
-      setStatusLoading(false);
+      if (isCurrentRequest()) {
+        setStatusLoading(false);
+      }
     }
-  }, [baseUrl, canRun, connected, onRunLocalAction]);
+  }, [baseUrl, canRun, connected, interruptStaleGithubAuthRequest, onRunLocalAction]);
 
   useEffect(() => {
     void refreshStatus();
@@ -508,6 +644,8 @@ export function OnboardingView({
             // StepFrame icon/title/blurb so the value line is said once here, not
             // echoed by a step header above it.
             <WelcomeStep
+              install={status?.install ?? null}
+              queue={status?.queue ?? null}
               onGetStarted={() => goToStep("engine")}
               onDevShortcut={() => goToStep("github")}
             />

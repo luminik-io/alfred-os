@@ -319,6 +319,7 @@ function App() {
               <SetupView
                 baseUrl={baseUrl}
                 loading={loading}
+                connected={Boolean(snapshot) && !error}
                 actionNotice={noticeFor("setup")}
                 trustedSlack={snapshot?.trustedSlack || null}
                 busyTrustedUser={busyTrustedUser}

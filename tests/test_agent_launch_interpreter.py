@@ -134,6 +134,9 @@ def _run_env(
     env.pop("ALFRED_AUTO_PROMOTE", None)
     env.pop("ALFRED_AUTO_PROMOTE_KILL", None)
     env.pop("ALFRED_AUTO_PROMOTE_LLM_JUDGE", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+    env.pop("ALFRED_SHIPPED_REPOS", None)
+    env.pop("ALFRED_BRIDGE_REPOS", None)
     env["HOME"] = str(alfred_home.parent)
     if extra_env:
         env.update(extra_env)
@@ -201,6 +204,150 @@ def test_agent_launch_alfredrc_wins_over_env_file(tmp_path: Path, alfred_home: P
 
     assert proc.returncode == 0, proc.stderr
     assert "TOKEN=sk-ant-oat01-fromrc" in proc.stdout
+
+
+def test_agent_launch_env_file_repo_scope_overrides_alfredrc(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_SHIPPED_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_SHIPPED_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-repos.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_SHIPPED_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/new" in proc.stdout
+
+
+def test_agent_launch_real_env_repo_scope_wins_over_env_file(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_SHIPPED_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_SHIPPED_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-repos.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_SHIPPED_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_SHIPPED_REPOS": "org/process"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/process" in proc.stdout
+
+
+def test_agent_launch_env_file_code_memory_settings_override_alfredrc(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_CODE_MEMORY_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_CODE_MEMORY_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-code-memory.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=alfred_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/new" in proc.stdout
+
+
+def test_agent_launch_real_env_code_memory_setting_wins_over_env_file(
+    tmp_path: Path, alfred_home: Path
+) -> None:
+    (alfred_home.parent / ".alfredrc").write_text(
+        "export ALFRED_CODE_MEMORY_REPOS=org/old\n", encoding="utf-8"
+    )
+    (alfred_home / ".env").write_text("ALFRED_CODE_MEMORY_REPOS=org/new\n", encoding="utf-8")
+    target = tmp_path / "echo-code-memory.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    proc = _run_env(
+        target,
+        alfred_home=alfred_home,
+        extra_env={"ALFRED_CODE_MEMORY_REPOS": "org/process"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/process" in proc.stdout
+
+
+def test_agent_launch_ignores_stale_rc_code_memory_scope_for_custom_home(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    other_runtime = tmp_path / "other-runtime"
+    home.mkdir()
+    runtime.mkdir()
+    other_runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={other_runtime}\nALFRED_CODE_MEMORY_REPOS=org/stale\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-code-memory.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_CODE_MEMORY_REPOS:-unset}"\n')
+    _make_executable(target)
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(runtime)
+    env.pop("ALFRED_CODE_MEMORY_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=unset" in proc.stdout
+
+
+def test_agent_launch_expands_tilde_alfred_home_before_env_file(tmp_path: Path) -> None:
+    """ALFRED_HOME=~/runtime must load the runtime .env, matching setup/status."""
+
+    home = tmp_path / "home"
+    runtime = home / "runtime"
+    runtime.mkdir(parents=True)
+    (home / ".alfredrc").write_text("ALFRED_HOME=~/runtime\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/expanded\n", encoding="utf-8")
+    target = tmp_path / "echo-runtime.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME=${ALFRED_HOME:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFRED_PYTHON", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME={runtime}" in proc.stdout
+    assert "REPOS=org/expanded" in proc.stdout
 
 
 def test_agent_launch_env_file_stop_controls_override_stale_alfredrc(
@@ -493,6 +640,133 @@ def test_agent_launch_followed_alfredrc_retargets_runtime_env(
     assert "AUTO=0" in proc.stdout
 
 
+def test_agent_launch_persisted_pointer_preserves_process_runtime(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    process_home = home / ".alfred"
+    pointed_home = tmp_path / "pointed-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    process_home.mkdir()
+    pointed_home.mkdir()
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(f"ALFRED_HOME={pointed_home}\n", encoding="utf-8")
+    (process_home / ".env").write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    (pointed_home / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n", encoding="utf-8")
+    target = tmp_path / "echo-persisted-runtime.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "AUTO=${ALFRED_AUTO_PROMOTE:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    proc = _run_env(target, alfred_home=process_home)
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={process_home}" in proc.stdout
+    assert "AUTO=0" in proc.stdout
+
+
+def test_agent_launch_indirect_pointed_rc_cannot_move_default_runtime(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    default_runtime = home / ".alfred"
+    pointed_runtime = tmp_path / "pointed-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    default_runtime.mkdir()
+    pointed_runtime.mkdir()
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={pointed_runtime}\nALFRED_QUEUE_REPOS=org/pointed\n",
+        encoding="utf-8",
+    )
+    (default_runtime / ".env").write_text(
+        "ALFRED_QUEUE_REPOS=org/default\n",
+        encoding="utf-8",
+    )
+    (pointed_runtime / ".env").write_text(
+        "ALFRED_QUEUE_REPOS=org/pointed-env\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-indirect-runtime.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFREDRC", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={default_runtime}" in proc.stdout
+    assert "REPOS=org/default" in proc.stdout
+    assert "org/pointed" not in proc.stdout
+    assert "org/pointed-env" not in proc.stdout
+
+
+def test_agent_launch_indirect_pointed_rc_cannot_import_setup_scope_without_default_env(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    default_runtime = home / ".alfred"
+    pointed_runtime = tmp_path / "pointed-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    default_runtime.mkdir()
+    pointed_runtime.mkdir()
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={pointed_runtime}\nALFRED_QUEUE_REPOS=org/pointed\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-indirect-scope.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFREDRC", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={default_runtime}" in proc.stdout
+    assert "REPOS=unset" in proc.stdout
+    assert "org/pointed" not in proc.stdout
+
+
 def test_agent_launch_direct_alfredrc_retargets_stale_process_runtime(
     tmp_path: Path,
 ) -> None:
@@ -585,6 +859,149 @@ def test_agent_launch_expands_user_relative_alfredrc_path(
 
     assert proc.returncode == 0, proc.stderr
     assert f"RC={Path(user_info.pw_dir) / 'custom.alfredrc'}" in proc.stdout
+
+
+def test_agent_launch_empty_alfred_home_uses_default_home_for_rc_scope(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    default_runtime = home / ".alfred"
+    home.mkdir()
+    default_runtime.mkdir()
+    (home / ".alfredrc").write_text("ALFRED_QUEUE_REPOS=org/from-rc\n", encoding="utf-8")
+    target = tmp_path / "echo-repos.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = ""
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/from-rc" in proc.stdout
+
+
+def test_agent_launch_empty_alfred_home_loads_rc_home(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/runtime\n", encoding="utf-8")
+    target = tmp_path / "echo-home.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME=${ALFRED_HOME:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = ""
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME={runtime}" in proc.stdout
+    assert "REPOS=org/runtime" in proc.stdout
+
+
+def test_agent_launch_loads_non_repo_rc_for_custom_home_but_skips_stale_repo_scope(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        "\n".join(
+            [
+                "WORKSPACE_ROOT=$HOME/code space",
+                "CLAUDE_CODE_OAUTH_TOKEN=from-rc",
+                "ALFRED_QUEUE_REPOS=org/from-rc",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (runtime / ".env").write_text("ALFRED_QUEUE_REPOS=org/from-env\n", encoding="utf-8")
+    target = tmp_path / "echo-env.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "WORKSPACE=${WORKSPACE_ROOT:-unset}"\n'
+        'echo "TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(runtime)
+    env.pop("WORKSPACE_ROOT", None)
+    env.pop("CLAUDE_CODE_OAUTH_TOKEN", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"WORKSPACE={home}/code space" in proc.stdout
+    assert "TOKEN=from-rc" in proc.stdout
+    assert "REPOS=org/from-env" in proc.stdout
+
+
+def test_agent_launch_normalizes_custom_home_before_rejecting_rc_repo_scope(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "runtime"
+    home.mkdir()
+    runtime.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\nALFRED_QUEUE_REPOS=org/from-rc\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-repos.sh"
+    target.write_text('#!/usr/bin/env bash\necho "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n')
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["ALFRED_HOME"] = f"{runtime}/"
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "REPOS=org/from-rc" in proc.stdout
 
 
 def test_bash_available() -> None:

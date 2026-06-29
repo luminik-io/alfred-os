@@ -43,6 +43,68 @@ function makeStatus(overrides: Partial<SetupStatus> = {}): SetupStatus {
   };
 }
 
+function makeInstall(overrides: Partial<NonNullable<SetupStatus["install"]>> = {}): NonNullable<SetupStatus["install"]> {
+  const base: NonNullable<SetupStatus["install"]> = {
+    alfred_home: "/tmp/alfred-home",
+    env_path: "/tmp/alfred-home/.env",
+    env_present: true,
+    server_token_present: true,
+    agents_conf_path: "/tmp/alfred-home/launchd/agents.conf",
+    agents_conf_present: true,
+    scheduled_runs: 3,
+    selected_repos_env_present: true,
+    slack_configured: false,
+    memory_configured: false,
+    initialized: true,
+    items: [
+      {
+        key: "home",
+        label: "Runtime home",
+        ok: true,
+        detail: "Found /tmp/alfred-home",
+        path: "/tmp/alfred-home",
+      },
+      {
+        key: "agents",
+        label: "Scheduled fleet",
+        ok: true,
+        detail: "3 enabled scheduled runs in agents.conf",
+        path: "/tmp/alfred-home/launchd/agents.conf",
+      },
+      {
+        key: "repos",
+        label: "Repository scope",
+        ok: true,
+        detail: "1 selected repos in ALFRED_QUEUE_REPOS, ALFRED_SHIPPED_REPOS",
+        path: "/tmp/alfred-home/.env",
+      },
+      {
+        key: "slack",
+        label: "Slack approvals",
+        ok: false,
+        detail: "Optional. Not configured yet.",
+        path: null,
+        optional: true,
+      },
+      {
+        key: "memory",
+        label: "Memory layer",
+        ok: true,
+        detail: "Using bundled local Redis Agent Memory defaults.",
+        path: null,
+      },
+      {
+        key: "token",
+        label: "Desktop mutation token",
+        ok: true,
+        detail: "Runtime token is present for desktop actions.",
+        path: "/tmp/alfred-home/state",
+      },
+    ],
+  };
+  return { ...base, ...overrides };
+}
+
 const REPOS: SetupReposResponse = {
   repos: [
     {
@@ -98,6 +160,16 @@ function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingV
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 // The rail buttons are the reliable way to reach a given step from any state.
 async function gotoStep(user: ReturnType<typeof userEvent.setup>, railName: RegExp) {
   await user.click(await screen.findByRole("button", { name: railName }));
@@ -136,6 +208,98 @@ describe("OnboardingView six-step takeover", () => {
     expect(screen.getByRole("button", { name: /^repositories$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^slack$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^first request$/i })).toBeInTheDocument();
+  });
+
+  it("shows detected existing install inventory on the welcome step", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        install: makeInstall(),
+        repos: { selected: ["octocat/web"], count: 1, keys: ["ALFRED_QUEUE_REPOS", "ALFRED_SHIPPED_REPOS"] },
+      }),
+    );
+    renderOnboarding();
+
+    expect(await screen.findByText(/found an alfred setup on this mac/i)).toBeInTheDocument();
+    expect(screen.getAllByText("/tmp/alfred-home").length).toBeGreaterThan(0);
+    expect(screen.getByText(/3 enabled scheduled runs in agents\.conf/i)).toBeInTheDocument();
+    expect(screen.getByText(/optional\. not configured yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/ready to use/i)).toBeInTheDocument();
+  });
+
+  it("clears displayed welcome inventory while a new server URL is loading", async () => {
+    const newRequest = deferred<SetupStatus>();
+    vi.spyOn(api, "loadSetupStatus")
+      .mockResolvedValueOnce(
+        makeStatus({ install: makeInstall({ alfred_home: "/tmp/old-alfred-home" }) }),
+      )
+      .mockReturnValueOnce(newRequest.promise);
+
+    const view = renderOnboarding({ baseUrl: "http://127.0.0.1:7010" });
+    expect(await screen.findByText("/tmp/old-alfred-home")).toBeInTheDocument();
+
+    view.rerender(
+      <OnboardingView
+        baseUrl="http://127.0.0.1:7011"
+        loading={false}
+        connected
+        canRun
+        nativeBusy={null}
+        nativeResult={null}
+        onConnectServer={vi.fn()}
+        onStartRuntime={vi.fn()}
+        onRunLocalAction={vi.fn(async () => null)}
+        onOpenConnection={vi.fn()}
+        onSwitch={vi.fn()}
+        onRefreshBoard={vi.fn(async () => undefined)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/old-alfred-home")).not.toBeInTheDocument();
+    });
+
+    newRequest.resolve(
+      makeStatus({ install: makeInstall({ alfred_home: "/tmp/new-alfred-home" }) }),
+    );
+    expect(await screen.findByText("/tmp/new-alfred-home")).toBeInTheDocument();
+  });
+
+  it("ignores stale welcome inventory reads after the server URL changes", async () => {
+    const oldRequest = deferred<SetupStatus>();
+    const newRequest = deferred<SetupStatus>();
+    vi.spyOn(api, "loadSetupStatus")
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockReturnValueOnce(newRequest.promise);
+
+    const view = renderOnboarding({ baseUrl: "http://127.0.0.1:7010" });
+    view.rerender(
+      <OnboardingView
+        baseUrl="http://127.0.0.1:7011"
+        loading={false}
+        connected
+        canRun
+        nativeBusy={null}
+        nativeResult={null}
+        onConnectServer={vi.fn()}
+        onStartRuntime={vi.fn()}
+        onRunLocalAction={vi.fn(async () => null)}
+        onOpenConnection={vi.fn()}
+        onSwitch={vi.fn()}
+        onRefreshBoard={vi.fn(async () => undefined)}
+      />,
+    );
+
+    newRequest.resolve(
+      makeStatus({ install: makeInstall({ alfred_home: "/tmp/new-alfred-home" }) }),
+    );
+    expect(await screen.findByText("/tmp/new-alfred-home")).toBeInTheDocument();
+
+    oldRequest.resolve(
+      makeStatus({ install: makeInstall({ alfred_home: "/tmp/old-alfred-home" }) }),
+    );
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/old-alfred-home")).not.toBeInTheDocument();
+    });
   });
 
   it("welcome 'Get started' moves to the tools step", async () => {
@@ -308,6 +472,135 @@ describe("OnboardingView six-step takeover", () => {
     await waitFor(() =>
       expect(screen.getByText(/signed in to github as octocat/i)).toBeInTheDocument(),
     );
+  });
+
+  it("ignores GitHub auth poll inventory after same-url disconnect and reconnect", async () => {
+    const pending = makeStatus({
+      github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+    });
+    const pollStatus = deferred<SetupStatus>();
+    const loadStatus = vi
+      .spyOn(api, "loadSetupStatus")
+      .mockResolvedValue(pending)
+      .mockResolvedValueOnce(pending)
+      .mockReturnValueOnce(pollStatus.promise);
+    const onRunLocalAction = vi.fn(async () => ({
+      command: ["gh", "auth", "login", "--web"],
+      stdout: "",
+      stderr: "",
+      status: null,
+      success: true,
+      pid: 42,
+      message: "GitHub sign-in started. Enter the one-time code in your browser.",
+      github_auth: {
+        device_url: "https://github.com/login/device",
+        device_code: "ABCD-1234",
+        poll_interval_ms: 250,
+        timeout_ms: 1_000,
+      },
+    }));
+    const props = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      canRun: true,
+      nativeBusy: null,
+      nativeResult: null,
+      onConnectServer: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction,
+      onOpenConnection: vi.fn(),
+      onSwitch: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+    };
+    const view = render(<OnboardingView {...props} connected />);
+    const user = userEvent.setup();
+    await gotoStep(user, /^github$/i);
+
+    await user.click(await screen.findByRole("button", { name: /sign in with github/i }));
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(2));
+
+    view.rerender(<OnboardingView {...props} connected={false} />);
+    view.rerender(<OnboardingView {...props} connected />);
+    await waitFor(() => expect(loadStatus).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText(/GitHub sign-in was interrupted/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
+
+    pollStatus.resolve(
+      makeStatus({
+        install: makeInstall({ alfred_home: "/tmp/stale-alfred-home" }),
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("/tmp/stale-alfred-home")).not.toBeInTheDocument();
+      expect(screen.queryByText(/found an alfred setup on this mac/i)).not.toBeInTheDocument();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
+    await user.click(screen.getByRole("button", { name: /sign in with github/i }));
+    expect(onRunLocalAction).toHaveBeenCalledTimes(2);
+  });
+
+  it("reenables GitHub sign-in when stale native auth resolves after reconnect", async () => {
+    const pending = makeStatus({
+      github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+    });
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(pending);
+    const nativeAuth = deferred<Awaited<ReturnType<React.ComponentProps<typeof OnboardingView>["onRunLocalAction"]>>>();
+    const onRunLocalAction = vi.fn(() => nativeAuth.promise);
+    const props = {
+      baseUrl: "http://127.0.0.1:7010",
+      loading: false,
+      canRun: true,
+      nativeBusy: null,
+      nativeResult: null,
+      onConnectServer: vi.fn(),
+      onStartRuntime: vi.fn(),
+      onRunLocalAction,
+      onOpenConnection: vi.fn(),
+      onSwitch: vi.fn(),
+      onRefreshBoard: vi.fn(async () => undefined),
+    };
+    const view = render(<OnboardingView {...props} connected />);
+    const user = userEvent.setup();
+    await gotoStep(user, /^github$/i);
+
+    await user.click(await screen.findByRole("button", { name: /sign in with github/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /starting/i })).toBeDisabled(),
+    );
+
+    view.rerender(<OnboardingView {...props} connected={false} />);
+    view.rerender(<OnboardingView {...props} connected />);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
+    expect(screen.getByText(/GitHub sign-in was interrupted/i)).toBeInTheDocument();
+
+    nativeAuth.resolve({
+      command: ["gh", "auth", "login", "--web"],
+      stdout: "",
+      stderr: "",
+      status: null,
+      success: true,
+      pid: 42,
+      message: "GitHub sign-in started. Enter the one-time code in your browser.",
+      github_auth: {
+        device_url: "https://github.com/login/device",
+        device_code: "ABCD-1234",
+        poll_interval_ms: 250,
+        timeout_ms: 1_000,
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /sign in with github/i })).toBeEnabled(),
+    );
+    expect(screen.queryByRole("button", { name: /waiting for github/i })).not.toBeInTheDocument();
   });
 
   it("falls back to copy-paste gh auth + recheck in browser mode", async () => {
