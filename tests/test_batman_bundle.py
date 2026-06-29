@@ -107,6 +107,18 @@ def test_parse_plan_preserves_duplicate_explicit_repo_tails():
     }
 
 
+def test_parse_plan_preserves_explicit_slug_with_repo_mapping(monkeypatch):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"other/service": "service"})
+
+    body = "## Affected Repos\n- acme/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend"]
+    assert plan.repo_slugs == {"acme/backend": "acme/backend"}
+
+
 def test_parse_plan_bare_rollout_uses_explicit_affected_slug():
     import batman as bm
 

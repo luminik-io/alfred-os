@@ -308,15 +308,20 @@ def _normalize_repo_token(token: str) -> str | None:
 def _normalize_repo_mention(token: str) -> tuple[str | None, str | None]:
     """Return ``(local_name, explicit_owner_repo)`` for a repo mention."""
     raw = token.strip().strip(",")
-    local = _normalize_repo_token(raw)
-    if not local:
+    if "/" in raw:
+        owner, repo = raw.split("/", 1)
+        if owner and repo and re.fullmatch(r"[\w.-]+", repo):
+            explicit_slug = f"{owner.lower()}/{repo.lower()}"
+            local = (
+                GH_REPO_TO_LOCAL.get(explicit_slug)
+                or GH_REPO_TO_LOCAL.get(repo.lower())
+                or repo.lower()
+            )
+            return local, explicit_slug
+    fallback_local = _normalize_repo_token(raw)
+    if not fallback_local:
         return None, None
-    if "/" not in raw:
-        return local, None
-    owner, repo = raw.split("/", 1)
-    if not owner or not repo:
-        return local, None
-    return local, f"{owner.lower()}/{repo.lower()}"
+    return fallback_local, None
 
 
 def _append_repo_mention(
