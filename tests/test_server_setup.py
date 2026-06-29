@@ -1630,7 +1630,7 @@ def test_install_inventory_blocks_unknown_systemd_lookup_without_overmatching_en
     assert inventory["unmanaged_scheduler_jobs"] == ["systemd timer lookup unavailable"]
     assert inventory["unmanaged_scheduler_count"] == 1
     by_key = {item["key"]: item for item in inventory["items"]}
-    assert by_key["scheduler_unmanaged"]["ok"] is False
+    assert by_key["scheduler_unmanaged"]["ok"] is True
     assert f"{label} (unreadable)" not in by_key["scheduler_unmanaged"]["detail"]
 
 
@@ -1660,7 +1660,7 @@ def test_install_inventory_reports_systemd_probe_unavailable_for_generic_timer_u
     assert inventory["unmanaged_scheduler_jobs"] == ["systemd timer lookup unavailable"]
     assert inventory["unmanaged_scheduler_count"] == 1
     by_key = {item["key"]: item for item in inventory["items"]}
-    assert by_key["scheduler_unmanaged"]["ok"] is False
+    assert by_key["scheduler_unmanaged"]["ok"] is True
     assert "no Alfred-looking scheduler jobs" in by_key["scheduler_unmanaged"]["detail"]
 
 

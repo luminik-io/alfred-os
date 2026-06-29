@@ -1406,7 +1406,7 @@ def _unmanaged_scheduler_jobs_indicate_install(labels: list[str]) -> bool:
 
 
 def _unmanaged_scheduler_jobs_block_setup(labels: list[str]) -> bool:
-    return bool(labels)
+    return bool(labels) and labels != [_SYSTEMD_TIMER_LOOKUP_UNAVAILABLE]
 
 
 def _install_agents_conf_path(home: Path) -> Path | None:
