@@ -141,14 +141,13 @@ def test_parse_plan_bare_rollout_uses_mapped_explicit_affected_slug(monkeypatch)
     assert plan.repo_slugs == {"acme/acme-backend": "acme/acme-backend"}
 
 
-def test_parse_plan_explicit_rollout_promotes_bare_affected_repo():
+def test_parse_plan_explicit_rollout_does_not_promote_bare_affected_repo():
     import batman as bm
 
     body = "## Affected Repos\n- backend\n\n## Rollout order\n- acme/backend\n"
     plan = bm.parse_plan_from_issue(body)
 
-    assert plan.affected_repos == ["acme/backend"]
-    assert plan.repo_slugs == {"acme/backend": "acme/backend"}
+    assert plan.affected_repos == ["backend"]
 
 
 def test_parse_plan_default_rollout_orders_explicit_affected_slugs(monkeypatch):
@@ -680,7 +679,7 @@ We want a mapped backend rollout from a planning repo.
     assert plan.affected_repos == ("acme/acme-backend",)
 
 
-def test_parse_parent_issue_loose_shape_uses_parent_owner_for_bare_mapped_slug_without_gh_org(
+def test_parse_parent_issue_loose_shape_blocks_bare_mapped_slug_without_gh_org(
     monkeypatch,
 ):
     import batman as bm
@@ -707,8 +706,8 @@ We want a mapped backend rollout from a planning repo.
         parent_issue_number=42,
     )
 
-    assert [child.repo for child in plan.children] == ["platform/acme-backend"]
-    assert plan.affected_repos == ("platform/acme-backend",)
+    assert plan.children == ()
+    assert any(f.code == "ambiguous_repo_mapping" for f in plan.readiness_findings)
 
 
 def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
@@ -752,6 +751,28 @@ We want the same worker in two orgs, starting with acme.
 
     assert [child.repo for child in plan.children] == ["acme/backend", "beta/backend"]
     assert plan.affected_repos == ("acme/backend", "beta/backend")
+
+
+def test_parse_parent_issue_loose_shape_rollout_does_not_retarget_bare_repo():
+    body = """
+We want backend changes in the parent org.
+
+## Affected Repos
+- backend
+
+## Rollout order
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the shared worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["myorg/backend"]
+    assert plan.affected_repos == ("myorg/backend",)
 
 
 def test_parse_parent_issue_loose_shape_keeps_bare_repo_after_explicit_same_tail():

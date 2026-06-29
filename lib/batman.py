@@ -407,34 +407,6 @@ def _expand_rollout_repo_keys(
     return out
 
 
-def _promote_explicit_rollout_targets(
-    rollout: list[str],
-    affected: list[str],
-    explicit_repo_slugs: dict[str, str],
-) -> None:
-    for repo_key in rollout:
-        if "/" not in repo_key:
-            continue
-        explicit_match_exists = any(
-            target == repo_key or explicit_repo_slugs.get(target) == repo_key for target in affected
-        )
-        if explicit_match_exists:
-            continue
-        bare_matches = [
-            idx
-            for idx, target in enumerate(affected)
-            if "/" not in target and _repo_keys_match(repo_key, target, explicit_repo_slugs)
-        ]
-        if len(bare_matches) == 1:
-            affected[bare_matches[0]] = repo_key
-            explicit_repo_slugs[repo_key] = repo_key
-    deduped: list[str] = []
-    for repo_key in affected:
-        if repo_key not in deduped:
-            deduped.append(repo_key)
-    affected[:] = deduped
-
-
 def _rollout_order() -> list[str]:
     """Return the configured rollout order.
 
@@ -573,15 +545,14 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     # 4. Resolve final order.
     rollout_order = _rollout_order()
     if rollout_override:
-        _promote_explicit_rollout_targets(rollout_override, affected, explicit_repo_slugs)
-        rollout_override = _expand_rollout_repo_keys(
-            rollout_override, affected, explicit_repo_slugs
-        )
-        for r in rollout_override:
-            if r not in affected:
-                affected.append(r)
-        ordered = [r for r in rollout_override if r in affected]
-        ordered += [r for r in affected if r not in ordered]
+        if affected:
+            rollout_override = _expand_rollout_repo_keys(
+                rollout_override, affected, explicit_repo_slugs
+            )
+            ordered = [r for r in rollout_override if r in affected]
+            ordered += [r for r in affected if r not in ordered]
+        else:
+            ordered = list(rollout_override)
     elif affected:
         expanded_rollout = _expand_rollout_repo_keys(rollout_order, affected, explicit_repo_slugs)
         ordered = [r for r in expanded_rollout if r in affected]
@@ -1467,11 +1438,18 @@ def parse_parent_issue(
             flags=re.IGNORECASE | re.MULTILINE,
         )
     )
-    loose_scope_notes: list[str] = []
+    loose_scope_findings: list[PlanReadinessFinding] = []
     if not repos and not children_pairs and _has_loose_markers:
         loose = parse_plan_from_issue(body)
         if loose.needs_scope_resolution:
-            loose_scope_notes.extend(loose.parse_notes)
+            loose_scope_findings.extend(
+                PlanReadinessFinding(
+                    code="guessed_default_rollout",
+                    severity="error",
+                    message=note,
+                )
+                for note in loose.parse_notes
+            )
             logger.warning(
                 "parse_parent_issue: loose-shape fallback would require a default "
                 "rollout guess; blocking until the parent issue names affected repos."
@@ -1490,9 +1468,22 @@ def parse_parent_issue(
                 if explicit_slug:
                     gh_slug = explicit_slug
                 elif mapped_slug:
+                    if "/" not in mapped_slug and not GH_ORG:
+                        loose_scope_findings.append(
+                            PlanReadinessFinding(
+                                code="ambiguous_repo_mapping",
+                                severity="error",
+                                message=(
+                                    f"GH_REPO_TO_LOCAL maps `{repo_key}` to bare repo "
+                                    f"`{mapped_slug}`, but GH_ORG is unset. Use "
+                                    "`owner/repo` in GH_REPO_TO_LOCAL or set GH_ORG."
+                                ),
+                            )
+                        )
+                        continue
                     gh_slug = _qualify_github_repo_slug(
                         mapped_slug,
-                        fallback_org=GH_ORG or parent_org,
+                        fallback_org=GH_ORG,
                     )
                 else:
                     raw_gh_slug = (
@@ -1584,15 +1575,8 @@ def parse_parent_issue(
             )
         )
 
-    if loose_scope_notes:
-        readiness_findings = [
-            PlanReadinessFinding(
-                code="guessed_default_rollout",
-                severity="error",
-                message=note,
-            )
-            for note in loose_scope_notes
-        ]
+    if loose_scope_findings:
+        readiness_findings = loose_scope_findings
     else:
         readiness_findings = child_resolution_findings + _assess_plan_readiness(
             affected_repos=repos,
