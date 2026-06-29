@@ -1817,16 +1817,44 @@ def _systemd_execstart_value_program_args(value: str, env: Mapping[str, str]) ->
     if not value:
         return None
     argv_marker = "argv[]="
+    if value.startswith("{") and "path=" in value:
+        structured = _structured_systemd_execstart_program_args(value, env)
+        if structured is not None:
+            return structured
     if argv_marker in value:
         value = _systemd_structured_field_value(value, argv_marker) or ""
-    elif value.startswith("{") and "path=" in value:
-        value = _systemd_structured_field_value(value, "path=") or ""
     value = _expand_systemd_home_specifier(value, env)
     with suppress(ValueError):
         args = shlex.split(value)
         if args:
             return _strip_systemd_exec_prefixes(args)
     return [value] if value else None
+
+
+def _structured_systemd_execstart_program_args(
+    value: str,
+    env: Mapping[str, str],
+) -> list[str] | None:
+    path_value = _systemd_structured_field_value(value, "path=") or ""
+    path_args = _split_systemd_execstart_value(path_value, env)
+    if not path_args:
+        return None
+    executable = path_args[0]
+
+    argv_value = _systemd_structured_field_value(value, "argv[]=") or ""
+    argv_args = _split_systemd_execstart_value(argv_value, env)
+    if not argv_args:
+        return [executable]
+    return [executable, *argv_args[1:]]
+
+
+def _split_systemd_execstart_value(value: str, env: Mapping[str, str]) -> list[str]:
+    expanded = _expand_systemd_home_specifier(value.strip(), env)
+    if not expanded:
+        return []
+    with suppress(ValueError):
+        return _strip_systemd_exec_prefixes(shlex.split(expanded))
+    return _strip_systemd_exec_prefixes([expanded])
 
 
 def _strip_systemd_exec_prefixes(args: list[str]) -> list[str]:
