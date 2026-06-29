@@ -77,18 +77,13 @@ only when you want Alfred to create labels there or pick issues and PRs from it.
 
 ## Batman
 
-Batman is included in the full fleet as the architect agent for cross-repo work. It has two
-public paths:
-
-- `BATMAN_PARENT_REPO` parent issues can go through plan, approval, child-issue
-  filing, and status reporting.
-- `BATMAN_SCAN_REPOS` legacy scans pick open `agent:large-feature` issues,
-  group siblings with `agent:bundle:<slug>`, post a rollout plan, and stop
-  before child issue filing.
+Batman is included in the full fleet as the architect agent for cross-repo
+work. `BATMAN_PARENT_REPO` parent issues can go through plan, approval,
+child-issue filing, and status reporting.
 
 Batman owns the feature shape above the repo-local work. It plans the rollout
-in both modes, and the parent-plan path files scoped child issues for the normal
-fleet queue when the gate allows it.
+and files scoped child issues for the normal fleet queue when the gate allows
+it.
 
 Configure it with the rest of the fleet:
 

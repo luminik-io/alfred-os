@@ -30,7 +30,7 @@ Three tiers:
 | `warn` | Prefixed `⚠️` if not already | Soft failures: rate-limit on one provider, max-turns hit, salvaged WIP draft |
 | `alert` | Prefixed `🚨` + appends `<!here>` | Operator must see: production drift, fleet-wide rate-limit, doctor failure on a load-bearing agent, security signal |
 
-Unknown severity values are coerced to `info`. Existing callers without a `severity=` kwarg keep their previous behaviour exactly: back-compat default.
+Unknown severity values are coerced to `info`. Callers without a `severity=` kwarg use the current `info` default.
 
 ```mermaid
 flowchart TB

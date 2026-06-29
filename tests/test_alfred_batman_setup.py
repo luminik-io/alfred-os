@@ -254,12 +254,9 @@ def test_lifecycle_doctor_invoked_when_not_skipped(tmp_path, monkeypatch):
     assert calls == [["bash", str(repo / "bin" / "doctor.sh"), "--lifecycle"]]
 
 
-def test_infer_parent_repo_from_scan_repos(tmp_path, monkeypatch):
+def test_infer_parent_repo_requires_explicit_parent_repo(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
-    assert (
-        mod.infer_parent_repo(
-            {},
-            {"GH_ORG": "acme", "BATMAN_SCAN_REPOS": "backend,frontend"},
-        )
-        == "acme/backend"
-    )
+    removed_scan_key = "BATMAN" + "_SCAN_REPOS"
+    assert mod.infer_parent_repo({}, {"GH_ORG": "acme", "ALFRED_LUCIUS_REPOS": "backend"}) == ""
+    assert mod.infer_parent_repo({}, {"GH_ORG": "acme", removed_scan_key: "backend"}) == ""
+    assert mod.infer_parent_repo({}, {"BATMAN_PARENT_REPO": "acme/specs"}) == "acme/specs"

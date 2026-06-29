@@ -42,7 +42,8 @@ Repos:
 - frontend               ← SILENTLY DROPPED
 ```
 
-The lifecycle parser (`_parse_repo_lines`) skips any line without `/`. The legacy `parse_plan_from_issue` accepts bare names; the new lifecycle one doesn't. There's no warning when entries are dropped: the resulting plan has `children=0 repos=0`.
+The canonical `Repos:` parser (`_parse_repo_lines`) skips any line without `/`.
+Use `owner/repo` here so Batman can file children without guessing.
 
 ### `Children:` entries use bare repo names (short form)
 
@@ -133,13 +134,17 @@ Done when:
 
 Bundle slug `tier-colour-sync` → `agent:bundle:tier-colour-sync` (27 chars total, well under the GitHub limit).
 
-## Why two parser shapes exist (legacy vs. lifecycle)
+## Why two parser shapes exist
 
-For backwards compatibility. The legacy parser (`parse_plan_from_issue` at `lib/batman.py:311`) handles the loose markdown Drake produces: `## Affected Repos` H2 blocks, bare repo names, `## Acceptance Criteria` H3 sections. It runs in the legacy bundle-scan code path (`BATMAN_PARENT_REPO` unset).
+The canonical lifecycle parser (`parse_parent_issue` in `lib/batman.py`) expects
+the inline `Repos:` / `Children:` / `Done when:` blocks documented above.
 
-The lifecycle parser (`parse_parent_issue` at `lib/batman.py:920`) is stricter and runs when `BATMAN_PARENT_REPO` is set. It expects the inline `Repos:` / `Children:` / `Done when:` blocks documented above. Both parsers ship; which one runs depends on the env var.
+Batman also accepts a loose Markdown fallback for issue bodies Drake already
+produces: `## Affected Repos` H2 blocks, bare repo names, and
+`## Acceptance Criteria` H3 sections. That fallback lets imperfect parent
+issues become reviewable plans, but new parent issues should use this template.
 
-If you use `BATMAN_PARENT_REPO` (recommended for new fleets), follow this doc. If you're on the legacy bundle-scan path, see `lib/batman.py:311` for the legacy parser's expectations.
+Follow this doc for `BATMAN_PARENT_REPO` parent issues.
 
 ## Validating before you commit
 

@@ -1,8 +1,7 @@
 """Tests for the ``bin/batman.py`` runner shell.
 
-The heavy bundle and parser primitives live in ``lib/batman.py``. These
-tests cover runner-only wiring that should stay offline and deterministic:
-configured repo scoping for GitHub issue search.
+The heavy parser and lifecycle primitives live in ``lib/batman.py``. These
+tests cover runner-only wiring that should stay offline and deterministic.
 """
 
 from __future__ import annotations
@@ -39,227 +38,13 @@ def _load_runner():
     return mod
 
 
-def test_list_large_features_returns_no_work_when_scan_repos_unset(monkeypatch):
-    runner = _load_runner()
-    calls: list[list[str]] = []
-
-    def fake_gh_json(cmd, *, default):
-        calls.append(cmd)
-        return default
-
-    monkeypatch.delenv("BATMAN_SCAN_REPOS", raising=False)
-    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
-
-    assert runner._list_large_features() == []
-    assert calls == []
-
-
-def test_list_large_features_scopes_search_to_configured_repos(monkeypatch):
-    runner = _load_runner()
-    runner.GH_REPO_TO_LOCAL.update({"myorg-backend": "backend"})
-    calls: list[list[str]] = []
-
-    def fake_gh_json(cmd, *, default):
-        calls.append(cmd)
-        return [
-            {
-                "number": 1,
-                "title": "eligible",
-                "url": "https://github.com/myorg/myorg-backend/issues/1",
-                "labels": [{"name": "agent:large-feature"}],
-                "createdAt": "2026-05-09T10:00:00Z",
-                "body": "",
-            },
-            {
-                "number": 2,
-                "title": "claimed",
-                "url": "https://github.com/myorg/frontend/issues/2",
-                "labels": [{"name": "agent:in-flight"}],
-                "createdAt": "2026-05-09T10:00:00Z",
-                "body": "",
-            },
-        ]
-
-    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend,frontend")
-    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
-
-    rows = runner._list_large_features()
-
-    assert [row["number"] for row in rows] == [1]
-    cmd = calls[0]
-    assert "--owner" not in cmd
-    assert cmd.count("--repo") == 2
-    assert "myorg/myorg-backend" in cmd
-    assert "myorg/frontend" in cmd
-
-
-def test_list_large_features_skips_needs_human_scope(monkeypatch):
-    runner = _load_runner()
-    runner.GH_REPO_TO_LOCAL.update({"myorg-backend": "backend"})
-
-    def fake_gh_json(_cmd, *, default):
-        return [
-            {
-                "number": 1,
-                "title": "eligible",
-                "url": "https://github.com/myorg/myorg-backend/issues/1",
-                "labels": [{"name": "agent:large-feature"}],
-                "createdAt": "2026-05-09T10:00:00Z",
-                "body": "",
-            },
-            {
-                "number": 2,
-                "title": "needs scope",
-                "url": "https://github.com/myorg/myorg-backend/issues/2",
-                "labels": [
-                    {"name": "agent:large-feature"},
-                    {"name": "needs:human-scope"},
-                ],
-                "createdAt": "2026-05-09T10:00:00Z",
-                "body": "",
-            },
-        ]
-
-    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend")
-    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
-
-    assert [row["number"] for row in runner._list_large_features()] == [1]
-
-
 def test_batman_pickup_blocks_done_large_features():
     runner = _load_runner()
     assert runner._has_batman_pickup_blocker({"agent:large-feature", "agent:done"})
 
 
-def test_bundle_for_issue_keeps_siblings_inside_scan_scope(monkeypatch):
+def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
     runner = _load_runner()
-    seen_allowed: list[list[str]] = []
-
-    issue = {
-        "number": 1,
-        "title": "bundle trigger",
-        "url": "https://github.com/myorg/backend/issues/1",
-        "labels": [{"name": "agent:bundle:checkout"}],
-        "createdAt": "2026-05-09T10:00:00Z",
-        "body": "",
-    }
-
-    def fake_list_issues_by_bundle_label(label, *, allowed_repos=None):
-        seen_allowed.append(list(allowed_repos or []))
-        return [
-            issue,
-            {
-                "number": 2,
-                "title": "frontend sibling",
-                "url": "https://github.com/myorg/frontend/issues/2",
-                "labels": [{"name": label}],
-                "createdAt": "2026-05-09T10:01:00Z",
-                "body": "",
-            },
-        ]
-
-    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend,frontend")
-    monkeypatch.setattr(runner, "list_issues_by_bundle_label", fake_list_issues_by_bundle_label)
-
-    bundle = runner._bundle_for_issue(issue)
-
-    assert bundle.bundle_label == "agent:bundle:checkout"
-    assert seen_allowed == [["myorg/backend", "myorg/frontend"]]
-    assert {row["number"] for row in bundle.issues} == {1, 2}
-
-
-def test_bundle_for_issue_orders_declared_dependencies(monkeypatch):
-    runner = _load_runner()
-    issue = {
-        "number": 2,
-        "title": "dependent",
-        "url": "https://github.com/myorg/backend/issues/2",
-        "labels": [{"name": "agent:bundle:checkout"}],
-        "createdAt": "2026-05-09T10:01:00Z",
-        "body": "Depends on: #1",
-    }
-    dependency = {
-        "number": 1,
-        "title": "dependency",
-        "url": "https://github.com/myorg/backend/issues/1",
-        "labels": [{"name": "agent:bundle:checkout"}],
-        "createdAt": "2026-05-09T10:02:00Z",
-        "body": "",
-    }
-
-    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend")
-    monkeypatch.setattr(
-        runner,
-        "list_issues_by_bundle_label",
-        lambda _label, *, allowed_repos=None: [issue, dependency],
-    )
-
-    bundle = runner._bundle_for_issue(issue)
-
-    assert [row["number"] for row in bundle.issues] == [1, 2]
-
-
-def test_legacy_main_blocks_guessed_default_rollout_before_plan_post(monkeypatch):
-    runner = _load_runner()
-    issue = {
-        "number": 679,
-        "title": "Improve the app",
-        "url": "https://github.com/myorg/backend/issues/679",
-        "labels": [{"name": "agent:large-feature"}],
-        "createdAt": "2026-05-09T10:00:00Z",
-        "body": "please improve the app",
-    }
-    comments: list[tuple[str, int, str]] = []
-    edits: list[tuple[str, int, dict]] = []
-    posts: list[str] = []
-
-    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
-    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: True)
-    monkeypatch.setattr(runner, "preflight", lambda *_a, **_kw: None)
-    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: None)
-    monkeypatch.setattr(
-        runner.BatmanLifecycleConfig,
-        "from_env",
-        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo=None)),
-    )
-    monkeypatch.setattr(runner, "_list_large_features", lambda: [issue])
-    monkeypatch.setattr(
-        runner,
-        "gh_issue_comment",
-        lambda repo, number, body: comments.append((repo, number, body)),
-    )
-    monkeypatch.setattr(
-        runner,
-        "gh_issue_edit",
-        lambda repo, number, **kw: edits.append((repo, number, kw)),
-    )
-    monkeypatch.setattr(runner, "slack_post", lambda message, **_kw: posts.append(message))
-    monkeypatch.setattr(
-        runner,
-        "firing_thread_root",
-        lambda *_a, **_kw: (_ for _ in ()).throw(
-            AssertionError("should not post an approval plan")
-        ),
-    )
-
-    assert runner.main() == 0
-    assert comments and comments[0][0:2] == ("myorg/backend", 679)
-    assert "Affected Repos" in comments[0][2]
-    assert edits == [("myorg/backend", 679, {"add_labels": ["needs:human-scope"]})]
-    assert posts and "BATMAN-NEEDS-SCOPE" in posts[0]
-
-
-def test_legacy_main_posts_plan_only_copy(monkeypatch):
-    runner = _load_runner()
-    issue = {
-        "number": 247,
-        "title": "Add org_slug to account-scoped URLs",
-        "url": "https://github.com/myorg/backend/issues/247",
-        "labels": [{"name": "agent:large-feature"}],
-        "createdAt": "2026-05-09T10:00:00Z",
-        "body": "## Affected Repos\n- backend\n- frontend\n",
-    }
-    posted: list[str] = []
 
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
     monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: True)
@@ -270,23 +55,14 @@ def test_legacy_main_posts_plan_only_copy(monkeypatch):
         "from_env",
         classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="")),
     )
-    monkeypatch.setattr(runner, "_list_large_features", lambda: [issue])
     monkeypatch.setattr(
         runner,
-        "firing_thread_root",
-        lambda **kw: posted.append(kw["body"]) or SimpleNamespace(channel="C1", ts="1.0"),
-    )
-    monkeypatch.setattr(
-        runner,
-        "slack_post",
-        lambda *_a, **_kw: pytest.fail("bot-token thread path should be used"),
+        "_list_parent_repo_large_features",
+        lambda *_a, **_kw: pytest.fail("must not query GitHub without BATMAN_PARENT_REPO"),
     )
 
     assert runner.main() == 0
-    assert posted
-    assert "`BATMAN_PARENT_REPO` parent issue" in posted[0]
-    assert "no child issues are filed from `BATMAN_SCAN_REPOS`" in posted[0]
-    assert "*Approval gate:*" not in posted[0]
+    assert "BATMAN_PARENT_REPO is not configured" in capsys.readouterr().out
 
 
 def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):

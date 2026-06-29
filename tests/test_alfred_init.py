@@ -460,7 +460,7 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     assert out["ALFRED_LUCIUS_REPOS"] == "foo,bar"
 
 
-def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
+def test_env_assignments_batman_uses_parent_repo(init_mod, tmp_path):
     state = _state_with(
         init_mod,
         tmp_path,
@@ -469,8 +469,10 @@ def test_env_assignments_batman_uses_scan_repos(init_mod, tmp_path):
     )
     out = init_mod.env_assignments_for(state)
     assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "batman"
-    assert out["BATMAN_SCAN_REPOS"] == "api,web"
+    assert out["BATMAN_PARENT_REPO"] == "acme/api"
     assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
+    removed_scan_key = "BATMAN" + "_SCAN_REPOS"
+    assert removed_scan_key not in out
     assert "ALFRED_BATMAN_REPOS" not in out
 
 

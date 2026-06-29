@@ -1,14 +1,9 @@
-"""Bundle primitives for Batman, the multi-repo architect agent.
+"""Batman lifecycle primitives for the multi-repo architect agent.
 
-Batman picks ``agent:bundle:<slug>`` bundles across product repos,
-drafts plans, and exposes claim / release helpers for fleets that add
-their own execution layer. This module is the pure-data part: ``Bundle``
-dataclass, claim / release across the bundle, and plan parsing from
-issue bodies. Public ``bin/batman.py`` now has a parent-issue lifecycle
-that can draft, request approval, file scoped child issues, and report
-status. The legacy bundle-scan path still drafts a plan only, so
-migrated fleets keep their old safety posture unless they opt into the
-parent-issue workflow.
+Batman reads ``agent:large-feature`` parent issues, drafts plans,
+captures approval, files scoped child issues, and reports status. This
+module keeps the pure-data pieces testable: bundle labels, parent-plan
+parsing, approval envelopes, child issue creation, and report shapes.
 
 Key contract, bundle = atomic unit:
 
@@ -476,8 +471,8 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
     Two shapes Batman accepts:
 
     - **Solo bundle** (single issue, body encodes a multi-repo plan):
-      delegate to ``parse_plan_from_issue(body)`` so legacy
-      single-issue plans still parse correctly.
+      delegate to ``parse_plan_from_issue(body)`` so the loose Markdown
+      shape still parses correctly.
     - **Multi-issue bundle** (the ``agent:bundle:<slug>`` label pattern):
       each issue lives in its own product repo; that repo IS the issue's
       affected repo. Per-repo criteria come from each issue's body. Preserve
@@ -522,10 +517,8 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
 # plan-approve-execute-report lifecycle
 # ---------------------------------------------------------------------------
 #
-# The block below extends Batman from "draft a plan and stop" to a full
-# plan -> approve -> execute -> report cycle. Wire it up via
-# ``BatmanLifecycle`` in ``bin/batman.py``; the original parsing /
-# claim helpers above stay untouched so legacy fleets keep working.
+# The block below implements Batman's full plan -> approve -> execute -> report
+# cycle. Wire it up via ``BatmanLifecycle`` in ``bin/batman.py``.
 #
 # Design rules (SOLID, DRY, 12-factor):
 #
@@ -1738,7 +1731,7 @@ def _children_by_repo(plan: BundlePlan) -> dict[str, int]:
 class SlackReporter:
     """Default reporter: posts plan + report through ``slack_format``.
 
-    Falls back to the legacy webhook (``slack_post`` from
+    Falls back to the webhook surface (``slack_post`` from
     ``agent_runner``) when the bot-token surface is unavailable; the
     operator still sees the plan even on a half-configured fleet, but
     without a ``message_ts`` the approval gate is bypassed (callers

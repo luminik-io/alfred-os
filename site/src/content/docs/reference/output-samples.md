@@ -74,26 +74,22 @@ your-frontend
 Total: $0.90 / 87 turns / 3 PRs
 ```
 
-## Slack: Batman bundle plan post
+## Slack: Batman parent-plan post
 
-When it appears: Batman scanned `BATMAN_SCAN_REPOS`, found an
-`agent:large-feature` issue, resolved its bundle, and posted the plan.
-This legacy scan path is plan-only; child issue filing happens through the
-`BATMAN_PARENT_REPO` lifecycle path.
+When it appears: Batman found an `agent:large-feature` issue in
+`BATMAN_PARENT_REPO`, drafted the rollout, and posted the approval request.
 
 ```
 batman · plan drafted
 
-Issue:        your-backend#247: Add org_slug to account-scoped URLs
+Parent:       your-specs#247: Add org_slug to account-scoped URLs
 Bundle:       add-org-slug
 Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-Next:         steer this plan in-thread. This legacy scan path is plan-only;
-              move the scope to a BATMAN_PARENT_REPO parent issue when you
-              want approval and child issue filing.
-Execution:    no child issues are filed from BATMAN_SCAN_REPOS.
+Next:         approve, decline, or steer this plan in-thread.
+Execution:    after approval, Batman files scoped child issues for Lucius.
 ```
 
 ## doctor.sh: clean run

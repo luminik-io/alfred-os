@@ -224,16 +224,7 @@ def env_or_rc(env: dict[str, str], rc: dict[str, str], key: str, default: str = 
 
 
 def infer_parent_repo(env: dict[str, str], rc: dict[str, str]) -> str:
-    explicit = env_or_rc(env, rc, BATMAN_PARENT_REPO_ENV)
-    if explicit:
-        return explicit
-    gh_org = env_or_rc(env, rc, "GH_ORG")
-    scan = env_or_rc(env, rc, "BATMAN_SCAN_REPOS") or env_or_rc(env, rc, "ALFRED_LUCIUS_REPOS")
-    if gh_org and scan:
-        first = next((part.strip() for part in scan.split(",") if part.strip()), "")
-        if first:
-            return first if "/" in first else f"{gh_org}/{first}"
-    return ""
+    return env_or_rc(env, rc, BATMAN_PARENT_REPO_ENV)
 
 
 @dataclass

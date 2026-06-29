@@ -11,7 +11,7 @@ One codename agent, one job, 150-300 lines:
 
 | Codename (Batman cast) | Single job |
 |---|---|
-| **Batman** | Architect public `agent:large-feature` work. The legacy scan path drafts plans; the parent-plan path waits for approval, then drives the approved rollout into scoped child issues. Runner-gated in OSS. |
+| **Batman** | Architect public `agent:large-feature` parent issues. Waits for approval, then drives the approved rollout into scoped child issues. Runner-gated in OSS. |
 | **Lucius** (Lucius Fox) | Pick the oldest `agent:implement` issue, claim it, ask Claude to implement, push a branch, open a PR. |
 | **Drake** (Tim Drake) | Read specs + roadmap + code-reality grep, file the next well-scoped `agent:implement` issue. |
 | **Bane** | Pick the lowest-coverage actively-changed file, write tests, open a PR. |

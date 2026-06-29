@@ -291,7 +291,7 @@ alfred labels bootstrap my-org/specs
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BATMAN_AUTO_EXECUTE` | `0` | Controls the gate. Values: `0` (halt after plan, the safe default), `approval-gate` (require approval), `1` (execute without a gate). |
-| `BATMAN_PARENT_REPO` | (unset) | `owner/repo` Batman reads parent issues from. When unset, the legacy cross-repo bundle scan path runs instead. |
+| `BATMAN_PARENT_REPO` | (unset) | `owner/repo` Batman reads parent issues from. When unset, Batman exits cleanly without querying GitHub. |
 | `BATMAN_PICKER` | `oldest` | `oldest` (FIFO by `createdAt`) or `newest`. |
 | `BATMAN_BUNDLE_SLUG_PREFIX` | empty | Optional prefix prepended to the derived slug. Useful when several teams share a Slack channel and want their bundles distinguishable. |
 | `BATMAN_APPROVAL_TIMEOUT_S` | `86400` | Wall-clock seconds the gate will wait for a reaction. |

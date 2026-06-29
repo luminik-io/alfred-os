@@ -64,10 +64,9 @@ status/set` persists per-agent engine choices under
 
 | Var | Used by | Default |
 |---|---|---|
-| `BATMAN_SCAN_REPOS` | `bin/batman.py` repo scan scope for `agent:large-feature` issues | (none, no-op) |
+| `BATMAN_PARENT_REPO` | `bin/batman.py` parent issue queue | (none, no-op) |
 | `BATMAN_ROLLOUT_ORDER` | `alfred-init.py` and plan parsing defaults | `backend,frontend,mobile,agents,data-acquisition` |
 | `AGENT_CODENAME_CROSS_REPO_COORDINATOR` | `alfred-init.py` codename mapping | `batman` |
-| `BATMAN_PARENT_REPO` | `bin/batman.py` parent-issue lifecycle path | (none) |
 | `BATMAN_AUTO_EXECUTE` | `lib/batman.py` plan execution mode | `0` |
 | `BATMAN_PICKER` | `lib/batman.py` parent issue selection | `oldest` |
 | `BATMAN_BUNDLE_SLUG_PREFIX` | `lib/batman.py` bundle slug rendering | (blank) |
@@ -75,13 +74,11 @@ status/set` persists per-agent engine choices under
 | `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `lib/batman.py` post-report Slack follow-up capture | `60` |
 | `BATMAN_SLACK_CHANNEL` | `lib/batman.py` plan and report channel | (blank, falls back to Slack home channel) |
 
-Batman is included in the public fleet, but execution is gated. The newer
-`BATMAN_PARENT_REPO` path reads parent issues, waits for approval when required,
+Batman is included in the public fleet, but execution is gated.
+`BATMAN_PARENT_REPO` reads parent issues, waits for approval when required,
 files child `agent:implement` issues, and reports status. With the default
 `BATMAN_AUTO_EXECUTE=0`, parent issues halt after the plan; set
-`approval-gate` when you want approved child filing. The legacy
-`BATMAN_SCAN_REPOS` path scans configured repos, groups `agent:bundle:<slug>`
-siblings, posts a rollout plan, and stops before child issue filing.
+`approval-gate` when you want approved child filing.
 
 ## Claude auth
 

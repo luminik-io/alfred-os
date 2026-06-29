@@ -938,7 +938,10 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         if repos:
             runtime_repos = repo_runtime_values(repos)
             if role == "cross_repo_coordinator":
-                out["BATMAN_SCAN_REPOS"] = ",".join(runtime_repos)
+                parent_repo = repos[0].strip()
+                if "/" not in parent_repo and state.gh_org:
+                    parent_repo = f"{state.gh_org}/{parent_repo}"
+                out["BATMAN_PARENT_REPO"] = parent_repo
                 out["BATMAN_ROLLOUT_ORDER"] = ",".join(runtime_repos)
             elif role in ROLE_REPO_ENV_KEYS:
                 for env_key in ROLE_REPO_ENV_KEYS[role]:
