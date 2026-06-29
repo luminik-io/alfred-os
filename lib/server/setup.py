@@ -1406,7 +1406,7 @@ def _unmanaged_scheduler_jobs_indicate_install(labels: list[str]) -> bool:
 
 
 def _unmanaged_scheduler_jobs_block_setup(labels: list[str]) -> bool:
-    return bool(labels) and labels != [_SYSTEMD_TIMER_LOOKUP_UNAVAILABLE]
+    return bool(labels)
 
 
 def _install_agents_conf_path(home: Path) -> Path | None:
@@ -1749,11 +1749,7 @@ def _strong_unreadable_alfred_systemd_timer_label(
     normalized = label.strip().lower()
     if _strong_alfred_scheduler_label(normalized, legacy_prefixes):
         return True
-    if _strong_unreadable_alfred_scheduler_label(normalized, legacy_prefixes):
-        return True
-    # launchd labels are broad enough that a bare ``*.eng.*`` label needs
-    # executable proof, but an active systemd timer is itself a scheduler signal.
-    return _label_has_legacy_engineering_shape(normalized)
+    return _strong_unreadable_alfred_scheduler_label(normalized, legacy_prefixes)
 
 
 def _label_matches_legacy_prefix(
