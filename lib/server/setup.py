@@ -1820,7 +1820,12 @@ def _systemd_execstart_value_program_args(value: str, env: Mapping[str, str]) ->
         value = value.split(argv_marker, 1)[1].split(";", 1)[0].strip()
     elif value.startswith("{") and "path=" in value:
         value = value.split("path=", 1)[1].split(";", 1)[0].strip()
-    return [_expand_systemd_home_specifier(value, env)] if value else None
+    value = _expand_systemd_home_specifier(value, env)
+    with suppress(ValueError):
+        args = shlex.split(value)
+        if args:
+            return args
+    return [value] if value else None
 
 
 def _scheduler_probe_subprocess_env(env: Mapping[str, str]) -> dict[str, str]:
