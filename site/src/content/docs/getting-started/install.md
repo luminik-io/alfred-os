@@ -93,8 +93,8 @@ manifest, updates `~/.alfredrc`, runs deploy, and runs doctor.
 
 Batman is included in the full fleet. It only acts on approved
 `agent:large-feature` parent issues after you configure the parent planning repo
-and approval settings, then explicitly arm the runner with `alfred enable
-batman`.
+set `BATMAN_AUTO_EXECUTE=approval-gate` and the required approval settings, then
+explicitly arm the runner with `alfred enable batman`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
