@@ -31,11 +31,16 @@ from pathlib import Path
 # Resolve lib/ regardless of how the script was invoked. In the
 # installed fleet layout the script lives in ``$ALFRED_HOME/bin/`` and
 # the library in ``$ALFRED_HOME/lib/``; in a checkout the script lives
-# in ``<repo>/bin/`` and the library in ``<repo>/lib/``. Probe both.
+# in ``<repo>/bin/`` and the library in ``<repo>/lib/``. Prefer the
+# script's own checkout so source-run servers cannot import stale
+# deployed libraries just because ALFRED_HOME is set.
 _HERE = Path(__file__).resolve().parent
-for candidate in (_HERE.parent / "lib", Path(os.environ.get("ALFRED_HOME", "")) / "lib"):
-    if candidate.is_dir() and str(candidate) not in sys.path:
-        sys.path.insert(0, str(candidate))
+for candidate in (Path(os.environ.get("ALFRED_HOME", "")) / "lib", _HERE.parent / "lib"):
+    candidate_path = str(candidate)
+    if candidate.is_dir():
+        if candidate_path in sys.path:
+            sys.path.remove(candidate_path)
+        sys.path.insert(0, candidate_path)
 
 logger = logging.getLogger("alfred-serve")
 
