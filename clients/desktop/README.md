@@ -65,11 +65,10 @@ reviewable memory candidates with promote / reject and failure-pattern harvest.
 **Setup** is the client-owned, onboarding-first surface and the repair path: it
 detects installed engine CLIs, connects GitHub and picks repos, starts the local
 runtime, checks the optional code-memory graph layer, shows the current full
-fleet configuration, points to `alfred-init` / `alfred-deploy` when scheduler
-setup is missing, runs common Alfred checks in-app, adds or removes local trusted
-Slack collaborators, and keeps the underlying CLI commands visible as advanced
-detail. It also owns Appearance, including roster themes, custom agent names,
-and dark/light mode.
+fleet configuration, shows whether the deployed scheduler manifest exists, runs
+common Alfred checks in-app, adds or removes local trusted Slack collaborators,
+and keeps runtime state visible for CLI follow-up. It also owns Appearance,
+including roster themes, custom agent names, and dark/light mode.
 
 A command palette (Cmd+K) navigates anywhere, and the sidebar includes a fast
 dark/light mode toggle.

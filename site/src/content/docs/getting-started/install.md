@@ -84,12 +84,14 @@ Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing, Robin, automerge,
 agent-cleanup, memory-harvest, memory-auto-promote, code-map-refresh,
 agent-morning-brief, fleet-doctor, fleet-recap-morning, fleet-recap-evening,
 shipped-summary-daily, and shipped-summary-weekly. Huntress and Gordon are in
-the fleet catalog too, but their scheduler rows stay gated until you set
-`ALFRED_HUNTRESS_TARGET_URL` and `ALFRED_GORDON_ECS_CLUSTER`. It assigns the
-selected repo list to each repo-operating agent, skips Slack safely, seeds prompt
-templates into `~/.alfred/prompts/`, creates standard GitHub labels on the
-selected repos, writes `launchd/agents.conf`, writes the shared scheduler
-manifest, updates `~/.alfredrc`, runs deploy, and runs doctor.
+the fleet catalog too, but their scheduler rows are generated only when
+`ALFRED_HUNTRESS_TARGET_URL` and `ALFRED_GORDON_ECS_CLUSTER` are present in the
+install config or runtime env files. If you add those settings later, rerun
+`alfred-init` and deploy the regenerated schedule. It assigns the selected repo
+list to each repo-operating agent, skips Slack safely, seeds prompt templates
+into `~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
+writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
+`~/.alfredrc`, runs deploy, and runs doctor.
 
 Batman is included in the full fleet. It only acts on approved
 `agent:large-feature` parent issues after you configure the parent planning repo
