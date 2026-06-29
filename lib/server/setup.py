@@ -1529,19 +1529,27 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
     for label in sorted(loaded):
         if label in managed:
             continue
-        service_label = _systemd_timer_service_label(label, env)
-        if service_label is None:
+        service_label, service_lookup_failed = _systemd_timer_service_label(label, env)
+        if service_lookup_failed:
             if _strong_alfred_scheduler_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
-                continue
-            return [_SYSTEMD_PROBE_UNAVAILABLE]
+            continue
+        if service_label is None:
+            continue
         program_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=False)
         if program_args is None:
-            if _strong_alfred_scheduler_label(label, legacy_prefixes):
+            if _strong_alfred_scheduler_label(
+                label,
+                legacy_prefixes,
+            ) or _strong_alfred_scheduler_label(service_label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
-                continue
-            return [_SYSTEMD_PROBE_UNAVAILABLE]
-        if _program_is_alfred_scheduler(program_args, home, label, legacy_prefixes):
+            continue
+        if _program_is_alfred_scheduler_for_labels(
+            program_args,
+            home,
+            (label, service_label),
+            legacy_prefixes,
+        ):
             labels.append(label)
     return sorted(set(labels))
 
@@ -1776,9 +1784,12 @@ def _systemd_service_program_args(
     return None
 
 
-def _systemd_timer_service_label(label: str, env: Mapping[str, str]) -> str | None:
+def _systemd_timer_service_label(
+    label: str,
+    env: Mapping[str, str],
+) -> tuple[str | None, bool]:
     if os.uname().sysname != "Linux":
-        return label
+        return label, False
     try:
         cp = subprocess.run(
             [
@@ -1796,13 +1807,15 @@ def _systemd_timer_service_label(label: str, env: Mapping[str, str]) -> str | No
             env=_scheduler_probe_subprocess_env(env),
         )
     except (OSError, subprocess.SubprocessError):
-        return None
+        return None, True
     if cp.returncode != 0:
-        return None
+        return None, True
     unit = (cp.stdout or "").strip()
+    if not unit:
+        return label, False
     if not unit.endswith(".service"):
-        return label
-    return unit.removesuffix(".service")
+        return None, False
+    return unit.removesuffix(".service"), False
 
 
 def _active_systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
@@ -1991,6 +2004,17 @@ def _program_is_alfred_scheduler(
     if any(_path_is_external_alfred_scheduler_launcher(path) for path in argument_paths):
         return looks_like_alfred_label
     return False
+
+
+def _program_is_alfred_scheduler_for_labels(
+    program_args: list[str],
+    home: Path,
+    labels: Iterable[str],
+    legacy_prefixes: tuple[str, ...] = (),
+) -> bool:
+    return any(
+        _program_is_alfred_scheduler(program_args, home, label, legacy_prefixes) for label in labels
+    )
 
 
 def _path_is_external_alfred_scheduler_launcher(path: Path) -> bool:
