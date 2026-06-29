@@ -1189,13 +1189,16 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
         else:
             print("  note: pass --native to execute supported runner dry-run hooks")
         return 0
-    env = os.environ.copy()
+    env = agent_runner.launcher_env()
+    pythonpath = str(_HERE.parent / "lib")
+    if env.get("PYTHONPATH", "").strip():
+        pythonpath = f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
     env.update(
         {
             "ALFRED_DRY_RUN": "1",
             "AGENT_CODENAME": codename,
             "LAUNCHD_LABEL": record["label"],
-            "PYTHONPATH": str(_HERE.parent / "lib"),
+            "PYTHONPATH": pythonpath,
         }
     )
     cmd = [sys.executable, str(script), "--dry-run"]

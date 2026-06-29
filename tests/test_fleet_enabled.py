@@ -7,6 +7,7 @@ enable_agent / disable_agent.
 
 from __future__ import annotations
 
+import argparse
 import importlib.machinery
 import importlib.util
 import os
@@ -201,6 +202,57 @@ def test_cli_enabled_agents_announces_missing_file(tmp_path):
     res = _run_cli("enabled-agents", env_extra=env)
     assert res.returncode == 0
     assert "missing" in res.stdout.lower()
+
+
+def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    home.mkdir()
+    workspace.mkdir()
+    (home / ".alfredrc").write_text(
+        f"ALFRED_HOME={runtime}\nWORKSPACE_ROOT={workspace}\nCUSTOM_FROM_RC=loaded-from-rc\n",
+        encoding="utf-8",
+    )
+    (runtime / "launchd").mkdir(parents=True)
+    (runtime / ".env").write_text(
+        "CUSTOM_FROM_ENV=loaded-from-env\n",
+        encoding="utf-8",
+    )
+    (runtime / "launchd" / "agents.conf").write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+
+    cli = _load_cli_module()
+    captured: dict[str, object] = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = kwargs["env"]
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    rc = cli.cmd_dry_run(
+        argparse.Namespace(codename="lucius", native=True, simulate=False, json=False)
+    )
+
+    assert rc == 0
+    env = captured["env"]
+    assert isinstance(env, dict)
+    assert captured["cmd"] == [sys.executable, str(CLI.parent / "lucius.py"), "--dry-run"]
+    assert env["ALFRED_HOME"] == str(runtime)
+    assert env["WORKSPACE_ROOT"] == str(workspace)
+    assert env["CUSTOM_FROM_RC"] == "loaded-from-rc"
+    assert env["CUSTOM_FROM_ENV"] == "loaded-from-env"
+    assert env["ALFRED_DRY_RUN"] == "1"
+    assert env["AGENT_CODENAME"] == "lucius"
+    assert env["LAUNCHD_LABEL"] == "alfred.lucius"
+    assert str(CLI.parent.parent / "lib") in env["PYTHONPATH"].split(os.pathsep)
 
 
 def test_cli_engine_set_supports_batman(tmp_path):

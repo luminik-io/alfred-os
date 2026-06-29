@@ -253,6 +253,7 @@ from .paths import (
     WORKSPACE_ROOT,
     WORKTREE_ROOT,
     WORKTREES_ROOT,
+    launcher_env,
     now_iso,
     today_str,
 )
