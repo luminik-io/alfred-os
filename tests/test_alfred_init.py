@@ -505,6 +505,10 @@ def test_env_assignments_batman_writes_explicit_parent_repo(init_mod, tmp_path):
     assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
 
 
+def test_batman_does_not_require_repo_selection(init_mod):
+    assert init_mod.role_uses_repos("cross_repo_coordinator") is False
+
+
 def test_label_setup_repos_includes_batman_parent_repo(init_mod, tmp_path):
     state = _state_with(
         init_mod,
@@ -1401,6 +1405,25 @@ def test_step_7_repos_preserves_role_repos_from_config(init_mod, tmp_path):
     init_mod.step_7_repos(state, repos_arg="acme/web,acme/mobile", non_interactive=True)
     assert state.role_to_repos["feature_dev"] == ["acme/api"]
     assert state.role_to_repos["planner"] == ["acme/web", "acme/mobile"]
+
+
+def test_step_7_repos_allows_batman_parent_repo_only_noninteractive(
+    init_mod,
+    tmp_path,
+):
+    state = init_mod.WizardState(
+        alfred_home=tmp_path / "alfred",
+        alfredrc=tmp_path / ".alfredrc",
+        repo_root=tmp_path,
+        gh_org="acme",
+    )
+    state.enabled_roles = ["cross_repo_coordinator"]
+    state.repos = ["acme/api", "acme/web", "acme/mobile"]
+    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+
+    init_mod.step_7_repos(state, repos_arg=None, non_interactive=True)
+
+    assert "cross_repo_coordinator" not in state.role_to_repos
 
 
 def test_step_6_codenames_preserves_config_overrides(init_mod, tmp_path):

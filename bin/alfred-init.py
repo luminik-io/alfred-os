@@ -97,7 +97,7 @@ AGENT_CATALOG: dict[str, tuple[str, str, bool, str]] = {
     "cross_repo_coordinator": (
         "batman",
         "cross-repo architect (plans and files approved agent:large-feature bundles)",
-        True,
+        False,
         "interval:3600",
     ),
     "smoke_runner": (
