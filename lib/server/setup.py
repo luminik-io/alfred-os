@@ -1417,7 +1417,7 @@ def _systemd_user_dir(env: Mapping[str, str]) -> Path | None:
 
 
 def _scheduler_inventory_path(env: Mapping[str, str]) -> Path | None:
-    if os.uname().sysname == "Linux":
+    if _scheduler_probe_kind(env) == "systemd":
         return _systemd_user_dir(env)
     return _launch_agents_dir(env)
 
@@ -1443,10 +1443,17 @@ def _agents_conf_launchd_labels(path: Path | None) -> set[str]:
 
 
 def _unmanaged_alfred_scheduler_jobs(env: Mapping[str, str], home: Path) -> list[str]:
-    system = os.uname().sysname
-    if system == "Linux":
+    if _scheduler_probe_kind(env) == "systemd":
         return _unmanaged_alfred_systemd_jobs(env, home)
     return _unmanaged_alfred_launchd_jobs(env, home)
+
+
+def _scheduler_probe_kind(env: Mapping[str, str]) -> str:
+    if env.get("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "").strip():
+        return "launchd"
+    if env.get("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "").strip():
+        return "systemd"
+    return "systemd" if os.uname().sysname == "Linux" else "launchd"
 
 
 def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[str]:
