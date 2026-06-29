@@ -249,6 +249,46 @@ def test_legacy_main_blocks_guessed_default_rollout_before_plan_post(monkeypatch
     assert posts and "BATMAN-NEEDS-SCOPE" in posts[0]
 
 
+def test_legacy_main_posts_plan_only_copy(monkeypatch):
+    runner = _load_runner()
+    issue = {
+        "number": 247,
+        "title": "Add org_slug to account-scoped URLs",
+        "url": "https://github.com/myorg/backend/issues/247",
+        "labels": [{"name": "agent:large-feature"}],
+        "createdAt": "2026-05-09T10:00:00Z",
+        "body": "## Affected Repos\n- backend\n- frontend\n",
+    }
+    posted: list[str] = []
+
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: True)
+    monkeypatch.setattr(runner, "preflight", lambda *_a, **_kw: None)
+    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: None)
+    monkeypatch.setattr(
+        runner.BatmanLifecycleConfig,
+        "from_env",
+        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="")),
+    )
+    monkeypatch.setattr(runner, "_list_large_features", lambda: [issue])
+    monkeypatch.setattr(
+        runner,
+        "firing_thread_root",
+        lambda **kw: posted.append(kw["body"]) or SimpleNamespace(channel="C1", ts="1.0"),
+    )
+    monkeypatch.setattr(
+        runner,
+        "slack_post",
+        lambda *_a, **_kw: pytest.fail("bot-token thread path should be used"),
+    )
+
+    assert runner.main() == 0
+    assert posted
+    assert "`BATMAN_PARENT_REPO` parent issue" in posted[0]
+    assert "no child issues are filed from `BATMAN_SCAN_REPOS`" in posted[0]
+    assert "*Approval gate:*" not in posted[0]
+
+
 def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
     runner = _load_runner()
     reports = []

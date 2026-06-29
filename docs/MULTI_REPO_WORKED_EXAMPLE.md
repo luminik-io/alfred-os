@@ -108,7 +108,7 @@ The post Batman emits in Slack (rendered shape):
 ```
 batman · plan drafted
 
-Issue:        your-backend#247: Add `org_slug` to account-scoped URLs
+Issue:        your-specs#247: Bundle: add-org-slug - Add `org_slug` to account-scoped URLs
 Bundle:       add-org-slug
 Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile

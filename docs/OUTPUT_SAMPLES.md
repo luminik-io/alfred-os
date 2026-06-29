@@ -85,9 +85,10 @@ Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
 Engine:       hybrid
 
-Approval:     not requested on the legacy scan path
-Next:         move the scope to a BATMAN_PARENT_REPO parent issue when you want
-              Batman to run approval and child issue filing.
+Next:         steer this plan in-thread. This legacy scan path is plan-only;
+              move the scope to a BATMAN_PARENT_REPO parent issue when you
+              want approval and child issue filing.
+Execution:    no child issues are filed from BATMAN_SCAN_REPOS.
 ```
 
 ## doctor.sh: clean run
