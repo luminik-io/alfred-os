@@ -813,6 +813,9 @@ def run_pre_push_checks(repo: str, wt: Path) -> PrePushResult:
     command = (PRE_PUSH.get(repo) or "").strip()
     if not command:
         return PrePushResult(ok=True)
+    if is_dry_run():
+        dry_run_log("checks", f"would run pre-push command for {repo}: `{command}`; skipped")
+        return PrePushResult(ok=True, command=command)
 
     result = run(["bash", "-lc", command], cwd=str(wt), timeout=PRE_PUSH_TIMEOUT_SECONDS)
     if result.returncode != 0:
