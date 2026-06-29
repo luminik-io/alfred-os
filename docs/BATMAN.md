@@ -150,10 +150,10 @@ Repos:
 - your-org/your-mobile
 
 Children:
-- backend: introduce BillingV2Service
-- backend: migrate /api/v1/invoices
-- frontend: pricing page rewrite
-- mobile: settings screen v2
+- your-backend: introduce BillingV2Service
+- your-backend: migrate /api/v1/invoices
+- your-frontend: pricing page rewrite
+- your-mobile: settings screen v2
 
 Done when:
 - All children merged to main
@@ -209,10 +209,10 @@ Repos:
 - your-org/your-mobile
 
 Children:
-- backend: introduce BillingV2Service
-- backend: migrate /api/v1/invoices
-- frontend: pricing page rewrite
-- mobile: settings screen v2
+- your-backend: introduce BillingV2Service
+- your-backend: migrate /api/v1/invoices
+- your-frontend: pricing page rewrite
+- your-mobile: settings screen v2
 
 Done when:
 - All children merged to main

@@ -210,10 +210,10 @@ PY
 
 configured_agents() {
   local conf=""
-  if [ -f "$REPO_DIR/launchd/agents.conf" ]; then
-    conf="$REPO_DIR/launchd/agents.conf"
-  elif [ -f "$ALFRED_HOME/launchd/agents.conf" ]; then
+  if [ -f "$ALFRED_HOME/launchd/agents.conf" ]; then
     conf="$ALFRED_HOME/launchd/agents.conf"
+  elif [ -f "$REPO_DIR/launchd/agents.conf" ]; then
+    conf="$REPO_DIR/launchd/agents.conf"
   fi
   if [ -n "$conf" ]; then
     awk -F'\t' '

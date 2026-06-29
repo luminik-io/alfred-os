@@ -38,26 +38,27 @@ File the resulting issue in `BATMAN_PARENT_REPO`, label it `agent:large-feature`
 Repos:
 - myorg/backend          ← correct
 - myorg/frontend         ← correct
-- backend                ← only qualified when GH_ORG is configured
-- frontend               ← only qualified when GH_ORG is configured
+- backend                ← qualified with the parent repo owner, then GH_ORG
+- frontend               ← qualified with the parent repo owner, then GH_ORG
 ```
 
 The canonical `Repos:` parser (`_parse_repo_lines`) keeps `owner/repo` slugs
-verbatim. Bare repo names are accepted only for a single-org fleet with
-`GH_ORG` configured; otherwise they are skipped with a parser warning. Use
-`owner/repo` here so Batman can file children without guessing, and so
-`BATMAN_PARENT_REPO=<owner>/<repo>` does not need any separate org fallback.
+verbatim. Bare repo names are qualified from the parent issue repo owner first,
+then `GH_ORG` when the parser is called without a parent owner. Use `owner/repo`
+here when a parent plan spans more than one org.
 
-### `Children:` entries use bare repo names (short form)
+### `Children:` entries use exact repo tails
 
 ```
 Children:
-- backend: Add /api/v2 endpoint    ← correct (short name)
-- frontend: Update settings page   ← correct
-- myorg/backend: ...               ← also works but redundant
+- backend: Add /api/v2 endpoint       ← correct for myorg/backend
+- frontend: Update settings page      ← correct for myorg/frontend
+- core-backend: Add cache invalidation ← correct for myorg/core-backend
+- myorg/backend: ...                  ← also works but redundant
 ```
 
 `_parse_children_lines` extracts `<repo>:` then `<title>` from each bullet. The short name (right-of-`/`) is resolved against the `Repos:` list via `_resolve_child_repo`.
+It must match the repo tail exactly. `backend` does not match `core-backend`.
 
 ### `Bundle:` slug determines the bundle label
 
