@@ -2042,6 +2042,10 @@ def _program_is_alfred_scheduler(
         for path in argument_paths
     ):
         return True
+    if _label_has_legacy_engineering_shape(label.strip().lower()) and any(
+        _path_is_scheduler_launcher(path) for path in argument_paths
+    ):
+        return True
     if any(_path_is_external_alfred_scheduler_launcher(path) for path in argument_paths):
         return looks_like_alfred_label
     return False
@@ -2059,9 +2063,18 @@ def _program_is_alfred_scheduler_for_labels(
 
 
 def _path_is_external_alfred_scheduler_launcher(path: Path) -> bool:
-    if path.name not in _ALFRED_SCHEDULER_LAUNCHER_NAMES or path.parent.name != "bin":
+    if not _path_is_scheduler_launcher(path):
         return False
     return any(_path_part_is_alfred_install_name(part) for part in path.parts[:-2])
+
+
+def _path_is_scheduler_launcher(path: Path) -> bool:
+    return path.name in _ALFRED_SCHEDULER_LAUNCHER_NAMES and path.parent.name == "bin"
+
+
+def _label_has_legacy_engineering_shape(normalized_label: str) -> bool:
+    parts = normalized_label.split(".")
+    return len(parts) >= 3 and parts[1] == "eng"
 
 
 def _path_part_is_alfred_install_name(part: str) -> bool:

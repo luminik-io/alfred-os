@@ -945,6 +945,34 @@ def test_install_inventory_detects_single_old_alfred_install_launcher(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
+def test_install_inventory_detects_single_legacy_engineering_launcher_without_prefix_opt_in(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    old_runtime = tmp_path / "legacy" / "eng"
+    label = ".".join(("legacy", "eng", "worker"))
+    (home / "Library" / "LaunchAgents").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", f"{label}\n")
+
+    def fake_program_args(probed_label: str, _env: dict[str, str]) -> list[str]:
+        if probed_label == label:
+            return [str(old_runtime / "bin" / "agent-launch")]
+        return []
+
+    monkeypatch.setattr(setup_mod, "_launchctl_program_args", fake_program_args)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == [label]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
 def test_install_inventory_ignores_external_agent_launch_without_alfred_label(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
