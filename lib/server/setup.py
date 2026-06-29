@@ -1551,7 +1551,7 @@ def _loaded_launchd_labels(env: Mapping[str, str]) -> set[str] | None:
             text=True,
             timeout=2,
             check=False,
-            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+            env=_scheduler_probe_subprocess_env(env),
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -1588,7 +1588,7 @@ def _loaded_systemd_timer_labels(env: Mapping[str, str]) -> set[str] | None:
             text=True,
             timeout=2,
             check=False,
-            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+            env=_scheduler_probe_subprocess_env(env),
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -1694,7 +1694,7 @@ def _launchctl_program_args(label: str, env: Mapping[str, str]) -> list[str] | N
             text=True,
             timeout=_LAUNCHCTL_PRINT_TIMEOUT_SECONDS,
             check=False,
-            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+            env=_scheduler_probe_subprocess_env(env),
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -1755,7 +1755,7 @@ def _active_systemd_service_program_args(label: str, env: Mapping[str, str]) -> 
             text=True,
             timeout=2,
             check=False,
-            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+            env=_scheduler_probe_subprocess_env(env),
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -1791,6 +1791,12 @@ def _systemd_execstart_value_program_args(value: str, env: Mapping[str, str]) ->
     elif value.startswith("{") and "path=" in value:
         value = value.split("path=", 1)[1].split(";", 1)[0].strip()
     return [_expand_systemd_home_specifier(value, env)] if value else None
+
+
+def _scheduler_probe_subprocess_env(env: Mapping[str, str]) -> dict[str, str]:
+    probe_env = dict(os.environ)
+    probe_env["PATH"] = _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))
+    return probe_env
 
 
 def _expand_systemd_home_specifier(value: str, env: Mapping[str, str]) -> str:

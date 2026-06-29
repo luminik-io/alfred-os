@@ -1126,6 +1126,38 @@ def test_install_inventory_blocks_when_systemd_list_fails(
     assert "Could not query systemd" in by_key["scheduler_unmanaged"]["detail"]
 
 
+def test_systemd_probe_preserves_user_bus_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/run/user/501")
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/501/bus")
+    seen_envs: list[dict[str, str]] = []
+
+    def fake_run(args: list[str], **kwargs: object) -> SimpleNamespace:
+        probe_env = kwargs.get("env")
+        assert isinstance(probe_env, dict)
+        seen_envs.append({str(key): str(value) for key, value in probe_env.items()})
+        if "list-units" in args:
+            return SimpleNamespace(returncode=0, stdout="com.example.worker.timer loaded\n")
+        return SimpleNamespace(
+            returncode=0,
+            stdout="/usr/bin/true\n",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    assert setup_mod._loaded_systemd_timer_labels({}) == {"com.example.worker"}
+    assert setup_mod._active_systemd_service_program_args("com.example.worker", {}) == [
+        "/usr/bin/true"
+    ]
+    assert seen_envs
+    assert all(env["XDG_RUNTIME_DIR"] == "/run/user/501" for env in seen_envs)
+    assert all(
+        env["DBUS_SESSION_BUS_ADDRESS"] == "unix:path=/run/user/501/bus" for env in seen_envs
+    )
+
+
 def test_install_inventory_probe_failure_does_not_mark_clean_host_initialized(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
