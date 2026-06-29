@@ -22,6 +22,13 @@ BATMAN_PARENT_REPO=your-org/your-specs
 BATMAN_AUTO_EXECUTE=approval-gate
 ```
 
+Because the parent issue lives in the specs repo while `--repos` usually names
+only code repos, bootstrap Alfred's labels there too:
+
+```sh
+alfred labels bootstrap your-org/your-specs
+```
+
 ## Step 1: operator files one `agent:large-feature` issue
 
 The operator opens the issue in `BATMAN_PARENT_REPO`. For a product fleet that

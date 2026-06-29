@@ -277,6 +277,14 @@ alfred batman setup --mode approval-gate --approval-mode file
 alfred setup-batman --check-only
 ```
 
+If `BATMAN_PARENT_REPO` is a specs or planning repo outside the repos passed to
+`alfred-init.py --repos`, bootstrap Alfred's labels there before filing parent
+issues:
+
+```sh
+alfred labels bootstrap my-org/specs
+```
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BATMAN_AUTO_EXECUTE` | `0` | Controls the gate. Values: `0` (halt after plan, the safe default), `approval-gate` (require approval), `1` (execute without a gate). |

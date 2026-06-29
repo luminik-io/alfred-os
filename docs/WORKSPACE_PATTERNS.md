@@ -183,6 +183,7 @@ For parent-plan execution, set the runner gate explicitly and redeploy:
 alfred enable batman
 # Add or verify BATMAN_PARENT_REPO=my-org/specs in ~/.alfredrc.
 # Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
+alfred labels bootstrap my-org/specs
 bash deploy.sh
 bash bin/doctor.sh
 ```

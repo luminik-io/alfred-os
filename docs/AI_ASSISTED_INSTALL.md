@@ -296,6 +296,7 @@ runner gate until you arm it:
 alfred enable batman
 # For executable parent plans, set BATMAN_PARENT_REPO=my-org/specs.
 # Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
+alfred labels bootstrap my-org/specs
 bash deploy.sh
 bash bin/doctor.sh
 ```
