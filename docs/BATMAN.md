@@ -364,9 +364,6 @@ issue, not a Batman bundle.
 - Multi-repo CI progress polling: Batman files children, but does not
   track their PRs. A future iteration could subscribe to
   `agent:bundle:<slug>` labels and surface a rollup.
-- Post-bundle reflection: closing the parent issue automatically when
-  every child is `agent:done` is not implemented; the operator does
-  this.
 - Cross-repo dependency ordering: every child is filed in declaration
   order, with no per-repo "wait until backend ships" gate. If you need
   that, file the dependent children manually after the upstream ones

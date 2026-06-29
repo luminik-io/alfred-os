@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -44,11 +45,14 @@ from agent_runner import (  # noqa: E402
     PreflightSpec,
     agent_engine,
     doctor_mode,
+    dry_run_log,
     ensure_labels,
     gh_issue_edit,
     gh_json,
     is_agent_enabled,
+    is_dry_run,
     preflight,
+    run,
     slack_post,
     with_lock,
 )
@@ -56,6 +60,7 @@ from batman import (  # noqa: E402
     APPROVAL_MODE_FILE,
     EXEC_GATE_DISABLED,
     EXEC_NO_CHILDREN,
+    EXEC_OK,
     LARGE_FEATURE_LABEL,
     ApprovalEnvelope,
     BatmanLifecycle,
@@ -66,6 +71,8 @@ from labels import PLAN_PENDING_APPROVAL  # noqa: E402
 
 CODENAME = os.environ.get("AGENT_CODENAME", "batman")
 BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
+ENV_EXECUTING_FANOUT_STALE_AFTER_S = "BATMAN_EXECUTING_FANOUT_STALE_AFTER_S"
+DEFAULT_EXECUTING_FANOUT_STALE_AFTER_S = 3600
 BATMAN_PICKUP_BLOCKING_LABELS = {
     label_constants.IN_FLIGHT,
     label_constants.PR_OPEN,
@@ -125,6 +132,41 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
         return []
     eligible: list[dict] = []
     for r in rows:
+        issue_number = int(r.get("number") or 0)
+        if _has_completed_fanout_marker(parent_repo, issue_number):
+            marker_state = _completed_fanout_marker_state(parent_repo, issue_number)
+            recovered_completed_fanout = (
+                marker_state == "executing"
+                and _executing_fanout_marker_completed_remotely(parent_repo, issue_number)
+            )
+            if marker_state == "completed" or recovered_completed_fanout:
+                event = (
+                    "BATMAN-PARENT-FINALIZE-RECOVER"
+                    if recovered_completed_fanout
+                    else "BATMAN-PARENT-FINALIZE-RETRY"
+                )
+                print(f"[{event}] parent={parent_repo}#{issue_number}")
+                if _finalize_parent_after_child_fanout(parent_repo, issue_number):
+                    _clear_completed_fanout_marker(parent_repo, issue_number)
+                continue
+            if marker_state == "executing" and _executing_fanout_marker_is_stale(
+                parent_repo, issue_number
+            ):
+                print(
+                    f"[BATMAN-PARENT-FANOUT-MARKER-STALE] parent={parent_repo}#{issue_number} "
+                    f"state=executing; clearing marker and retrying fanout",
+                    file=sys.stderr,
+                )
+                _clear_completed_fanout_marker(parent_repo, issue_number)
+                if _has_completed_fanout_marker(parent_repo, issue_number):
+                    continue
+            else:
+                print(
+                    f"[BATMAN-PARENT-FANOUT-MARKER] parent={parent_repo}#{issue_number} "
+                    f"state={marker_state}; skipping re-fanout",
+                    file=sys.stderr,
+                )
+                continue
         labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
         if _has_batman_pickup_blocker(labels):
             continue
@@ -381,12 +423,57 @@ def _run_lifecycle_body(
         _clear_pending_envelope(parent_repo, parent_issue_number)
         _unset_pending_approval_label(parent_repo, parent_issue_number)
 
-    result = lifecycle.execute(plan)
+    execution_plan = _execution_plan(lifecycle, plan)
+    planned_marker_children = _fanout_marker_children(execution_plan)
+    marker_saved = _save_completed_fanout_marker(
+        parent_repo,
+        parent_issue_number,
+        firing_id=firing_id,
+        reason="fanout-started",
+        state="executing",
+        children=planned_marker_children,
+    )
+    if not marker_saved:
+        outcome = "failure-parent-fanout-marker-failed"
+        lifecycle.report(execution_plan, _empty_result_reason(reason=outcome))
+        return 1, outcome
+
+    try:
+        result = lifecycle.execute(execution_plan)
+    except Exception:
+        with suppress(Exception):
+            _clear_completed_fanout_marker(parent_repo, parent_issue_number)
+        raise
     print(
         f"[BATMAN-EXECUTE-DONE] reason={result.reason} "
         f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)}"
     )
-    lifecycle.report(plan, result)
+    finalization_outcome = ""
+    if result.reason == EXEC_OK:
+        executed_marker_children = _fanout_marker_children(result) or planned_marker_children
+        completed_marker_saved = _save_completed_fanout_marker(
+            parent_repo,
+            parent_issue_number,
+            firing_id=firing_id,
+            reason=result.reason,
+            state="completed",
+            children=executed_marker_children,
+        )
+        if not completed_marker_saved:
+            print(
+                f"[BATMAN-COMPLETED-FANOUT-UPGRADE-WARN] "
+                f"parent={parent_repo}#{parent_issue_number}",
+                file=sys.stderr,
+            )
+        if _finalize_parent_after_child_fanout(parent_repo, parent_issue_number):
+            _clear_completed_fanout_marker(parent_repo, parent_issue_number)
+        else:
+            finalization_outcome = "failure-parent-finalization-pending"
+    else:
+        _clear_completed_fanout_marker(parent_repo, parent_issue_number)
+    lifecycle.report(execution_plan, result)
+    if finalization_outcome:
+        return 1, finalization_outcome
     return 0, result.reason
 
 
@@ -403,11 +490,208 @@ def _run_lifecycle_body(
 
 
 _PENDING_APPROVAL_DIR = STATE_ROOT / "batman" / "pending-approvals"
+_COMPLETED_FANOUT_DIR = STATE_ROOT / "batman" / "completed-fanouts"
+
+
+def _execution_plan(lifecycle: object, plan: object) -> object:
+    get_execution_plan = getattr(lifecycle, "execution_plan", None)
+    if callable(get_execution_plan):
+        return get_execution_plan(plan)
+    return plan
 
 
 def _pending_approval_path(parent_repo: str, parent_issue_number: int) -> Path:
     safe = parent_repo.replace("/", "__")
     return _PENDING_APPROVAL_DIR / f"{safe}__{parent_issue_number}.json"
+
+
+def _completed_fanout_path(parent_repo: str, parent_issue_number: int) -> Path:
+    safe = parent_repo.replace("/", "__")
+    return _COMPLETED_FANOUT_DIR / f"{safe}__{parent_issue_number}.json"
+
+
+def _fanout_marker_children(plan) -> list[dict[str, object]]:
+    children = []
+    for child in getattr(plan, "children", ()) or ():
+        repo = str(getattr(child, "repo", "") or "").strip()
+        title = str(getattr(child, "title", "") or "").strip()
+        if not repo or not title:
+            continue
+        labels = [
+            str(label).strip()
+            for label in (getattr(child, "labels", ()) or ())
+            if str(label).strip()
+        ]
+        children.append({"labels": labels, "repo": repo, "title": title})
+    return children
+
+
+def _save_completed_fanout_marker(
+    parent_repo: str,
+    parent_issue_number: int,
+    *,
+    firing_id: str,
+    reason: str,
+    state: str,
+    children: list[dict[str, object]] | None = None,
+) -> bool:
+    import json
+
+    if not parent_repo or parent_issue_number <= 0:
+        return False
+    if state not in {"executing", "completed"}:
+        raise ValueError(f"unsupported completed fanout marker state: {state}")
+    path = _completed_fanout_path(parent_repo, parent_issue_number)
+    try:
+        _COMPLETED_FANOUT_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        print(f"[BATMAN-COMPLETED-FANOUT-SAVE-WARN] {path}: {exc}", file=sys.stderr)
+        return False
+    payload = {
+        "firing_id": firing_id,
+        "parent_issue": parent_issue_number,
+        "parent_repo": parent_repo,
+        "reason": reason,
+        "saved_at": datetime.now(UTC).isoformat(),
+        "state": state,
+        "children": children or [],
+    }
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    try:
+        tmp_path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        tmp_path.replace(path)
+    except OSError as exc:
+        print(f"[BATMAN-COMPLETED-FANOUT-SAVE-WARN] {path}: {exc}", file=sys.stderr)
+        with suppress(OSError):
+            tmp_path.unlink(missing_ok=True)
+        return False
+    return True
+
+
+def _completed_fanout_marker_payload(
+    parent_repo: str, parent_issue_number: int
+) -> dict[str, object] | None:
+    import json
+
+    if not parent_repo or parent_issue_number <= 0:
+        return None
+    path = _completed_fanout_path(parent_repo, parent_issue_number)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"[BATMAN-COMPLETED-FANOUT-READ-WARN] {path}: {exc}", file=sys.stderr)
+        return None
+    if not isinstance(payload, dict):
+        print(f"[BATMAN-COMPLETED-FANOUT-READ-WARN] {path}: invalid payload", file=sys.stderr)
+        return None
+    return payload
+
+
+def _completed_fanout_marker_state(parent_repo: str, parent_issue_number: int) -> str:
+    payload = _completed_fanout_marker_payload(parent_repo, parent_issue_number)
+    if payload is None:
+        if _completed_fanout_path(parent_repo, parent_issue_number).exists():
+            return "unknown"
+        return ""
+    state = str(payload.get("state") or "").strip()
+    if state in {"executing", "completed"}:
+        return state
+    print(
+        f"[BATMAN-COMPLETED-FANOUT-READ-WARN] "
+        f"{_completed_fanout_path(parent_repo, parent_issue_number)}: unknown state {state!r}",
+        file=sys.stderr,
+    )
+    return "unknown"
+
+
+def _executing_fanout_marker_completed_remotely(parent_repo: str, parent_issue_number: int) -> bool:
+    payload = _completed_fanout_marker_payload(parent_repo, parent_issue_number)
+    if payload is None:
+        return False
+    children = payload.get("children")
+    if not isinstance(children, list) or not children:
+        return False
+    for child in children:
+        if not isinstance(child, dict):
+            return False
+        repo = str(child.get("repo") or "").strip()
+        title = str(child.get("title") or "").strip()
+        labels = [str(label).strip() for label in (child.get("labels") or []) if str(label).strip()]
+        if not repo or not title:
+            return False
+        if not _child_issue_exists(repo, title=title, labels=labels):
+            return False
+    return True
+
+
+def _executing_fanout_marker_is_stale(parent_repo: str, parent_issue_number: int) -> bool:
+    payload = _completed_fanout_marker_payload(parent_repo, parent_issue_number)
+    if payload is None:
+        return False
+    raw_saved_at = str(payload.get("saved_at") or "").strip()
+    if not raw_saved_at:
+        return False
+    try:
+        saved_at = datetime.fromisoformat(raw_saved_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if saved_at.tzinfo is None:
+        saved_at = saved_at.replace(tzinfo=UTC)
+    age_s = (datetime.now(UTC) - saved_at.astimezone(UTC)).total_seconds()
+    return age_s >= _executing_fanout_stale_after_s()
+
+
+def _executing_fanout_stale_after_s() -> int:
+    raw = os.environ.get(ENV_EXECUTING_FANOUT_STALE_AFTER_S, "").strip()
+    if not raw:
+        return DEFAULT_EXECUTING_FANOUT_STALE_AFTER_S
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return DEFAULT_EXECUTING_FANOUT_STALE_AFTER_S
+
+
+def _child_issue_exists(repo: str, *, title: str, labels: list[str]) -> bool:
+    bundle_labels = [label for label in labels if label.startswith("agent:bundle:")]
+    if not bundle_labels:
+        return False
+    cmd = [
+        "gh",
+        "issue",
+        "list",
+        "-R",
+        repo,
+        "--state",
+        "all",
+        "--search",
+        f'"{title}" in:title',
+        "--json",
+        "title,url",
+        "--limit",
+        "20",
+    ]
+    for label in bundle_labels:
+        cmd.extend(["--label", label])
+    rows = gh_json(cmd, default=[])
+    if not isinstance(rows, list):
+        return False
+    return any(isinstance(row, dict) and row.get("title") == title for row in rows)
+
+
+def _clear_completed_fanout_marker(parent_repo: str, parent_issue_number: int) -> None:
+    path = _completed_fanout_path(parent_repo, parent_issue_number)
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        print(f"[BATMAN-COMPLETED-FANOUT-CLEAR-WARN] {path}: {exc}", file=sys.stderr)
+
+
+def _has_completed_fanout_marker(parent_repo: str, parent_issue_number: int) -> bool:
+    if not parent_repo or parent_issue_number <= 0:
+        return False
+    return _completed_fanout_path(parent_repo, parent_issue_number).exists()
 
 
 def _has_pending_approval_label(parent_issue: dict) -> bool:
@@ -518,6 +802,59 @@ def _unset_pending_approval_label(parent_repo: str, parent_issue_number: int) ->
         )
     except Exception as exc:
         print(f"[BATMAN-LABEL-REMOVE-WARN] {PLAN_PENDING_APPROVAL}: {exc}", file=sys.stderr)
+
+
+def _finalize_parent_after_child_fanout(parent_repo: str, parent_issue_number: int) -> bool:
+    """Mark a fully-fanned-out parent as done and close it best-effort.
+
+    Batman already filed every child issue at this point. Leaving the
+    parent open without a blocker lets the next firing pick the same
+    `agent:large-feature` issue again and duplicate the child fan-out.
+    The `agent:done` label is the durable pickup blocker; GitHub close is
+    a best-effort convenience for the operator.
+    """
+    if not parent_repo or parent_issue_number <= 0:
+        return False
+    label_failure = ""
+    try:
+        ensure_labels(parent_repo, LIFECYCLE_LABELS)
+        ok = gh_issue_edit(parent_repo, parent_issue_number, add_labels=[label_constants.DONE])
+    except Exception as exc:
+        ok = False
+        label_failure = str(exc)
+    if ok:
+        print(f"[BATMAN-PARENT-DONE] parent={parent_repo}#{parent_issue_number}")
+    else:
+        detail = label_failure or f"could not add {label_constants.DONE}"
+        print(
+            f"[BATMAN-PARENT-DONE-WARN] parent={parent_repo}#{parent_issue_number}: {detail}",
+            file=sys.stderr,
+        )
+        return False
+
+    close_ok, detail = _close_parent_issue(parent_repo, parent_issue_number)
+    if close_ok:
+        print(f"[BATMAN-PARENT-CLOSED] {detail}")
+        return True
+    print(
+        f"[BATMAN-PARENT-CLOSE-WARN] parent={parent_repo}#{parent_issue_number}: {detail}",
+        file=sys.stderr,
+    )
+    return True
+
+
+def _close_parent_issue(parent_repo: str, parent_issue_number: int) -> tuple[bool, str]:
+    """Close Batman's configured parent issue without using queue allowlists."""
+    if is_dry_run():
+        dry_run_log("gh", f"would close Batman parent {parent_repo}#{parent_issue_number}")
+        return True, f"{parent_repo}#{parent_issue_number} close simulated"
+    res = run(
+        ["gh", "issue", "close", str(parent_issue_number), "-R", parent_repo],
+        timeout=30,
+    )
+    if res.returncode != 0:
+        return False, (res.stderr or res.stdout or "gh issue close failed").strip()
+    return True, f"{parent_repo}#{parent_issue_number} closed"
 
 
 def _empty_result_reason(*, reason: str):

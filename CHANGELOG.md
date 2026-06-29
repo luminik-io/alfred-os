@@ -11,6 +11,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 ### Changed
 
 - Alfred Desktop now uses the exact local runtime URL the operator chooses instead of silently retrying or rewriting stale localhost ports. The setup console also shows the current `alfred brain doctor --json` command.
+- Batman now marks and closes a fully fanned-out parent `agent:large-feature` issue after every child issue is filed, preventing the same approved bundle from being picked up and duplicated on a later firing.
 
 ### Removed
 

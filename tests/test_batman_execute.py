@@ -657,9 +657,22 @@ def test_approval_repo_feedback_changes_child_issue_scope():
     envelope = lifecycle.request_approval(plan)
     lifecycle.await_approval(envelope)
 
+    execution_plan = lifecycle.execution_plan(plan)
     result = lifecycle.execute(plan)
 
+    assert [child.repo for child in execution_plan.children] == [
+        "your-org/your-backend",
+        "your-org/your-backend",
+        "your-org/your-frontend",
+        "your-org/your-admin",
+    ]
     assert result.reason == EXEC_OK
+    assert [child.repo for child in result.children] == [
+        "your-org/your-backend",
+        "your-org/your-backend",
+        "your-org/your-frontend",
+        "your-org/your-admin",
+    ]
     assert [item["repo"] for item in gh.issued] == [
         "your-org/your-backend",
         "your-org/your-backend",

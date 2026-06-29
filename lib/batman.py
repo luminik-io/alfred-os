@@ -974,6 +974,7 @@ class ExecuteResult:
         created_issue_urls: URLs of the children that did land.
         failed_repos: ``owner/repo`` of every target that failed to file.
         detail: free-text context for the report.
+        children: child issues attempted after approved operator feedback.
     """
 
     executed: bool
@@ -981,6 +982,7 @@ class ExecuteResult:
     created_issue_urls: tuple[str, ...] = ()
     failed_repos: tuple[str, ...] = ()
     detail: str = ""
+    children: tuple[ChildIssue, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2419,6 +2421,11 @@ class BatmanLifecycle:
 
     # ---- execute ----
 
+    def execution_plan(self, plan: BundlePlan) -> BundlePlan:
+        """Return the plan that will be used for child issue creation."""
+
+        return _apply_operator_feedback_to_plan(plan, self.operator_feedback)
+
     def execute(self, plan: BundlePlan) -> ExecuteResult:
         """File every child issue declared in ``plan``.
 
@@ -2433,7 +2440,7 @@ class BatmanLifecycle:
                 reason=EXEC_NEEDS_SCOPE,
                 detail="Slack feedback contains open questions.",
             )
-        plan = _apply_operator_feedback_to_plan(plan, self.operator_feedback)
+        plan = self.execution_plan(plan)
         if not plan.children:
             return ExecuteResult(executed=False, reason=EXEC_NO_CHILDREN)
         if plan.readiness_blockers:
@@ -2459,6 +2466,7 @@ class BatmanLifecycle:
                 executed=True,
                 reason=EXEC_OK,
                 created_issue_urls=tuple(created),
+                children=tuple(plan.children),
             )
         if not created:
             return ExecuteResult(
@@ -2466,12 +2474,14 @@ class BatmanLifecycle:
                 reason=EXEC_PARTIAL,
                 failed_repos=tuple(failed),
                 detail="no children landed",
+                children=tuple(plan.children),
             )
         return ExecuteResult(
             executed=True,
             reason=EXEC_PARTIAL,
             created_issue_urls=tuple(created),
             failed_repos=tuple(failed),
+            children=tuple(plan.children),
         )
 
     # ---- report ----
