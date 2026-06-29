@@ -1227,6 +1227,22 @@ def test_systemd_probe_preserves_user_bus_environment(
     )
 
 
+def test_systemd_fixture_parses_list_units_rows() -> None:
+    labels = setup_mod._loaded_systemd_timer_labels(
+        {
+            "ALFRED_SETUP_SYSTEMD_LIST_FIXTURE": "\n".join(
+                [
+                    "old-alfred.timer loaded active waiting legacy scheduler",
+                    "alfred-cleanup.timer loaded active waiting cleanup",
+                    "not-a-timer.service loaded active running service",
+                ]
+            )
+        }
+    )
+
+    assert labels == {"old-alfred", "alfred-cleanup"}
+
+
 def test_install_inventory_probe_failure_does_not_mark_clean_host_initialized(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

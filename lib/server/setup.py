@@ -1569,9 +1569,12 @@ def _loaded_launchd_labels(env: Mapping[str, str]) -> set[str] | None:
 def _loaded_systemd_timer_labels(env: Mapping[str, str]) -> set[str] | None:
     fixture = env.get("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "").strip()
     if fixture:
-        return {
-            line.strip().removesuffix(".timer") for line in fixture.splitlines() if line.strip()
-        }
+        labels: set[str] = set()
+        for raw in fixture.splitlines():
+            unit = raw.split(maxsplit=1)[0] if raw.split() else ""
+            if unit.endswith(".timer"):
+                labels.add(unit.removesuffix(".timer"))
+        return labels
     if os.uname().sysname != "Linux":
         return set()
     try:
