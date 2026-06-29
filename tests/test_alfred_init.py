@@ -505,6 +505,45 @@ def test_env_assignments_batman_writes_explicit_parent_repo(init_mod, tmp_path):
     assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
 
 
+def test_label_setup_repos_includes_batman_parent_repo(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev", "cross_repo_coordinator"),
+        repos={
+            "feature_dev": ["acme/api"],
+            "cross_repo_coordinator": ["acme/api"],
+        },
+    )
+    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+
+    assert init_mod.label_setup_repos(state) == ["acme/api", "acme/specs"]
+
+
+def test_step_10_labels_bootstraps_batman_parent_repo(init_mod, tmp_path, monkeypatch):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("feature_dev", "cross_repo_coordinator"),
+        repos={
+            "feature_dev": ["acme/api"],
+            "cross_repo_coordinator": ["acme/api"],
+        },
+    )
+    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+    label_repos: list[str] = []
+
+    def fake_run(cmd, **_kwargs):
+        label_repos.append(cmd[cmd.index("-R") + 1])
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(init_mod, "run", fake_run)
+
+    init_mod.step_10_labels(state)
+
+    assert {"acme/api", "acme/specs"} <= set(label_repos)
+
+
 def test_env_assignments_wires_repo_scoped_utility_agents(init_mod, tmp_path):
     state = _state_with(
         init_mod,

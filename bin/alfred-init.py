@@ -779,6 +779,17 @@ def selected_repo_union(state: WizardState) -> list[str]:
     return out
 
 
+def label_setup_repos(state: WizardState) -> list[str]:
+    repos = selected_repo_union(state)
+    seen = set(repos)
+    batman_parent = (
+        state.role_to_extras.get("cross_repo_coordinator", {}).get("BATMAN_PARENT_REPO", "").strip()
+    )
+    if batman_parent and batman_parent not in seen:
+        repos.append(batman_parent)
+    return repos
+
+
 def role_uses_repos(role: str) -> bool:
     """True when setup should collect repos for a role."""
     return AGENT_CATALOG[role][2] or role in ROLE_REPO_ENV_KEYS
@@ -1632,7 +1643,7 @@ def step_10_labels(state: WizardState, *, skip: bool = False) -> None:
     if skip:
         warn("Skipping GitHub label setup by request.")
         return
-    repos = selected_repo_union(state)
+    repos = label_setup_repos(state)
     if not repos:
         ok("No selected repos; skipping label setup.")
         return
