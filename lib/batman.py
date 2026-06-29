@@ -581,6 +581,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
             if r not in affected:
                 affected.append(r)
         ordered = [r for r in rollout_override if r in affected]
+        ordered += [r for r in affected if r not in ordered]
     elif affected:
         expanded_rollout = _expand_rollout_repo_keys(rollout_order, affected, explicit_repo_slugs)
         ordered = [r for r in expanded_rollout if r in affected]
@@ -1378,10 +1379,7 @@ def _matching_child_repos(short: str, affected: list[str]) -> list[str]:
     full_slug = [r for r in affected if r.lower() == short]
     if full_slug:
         return full_slug
-    exact = [r for r in affected if r.split("/", 1)[-1].lower() == short]
-    if exact:
-        return exact
-    return [r for r in affected if r.split("/", 1)[-1].lower().endswith(short)]
+    return [r for r in affected if r.split("/", 1)[-1].lower() == short]
 
 
 def _resolve_child_repo(short: str, affected: list[str]) -> str | None:

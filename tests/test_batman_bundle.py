@@ -700,6 +700,29 @@ We want the same worker in two orgs.
     assert plan.affected_repos == ("acme/backend", "beta/backend")
 
 
+def test_parse_parent_issue_loose_shape_rollout_subset_keeps_remaining_repos():
+    body = """
+We want the same worker in two orgs, starting with acme.
+
+## Affected Repos
+- acme/backend
+- beta/backend
+
+## Rollout order
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "beta/backend"]
+    assert plan.affected_repos == ("acme/backend", "beta/backend")
+
+
 def test_parse_parent_issue_loose_shape_keeps_bare_repo_after_explicit_same_tail():
     body = """
 We want backend changes in the external app and the local app.
@@ -841,6 +864,32 @@ Done when:
 
     assert plan.affected_repos == ("other-org/backend",)
     assert [child.repo for child in plan.children] == ["other-org/backend"]
+
+
+def test_parse_parent_issue_does_not_suffix_match_child_repo_key():
+    import batman as bm
+
+    body = """
+Bundle: core backend rollout
+
+Repos:
+- acme/core-backend
+
+Children:
+- backend: introduce BillingV2Service
+
+Done when:
+- Child merged to main
+"""
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: core backend rollout",
+        parent_repo="acme/specs",
+        parent_issue_number=42,
+    )
+
+    assert plan.children == ()
+    assert any(f.code == "missing_children" for f in plan.readiness_findings)
 
 
 # ---------------------------------------------------------------------------
