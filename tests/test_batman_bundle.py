@@ -94,6 +94,19 @@ def test_parse_plan_h2_block_with_bullets():
     assert plan.affected_repos == ["backend", "frontend"]
 
 
+def test_parse_plan_preserves_duplicate_explicit_repo_tails():
+    import batman as bm
+
+    body = "## Affected Repos\n- acme/backend\n- beta/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend", "beta/backend"]
+    assert plan.repo_slugs == {
+        "acme/backend": "acme/backend",
+        "beta/backend": "beta/backend",
+    }
+
+
 def test_parse_plan_h2_block_with_comma_separated_payload():
     """PR #121 fix: bare comma-separated payload after the H2 header
     must parse, not silently fall back to the default rollout."""
@@ -469,6 +482,26 @@ We want a cross-org billing worker rollout.
 
     assert [child.repo for child in plan.children] == ["acme/backend"]
     assert plan.affected_repos == ("acme/backend",)
+
+
+def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
+    body = """
+We want the same worker in two orgs.
+
+## Affected Repos
+- acme/backend
+- beta/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "beta/backend"]
+    assert plan.affected_repos == ("acme/backend", "beta/backend")
 
 
 def test_parse_parent_issue_blocks_loose_shape_that_would_guess_default_rollout(

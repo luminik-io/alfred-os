@@ -184,14 +184,13 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
     assert "alfred.robin-hood\tlucius.py" in text
 
 
-def test_render_agents_conf_gates_batman_until_parent_repo_is_configured(init_mod, tmp_path):
+def test_render_agents_conf_schedules_batman_without_parent_repo(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
     text = init_mod.render_agents_conf(state)
-    assert "# gated until configured: batman needs BATMAN_PARENT_REPO" in text
+    assert "# gated until configured: batman needs BATMAN_PARENT_REPO" not in text
     assert (
-        "#alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect" in text
+        "\nalfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect" in text
     )
-    assert "\nalfred.batman\t" not in text
 
 
 def test_render_agents_conf_comments_config_gated_rows_without_env(init_mod, tmp_path, monkeypatch):

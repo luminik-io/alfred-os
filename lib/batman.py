@@ -259,9 +259,9 @@ def release_bundle(
 class PlanShape:
     """Parsed plan extracted from an issue body."""
 
-    affected_repos: list[str]  # local repo names, in dependency order
-    repo_criteria: dict[str, str]  # local_repo -> acceptance-criteria text
-    repo_slugs: dict[str, str] = field(default_factory=dict)  # local_repo -> explicit owner/repo
+    affected_repos: list[str]  # repo keys, local names or explicit owner/repo slugs
+    repo_criteria: dict[str, str]  # repo_key -> acceptance-criteria text
+    repo_slugs: dict[str, str] = field(default_factory=dict)  # repo_key -> explicit owner/repo
     guessed_default_rollout: bool = False
     parse_notes: tuple[str, ...] = ()
 
@@ -319,6 +319,21 @@ def _normalize_repo_mention(token: str) -> tuple[str | None, str | None]:
     return local, f"{owner.lower()}/{repo.lower()}"
 
 
+def _append_repo_mention(
+    targets: list[str],
+    explicit_repo_slugs: dict[str, str],
+    token: str,
+) -> None:
+    local, explicit_slug = _normalize_repo_mention(token)
+    if not local:
+        return
+    repo_key = explicit_slug or local
+    if repo_key not in targets:
+        targets.append(repo_key)
+    if explicit_slug:
+        explicit_repo_slugs[repo_key] = explicit_slug
+
+
 def _rollout_order() -> list[str]:
     """Return the configured rollout order.
 
@@ -372,11 +387,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
         if low.startswith("repos:") or low.startswith("affected repos:"):
             payload = stripped.split(":", 1)[1]
             for tok in re.split(r"[,\s]+", payload):
-                local, explicit_slug = _normalize_repo_mention(tok)
-                if local and local not in affected:
-                    affected.append(local)
-                if local and explicit_slug:
-                    explicit_repo_slugs.setdefault(local, explicit_slug)
+                _append_repo_mention(affected, explicit_repo_slugs, tok)
         elif low.startswith("rollout order:") or low.startswith("rollout:"):
             payload = stripped.split(":", 1)[1]
             # Do NOT include "-" in the splitter character class, repo
@@ -388,11 +399,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                 tok = tok.strip().lstrip("-").strip()
                 if not tok:
                     continue
-                local, explicit_slug = _normalize_repo_mention(tok)
-                if local and local not in rollout_override:
-                    rollout_override.append(local)
-                if local and explicit_slug:
-                    explicit_repo_slugs.setdefault(local, explicit_slug)
+                _append_repo_mention(rollout_override, explicit_repo_slugs, tok)
 
     # 2. ## Affected Repos H2 block.
     affected_h2 = re.search(
@@ -408,11 +415,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
             bullet = re.match(r"^\s*[-*]\s*(.+)$", line)
             payload = bullet.group(1) if bullet else stripped
             for tok in re.split(r"[,\s]+", payload):
-                local, explicit_slug = _normalize_repo_mention(tok)
-                if local and local not in affected:
-                    affected.append(local)
-                if local and explicit_slug:
-                    explicit_repo_slugs.setdefault(local, explicit_slug)
+                _append_repo_mention(affected, explicit_repo_slugs, tok)
 
     # 2b. ## Rollout (Order) H2 block, same shape relaxation as the
     # inline parser. Also accepts the explicit "## Rollout order"
@@ -434,11 +437,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                     tok = tok.strip().lstrip("-").strip()
                     if not tok:
                         continue
-                    local, explicit_slug = _normalize_repo_mention(tok)
-                    if local and local not in rollout_override:
-                        rollout_override.append(local)
-                    if local and explicit_slug:
-                        explicit_repo_slugs.setdefault(local, explicit_slug)
+                    _append_repo_mention(rollout_override, explicit_repo_slugs, tok)
 
     # 3. Per-repo acceptance-criteria H3 sections.
     ac_block = re.search(
@@ -449,13 +448,16 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     if ac_block:
         ac_text = ac_block.group(1)
         for m in re.finditer(
-            r"^###\s*([\w\-]+)\s*$(.*?)(?=^###\s|\Z)",
+            r"^###\s*([\w./-]+)\s*$(.*?)(?=^###\s|\Z)",
             ac_text,
             flags=re.MULTILINE | re.DOTALL,
         ):
-            local = _normalize_repo_token(m.group(1))
+            local, explicit_slug = _normalize_repo_mention(m.group(1))
             if local:
-                criteria_by_repo[local] = m.group(2).strip()
+                repo_key = explicit_slug or local
+                criteria_by_repo[repo_key] = m.group(2).strip()
+                if explicit_slug:
+                    explicit_repo_slugs[repo_key] = explicit_slug
 
     # 3b. Backfill affected from acceptance-criteria H3s ONLY when the
     # inline "Repos:" line and the H2 list both missed (or are absent).
@@ -1272,6 +1274,9 @@ def _resolve_child_repo(short: str, affected: list[str]) -> str | None:
     when no exact ``my-org/backend`` is present. Exact match wins.
     """
     short = short.lower()
+    full_slug = [r for r in affected if r.lower() == short]
+    if full_slug:
+        return full_slug[0]
     exact = [r for r in affected if r.split("/", 1)[-1].lower() == short]
     if exact:
         return exact[0]
@@ -1361,18 +1366,23 @@ def parse_parent_issue(
             # `owner/repo` slugs using GH_REPO_TO_LOCAL.
             local_to_gh = {v: k for k, v in GH_REPO_TO_LOCAL.items()}
             parent_org = parent_repo.split("/", 1)[0] if "/" in parent_repo else ""
-            for local in loose.affected_repos:
+            loose_repos: list[tuple[str, str]] = []
+            for repo_key in loose.affected_repos:
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
                 # back to <parent_org>/<local> so a fresh fleet with no
-                # mapping still produces a usable owner/repo pair. Local
-                # name `gh_slug` avoids shadowing the `full` used in the
-                # main children-pairs loop below (which would otherwise
-                # widen its type to `str | None` and trip mypy).
+                # mapping still produces a usable owner/repo pair.
                 gh_slug = (
-                    loose.repo_slugs.get(local)
-                    or local_to_gh.get(local)
-                    or (f"{parent_org}/{local}" if parent_org else local)
+                    loose.repo_slugs.get(repo_key)
+                    or local_to_gh.get(repo_key)
+                    or (
+                        repo_key
+                        if "/" in repo_key
+                        else f"{parent_org}/{repo_key}"
+                        if parent_org
+                        else repo_key
+                    )
                 )
+                loose_repos.append((repo_key, gh_slug))
                 if gh_slug not in repos:
                     repos.append(gh_slug)
             # Synthesize one child per affected repo so the plan post
@@ -1380,15 +1390,16 @@ def parse_parent_issue(
             # acceptance-criteria block (if present) becomes the seed
             # context the implementer reads; otherwise the child body
             # falls back to a generic "implement <slug>" stub.
-            for local in loose.affected_repos:
-                child_title = f"{local}: implement {slug or 'large-feature'}"
-                children_pairs.append((local, child_title))
+            for repo_key, gh_slug in loose_repos:
+                child_title = f"{repo_key}: implement {slug or 'large-feature'}"
+                children_pairs.append((gh_slug if "/" in repo_key else repo_key, child_title))
             if not done_when:
                 # Reuse the per-repo criteria as a done-when summary so
                 # the Slack plan post is not empty under "Done when".
                 joined = "\n".join(
-                    f"- {repo}: {loose.repo_criteria.get(repo, 'see acceptance criteria')}"
-                    for repo in loose.affected_repos
+                    f"- {repo_key}: "
+                    f"{loose.repo_criteria.get(repo_key) or loose.repo_criteria.get(repo_key.split('/', 1)[-1], 'see acceptance criteria')}"
+                    for repo_key in loose.affected_repos
                 )
                 done_when = joined
             logger.warning(

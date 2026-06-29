@@ -185,7 +185,6 @@ STARTER_ROLES = (
 )
 OPT_IN_ROLES = {"cross_repo_coordinator"}
 CONFIG_GATED_ROLE_ENVS = {
-    "cross_repo_coordinator": ("BATMAN_PARENT_REPO",),
     "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),
     "ops_morning": ("ALFRED_GORDON_ECS_CLUSTER",),
 }
