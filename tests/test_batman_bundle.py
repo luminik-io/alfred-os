@@ -680,6 +680,37 @@ We want a mapped backend rollout from a planning repo.
     assert plan.affected_repos == ("acme/acme-backend",)
 
 
+def test_parse_parent_issue_loose_shape_uses_parent_owner_for_bare_mapped_slug_without_gh_org(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_ORG", "")
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
+
+    body = """
+We want a mapped backend rollout from a planning repo.
+
+## Affected Repos
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: billing-v2 rollout",
+        parent_repo="platform/specs",
+        parent_issue_number=42,
+    )
+
+    assert [child.repo for child in plan.children] == ["platform/acme-backend"]
+    assert plan.affected_repos == ("platform/acme-backend",)
+
+
 def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
     body = """
 We want the same worker in two orgs.

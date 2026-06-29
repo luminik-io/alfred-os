@@ -1490,7 +1490,10 @@ def parse_parent_issue(
                 if explicit_slug:
                     gh_slug = explicit_slug
                 elif mapped_slug:
-                    gh_slug = _qualify_github_repo_slug(mapped_slug, fallback_org=GH_ORG)
+                    gh_slug = _qualify_github_repo_slug(
+                        mapped_slug,
+                        fallback_org=GH_ORG or parent_org,
+                    )
                 else:
                     raw_gh_slug = (
                         repo_key
