@@ -114,7 +114,7 @@ Start the runtime from the Setup gear, or run the same port manually:
 alfred serve --port 7010 --no-browser
 ```
 
-The app uses `7010` because macOS can reserve `7000` for Control Center. Legacy saved `7000` URLs are treated as stale local configuration and rewritten to 7010. Setup still lets you point the client at a custom localhost URL when needed.
+The app uses `7010` because macOS can reserve `7000` for Control Center. Setup lets you point the client at a custom localhost URL when needed, and the app uses that configured URL exactly.
 
 Then run the desktop shell:
 
@@ -221,7 +221,6 @@ alfred enabled-agents
 alfred auth status
 alfred dry-run <codename>
 alfred brain doctor --json
-alfred brain status --json
 alfred brain redis-status --json
 alfred brain redis-sync --dry-run --json
 alfred brain harvest --apply --json

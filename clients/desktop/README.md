@@ -18,9 +18,9 @@ plane:
 1. **`alfred` CLI + runtime**: the base. Schedules the fleet, runs agents, and
    owns all state under `$ALFRED_HOME` (`~/.alfred` by default). Required.
 2. **`alfred serve`**: a local HTTP API + web dashboard over that
-   state. The desktop client uses `http://127.0.0.1:7010`. Legacy saved
-   URLs on `http://127.0.0.1:7000` are normalized back to 7010 because
-   macOS can reserve port 7000 for Control Center.
+   state. The desktop client defaults to `http://127.0.0.1:7010`.
+   Custom runtime URLs are used exactly as configured and can be changed
+   from Setup.
 3. **Alfred Desktop (this app)**: the native control plane: a menu-bar
    tray, five primary destinations (Inbox, Ask, Work, Agents, Setup), a
    command palette, and a narrow set of safe local actions. It does not run
@@ -83,8 +83,8 @@ alfred serve --port 7010 --no-browser
 ```
 
 The desktop app's Start runtime action uses port 7010 because macOS can reserve
-7000 for Control Center. Legacy saved `7000` URLs are treated as stale local
-configuration and rewritten to 7010.
+7000 for Control Center. If your saved runtime URL points somewhere else,
+update it from Setup; the app uses the configured URL exactly.
 
 Then run the desktop shell:
 
