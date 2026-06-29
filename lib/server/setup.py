@@ -1808,8 +1808,6 @@ def _systemd_execstart_program_args(text: str, env: Mapping[str, str]) -> list[s
         value = line.removeprefix("ExecStart=").strip()
         if not value:
             continue
-        if value.startswith("-"):
-            value = value[1:].strip()
         return _systemd_execstart_value_program_args(value, env)
     return None
 
@@ -1827,8 +1825,15 @@ def _systemd_execstart_value_program_args(value: str, env: Mapping[str, str]) ->
     with suppress(ValueError):
         args = shlex.split(value)
         if args:
-            return args
+            return _strip_systemd_exec_prefixes(args)
     return [value] if value else None
+
+
+def _strip_systemd_exec_prefixes(args: list[str]) -> list[str]:
+    if not args:
+        return args
+    first = args[0].lstrip("@-:+!")
+    return ([first] if first else []) + args[1:]
 
 
 def _systemd_structured_field_value(text: str, marker: str) -> str | None:

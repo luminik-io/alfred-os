@@ -999,6 +999,37 @@ def test_install_inventory_reports_unmanaged_systemd_timer(
     assert "unmanaged Alfred systemd timer" in by_key["scheduler_unmanaged"]["detail"]
 
 
+def test_install_inventory_detects_prefixed_systemd_launcher(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    old_runtime = tmp_path / "internal-alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "old-alfred.service").write_text(
+        f"[Service]\nExecStart=@!!{old_runtime / 'bin' / 'agent-launch'} lucius.py\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "old-alfred.timer\n")
+    monkeypatch.setattr(
+        setup_mod.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stdout=""),
+    )
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["old-alfred"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
 def test_install_inventory_prefers_active_systemd_unit_over_stale_service_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
