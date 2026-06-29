@@ -150,7 +150,9 @@ the inline `Repos:` / `Children:` / `Done when:` blocks documented above.
 Batman also accepts a loose Markdown fallback: `## Affected Repos` H2 blocks,
 bare repo names, and `## Acceptance Criteria` H3 sections. That fallback lets
 imperfect parent issues become reviewable plans, but new parent issues should
-use this template.
+use this template. Fully-qualified fallback entries such as `acme/backend` are
+preserved as written; bare fallback entries are interpreted inside the parent
+repo owner unless you have an explicit repo mapping configured.
 
 Follow this doc for `BATMAN_PARENT_REPO` parent issues.
 

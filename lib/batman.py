@@ -261,6 +261,7 @@ class PlanShape:
 
     affected_repos: list[str]  # local repo names, in dependency order
     repo_criteria: dict[str, str]  # local_repo -> acceptance-criteria text
+    repo_slugs: dict[str, str] = field(default_factory=dict)  # local_repo -> explicit owner/repo
     guessed_default_rollout: bool = False
     parse_notes: tuple[str, ...] = ()
 
@@ -302,6 +303,20 @@ def _normalize_repo_token(token: str) -> str | None:
         # No mapping configured: trust the author's spelling.
         return token
     return None
+
+
+def _normalize_repo_mention(token: str) -> tuple[str | None, str | None]:
+    """Return ``(local_name, explicit_owner_repo)`` for a repo mention."""
+    raw = token.strip().strip(",")
+    local = _normalize_repo_token(raw)
+    if not local:
+        return None, None
+    if "/" not in raw:
+        return local, None
+    owner, repo = raw.split("/", 1)
+    if not owner or not repo:
+        return local, None
+    return local, f"{owner.lower()}/{repo.lower()}"
 
 
 def _rollout_order() -> list[str]:
@@ -346,6 +361,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     """
     body = body or ""
     affected: list[str] = []
+    explicit_repo_slugs: dict[str, str] = {}
     rollout_override: list[str] = []
     criteria_by_repo: dict[str, str] = {}
 
@@ -356,9 +372,11 @@ def parse_plan_from_issue(body: str) -> PlanShape:
         if low.startswith("repos:") or low.startswith("affected repos:"):
             payload = stripped.split(":", 1)[1]
             for tok in re.split(r"[,\s]+", payload):
-                local = _normalize_repo_token(tok)
+                local, explicit_slug = _normalize_repo_mention(tok)
                 if local and local not in affected:
                     affected.append(local)
+                if local and explicit_slug:
+                    explicit_repo_slugs.setdefault(local, explicit_slug)
         elif low.startswith("rollout order:") or low.startswith("rollout:"):
             payload = stripped.split(":", 1)[1]
             # Do NOT include "-" in the splitter character class, repo
@@ -370,9 +388,11 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                 tok = tok.strip().lstrip("-").strip()
                 if not tok:
                     continue
-                local = _normalize_repo_token(tok)
+                local, explicit_slug = _normalize_repo_mention(tok)
                 if local and local not in rollout_override:
                     rollout_override.append(local)
+                if local and explicit_slug:
+                    explicit_repo_slugs.setdefault(local, explicit_slug)
 
     # 2. ## Affected Repos H2 block.
     affected_h2 = re.search(
@@ -388,9 +408,11 @@ def parse_plan_from_issue(body: str) -> PlanShape:
             bullet = re.match(r"^\s*[-*]\s*(.+)$", line)
             payload = bullet.group(1) if bullet else stripped
             for tok in re.split(r"[,\s]+", payload):
-                local = _normalize_repo_token(tok)
+                local, explicit_slug = _normalize_repo_mention(tok)
                 if local and local not in affected:
                     affected.append(local)
+                if local and explicit_slug:
+                    explicit_repo_slugs.setdefault(local, explicit_slug)
 
     # 2b. ## Rollout (Order) H2 block, same shape relaxation as the
     # inline parser. Also accepts the explicit "## Rollout order"
@@ -412,9 +434,11 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                     tok = tok.strip().lstrip("-").strip()
                     if not tok:
                         continue
-                    local = _normalize_repo_token(tok)
+                    local, explicit_slug = _normalize_repo_mention(tok)
                     if local and local not in rollout_override:
                         rollout_override.append(local)
+                    if local and explicit_slug:
+                        explicit_repo_slugs.setdefault(local, explicit_slug)
 
     # 3. Per-repo acceptance-criteria H3 sections.
     ac_block = re.search(
@@ -458,11 +482,16 @@ def parse_plan_from_issue(body: str) -> PlanShape:
         return PlanShape(
             affected_repos=ordered,
             repo_criteria=criteria_by_repo,
+            repo_slugs=explicit_repo_slugs,
             guessed_default_rollout=True,
             parse_notes=(DEFAULT_ROLLOUT_WARNING,),
         )
 
-    return PlanShape(affected_repos=ordered, repo_criteria=criteria_by_repo)
+    return PlanShape(
+        affected_repos=ordered,
+        repo_criteria=criteria_by_repo,
+        repo_slugs=explicit_repo_slugs,
+    )
 
 
 def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
@@ -1339,8 +1368,10 @@ def parse_parent_issue(
                 # name `gh_slug` avoids shadowing the `full` used in the
                 # main children-pairs loop below (which would otherwise
                 # widen its type to `str | None` and trip mypy).
-                gh_slug = local_to_gh.get(local) or (
-                    f"{parent_org}/{local}" if parent_org else local
+                gh_slug = (
+                    loose.repo_slugs.get(local)
+                    or local_to_gh.get(local)
+                    or (f"{parent_org}/{local}" if parent_org else local)
                 )
                 if gh_slug not in repos:
                     repos.append(gh_slug)

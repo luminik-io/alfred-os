@@ -452,6 +452,25 @@ We want a billing-v2 rollout.
     ]
 
 
+def test_parse_parent_issue_loose_shape_preserves_cross_org_slug():
+    body = """
+We want a cross-org billing worker rollout.
+
+## Affected Repos
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend"]
+    assert plan.affected_repos == ("acme/backend",)
+
+
 def test_parse_parent_issue_blocks_loose_shape_that_would_guess_default_rollout(
     caplog,
 ):
