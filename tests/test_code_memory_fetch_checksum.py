@@ -697,18 +697,26 @@ def test_launcher_strips_alfredrc_comments_before_code_memory_filter(
     assert "repos:       org/commented" in res.stderr
 
 
-def test_launcher_follows_alfredrc_pointer_for_code_memory(tmp_path: Path) -> None:
+def test_launcher_indirect_pointer_cannot_move_default_code_memory_runtime(
+    tmp_path: Path,
+) -> None:
     home = tmp_path / "home"
-    runtime = tmp_path / "runtime"
+    default_runtime = home / ".alfred"
+    pointed_runtime = tmp_path / "runtime"
     custom_rc = tmp_path / "custom.alfredrc"
     home.mkdir()
-    runtime.mkdir()
+    default_runtime.mkdir()
+    pointed_runtime.mkdir()
     (home / ".alfredrc").write_text(
         f"ALFREDRC={custom_rc}\nALFRED_CODE_MEMORY_REPOS=org/stale\n",
         encoding="utf-8",
     )
     custom_rc.write_text(
-        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/pointed\n",
+        f"ALFRED_HOME={pointed_runtime}\nALFRED_CODE_MEMORY_REPOS=org/pointed\n",
+        encoding="utf-8",
+    )
+    (default_runtime / ".env").write_text(
+        "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/default\n",
         encoding="utf-8",
     )
     env = os.environ.copy()
@@ -726,9 +734,11 @@ def test_launcher_follows_alfredrc_pointer_for_code_memory(tmp_path: Path) -> No
 
     assert res.returncode == 0, res.stderr
     assert f"rc:          {custom_rc}" in res.stderr
-    assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
-    assert "repos:       org/pointed" in res.stderr
+    assert f"index-dir:   {default_runtime}/state/code-memory" in res.stderr
+    assert "repos:       org/default" in res.stderr
     assert "org/stale" not in res.stderr
+    assert "org/pointed" not in res.stderr
+    assert str(pointed_runtime) not in res.stderr
 
 
 def test_launcher_ignores_pointed_rc_memory_when_process_home_is_active(

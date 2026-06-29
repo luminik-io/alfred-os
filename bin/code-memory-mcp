@@ -268,21 +268,21 @@ read_env_key() {
 }
 
 rc_targets_effective_home() {
-  local selected_alfredrc="$1" direct_selected_alfredrc="$2" original_home rc_home rc_home_expanded
+  local selected_alfredrc="$1" direct_selected_alfredrc="$2" effective_home rc_home rc_home_expanded
   if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
     return 0
   fi
-  if [ "$ORIGINAL_ALFRED_HOME_PRESENT" -ne 1 ] || [ -z "${ALFRED_HOME:-}" ]; then
+  if [ -z "${ALFRED_HOME:-}" ]; then
     return 0
   fi
-  original_home="$(normalize_runtime_home "$ALFRED_HOME")"
+  effective_home="$(normalize_runtime_home "$ALFRED_HOME")"
   rc_home="$(read_env_key "$selected_alfredrc" "ALFRED_HOME")"
   if [ -n "$rc_home" ]; then
     rc_home_expanded="$(normalize_runtime_home "$rc_home")"
   else
     rc_home_expanded="$(normalize_runtime_home "$HOME/.alfred")"
   fi
-  [ "$rc_home_expanded" = "$original_home" ]
+  [ "$rc_home_expanded" = "$effective_home" ]
 }
 
 load_selected_alfredrc() {
@@ -307,6 +307,10 @@ load_selected_alfredrc() {
     selected_alfredrc="$(expand_user_path "$ALFREDRC")"
     ALFREDRC="$selected_alfredrc"
     export ALFREDRC
+    if [ "$direct_selected_alfredrc" != "direct_selected_alfredrc" ] && [ -z "${ALFRED_HOME:-}" ]; then
+      ALFRED_HOME="$HOME/.alfred"
+      export ALFRED_HOME
+    fi
     if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
       RC_TARGETS_EFFECTIVE_HOME=1
     else
