@@ -384,7 +384,7 @@ def test_install_inventory_blocks_loaded_plist_when_active_read_fails(
     assert "Could not verify 1 loaded launchd label" in by_key["scheduler_unmanaged"]["detail"]
 
 
-def test_install_inventory_ignores_unreadable_current_ams_plist(
+def test_install_inventory_blocks_current_ams_plist_when_active_read_stays_unreadable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -418,8 +418,8 @@ def test_install_inventory_ignores_unreadable_current_ams_plist(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == []
-    assert inventory["unmanaged_scheduler_count"] == 0
+    assert inventory["unmanaged_scheduler_jobs"] == ["io.luminik.alfred.ams (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
 
 
 def test_install_inventory_reprobes_loaded_label_after_unreadable_ams_plist(
@@ -1477,7 +1477,7 @@ def test_install_inventory_blocks_generic_systemd_timer_with_unreadable_alfred_s
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
-def test_install_inventory_blocks_generic_systemd_timer_when_unreadable_service_file_proves_alfred(
+def test_install_inventory_ignores_stale_service_file_when_active_service_read_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1508,8 +1508,8 @@ def test_install_inventory_blocks_generic_systemd_timer_when_unreadable_service_
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == ["vendor.cleanup (unreadable)"]
-    assert inventory["unmanaged_scheduler_count"] == 1
+    assert inventory["unmanaged_scheduler_jobs"] == []
+    assert inventory["unmanaged_scheduler_count"] == 0
 
 
 def test_install_inventory_ignores_systemd_timer_for_non_service_unit(
@@ -1598,8 +1598,8 @@ def test_install_inventory_blocks_generic_systemd_timer_when_unit_lookup_fails(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == []
-    assert inventory["unmanaged_scheduler_count"] == 0
+    assert inventory["unmanaged_scheduler_jobs"] == ["vendor.cleanup (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
 
 
 def test_install_inventory_uses_systemd_timer_file_when_unit_lookup_fails(
@@ -1747,7 +1747,7 @@ def test_install_inventory_ignores_systemd_timer_file_for_non_service_unit(
     assert inventory["unmanaged_scheduler_count"] == 0
 
 
-def test_install_inventory_ignores_unreadable_phrase_only_systemd_timer(
+def test_install_inventory_blocks_unreadable_phrase_only_systemd_timer_unit_lookup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1770,8 +1770,8 @@ def test_install_inventory_ignores_unreadable_phrase_only_systemd_timer(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == []
-    assert inventory["unmanaged_scheduler_count"] == 0
+    assert inventory["unmanaged_scheduler_jobs"] == ["com.vendor.agent-cleanup (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
 
 
 def test_install_inventory_ignores_unreadable_phrase_only_systemd_service(
