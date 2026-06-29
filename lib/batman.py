@@ -334,6 +334,17 @@ def _append_repo_mention(
         explicit_repo_slugs[repo_key] = explicit_slug
 
 
+def _expand_rollout_repo_keys(rollout: list[str], affected: list[str]) -> list[str]:
+    out: list[str] = []
+    for repo_key in rollout:
+        matches = [target for target in affected if target.split("/", 1)[-1] == repo_key]
+        expanded = matches if matches else [repo_key]
+        for target in expanded:
+            if target not in out:
+                out.append(target)
+    return out
+
+
 def _rollout_order() -> list[str]:
     """Return the configured rollout order.
 
@@ -472,6 +483,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     # 4. Resolve final order.
     rollout_order = _rollout_order()
     if rollout_override:
+        rollout_override = _expand_rollout_repo_keys(rollout_override, affected)
         for r in rollout_override:
             if r not in affected:
                 affected.append(r)

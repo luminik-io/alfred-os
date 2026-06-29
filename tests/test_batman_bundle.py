@@ -107,6 +107,16 @@ def test_parse_plan_preserves_duplicate_explicit_repo_tails():
     }
 
 
+def test_parse_plan_bare_rollout_uses_explicit_affected_slug():
+    import batman as bm
+
+    body = "## Affected Repos\n- acme/backend\n\n## Rollout order\n- backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend"]
+    assert plan.repo_slugs == {"acme/backend": "acme/backend"}
+
+
 def test_parse_plan_h2_block_with_comma_separated_payload():
     """PR #121 fix: bare comma-separated payload after the H2 header
     must parse, not silently fall back to the default rollout."""
@@ -471,6 +481,28 @@ We want a cross-org billing worker rollout.
 
 ## Affected Repos
 - acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend"]
+    assert plan.affected_repos == ("acme/backend",)
+
+
+def test_parse_parent_issue_loose_shape_preserves_cross_org_slug_with_bare_rollout():
+    body = """
+We want a cross-org billing worker rollout.
+
+## Affected Repos
+- acme/backend
+
+## Rollout order
+- backend
 
 ## Acceptance Criteria
 
