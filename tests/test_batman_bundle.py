@@ -94,6 +94,77 @@ def test_parse_plan_h2_block_with_bullets():
     assert plan.affected_repos == ["backend", "frontend"]
 
 
+def test_parse_plan_preserves_duplicate_explicit_repo_tails():
+    import batman as bm
+
+    body = "## Affected Repos\n- acme/backend\n- beta/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend", "beta/backend"]
+    assert plan.repo_slugs == {
+        "acme/backend": "acme/backend",
+        "beta/backend": "beta/backend",
+    }
+
+
+def test_parse_plan_preserves_explicit_slug_with_repo_mapping(monkeypatch):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"other/service": "service"})
+
+    body = "## Affected Repos\n- acme/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend"]
+    assert plan.repo_slugs == {"acme/backend": "acme/backend"}
+
+
+def test_parse_plan_bare_rollout_uses_explicit_affected_slug():
+    import batman as bm
+
+    body = "## Affected Repos\n- acme/backend\n\n## Rollout order\n- backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend"]
+    assert plan.repo_slugs == {"acme/backend": "acme/backend"}
+
+
+def test_parse_plan_bare_rollout_uses_mapped_explicit_affected_slug(monkeypatch):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme/acme-backend": "backend"})
+
+    body = "## Affected Repos\n- acme/acme-backend\n\n## Rollout order\n- backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/acme-backend"]
+    assert plan.repo_slugs == {"acme/acme-backend": "acme/acme-backend"}
+
+
+def test_parse_plan_explicit_rollout_does_not_promote_bare_affected_repo():
+    import batman as bm
+
+    body = "## Affected Repos\n- backend\n\n## Rollout order\n- acme/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["backend"]
+
+
+def test_parse_plan_default_rollout_orders_explicit_affected_slugs(monkeypatch):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "DEFAULT_ROLLOUT_ORDER", ["backend", "frontend", "mobile"])
+
+    body = "## Affected Repos\n- acme/frontend\n- acme/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend", "acme/frontend"]
+    assert plan.repo_slugs == {
+        "acme/frontend": "acme/frontend",
+        "acme/backend": "acme/backend",
+    }
+
+
 def test_parse_plan_h2_block_with_comma_separated_payload():
     """PR #121 fix: bare comma-separated payload after the H2 header
     must parse, not silently fall back to the default rollout."""
@@ -372,118 +443,6 @@ def test_gh_repo_from_url_filters_cross_org():
 
 
 # ---------------------------------------------------------------------------
-# Issue picker: BATMAN_SCAN_REPOS gate (Codex P1 on alfred-os PR #15)
-# ---------------------------------------------------------------------------
-
-
-def _import_batman_runner():
-    """Re-import bin/batman.py with the current env so module-level
-    constants (GH_ORG, etc.) re-evaluate against the test fixtures.
-
-    bin/batman.py does ``from batman import …`` referring to
-    lib/batman.py; pre-import the lib module under that name so the
-    runner's import resolves correctly even when we exec_module it
-    under a different sys.modules key.
-    """
-    import importlib.util
-
-    repo_root = Path(__file__).resolve().parent.parent
-    lib_dir = repo_root / "lib"
-    bin_dir = repo_root / "bin"
-    for path in (str(lib_dir), str(bin_dir)):
-        if path not in sys.path:
-            sys.path.insert(0, path)
-    for mod in list(sys.modules):
-        if mod.startswith("agent_runner") or mod in {"batman", "batman_runner"}:
-            del sys.modules[mod]
-    lib_spec = importlib.util.spec_from_file_location("batman", lib_dir / "batman.py")
-    lib_module = importlib.util.module_from_spec(lib_spec)
-    sys.modules["batman"] = lib_module
-    lib_spec.loader.exec_module(lib_module)
-    bin_spec = importlib.util.spec_from_file_location("batman_runner", bin_dir / "batman.py")
-    bin_module = importlib.util.module_from_spec(bin_spec)
-    sys.modules["batman_runner"] = bin_module
-    bin_spec.loader.exec_module(bin_module)
-    return bin_module
-
-
-def test_list_large_features_returns_empty_when_scan_repos_unset(monkeypatch):
-    """No BATMAN_SCAN_REPOS = no work. The previous implementation
-    would have searched org-wide once batman was enabled, drafting
-    plans for repos outside the operator-configured scope."""
-    monkeypatch.delenv("BATMAN_SCAN_REPOS", raising=False)
-    monkeypatch.setenv("GH_ORG", "myorg")
-    runner = _import_batman_runner()
-    # Even if gh search would have returned issues, the early return
-    # short-circuits before any subprocess call.
-    monkeypatch.setattr(
-        runner,
-        "gh_json",
-        lambda *_a, **_k: [
-            {"number": 1, "url": "https://github.com/myorg/x/issues/1", "labels": []}
-        ],
-    )
-    assert runner._list_large_features() == []
-
-
-def test_list_large_features_filters_to_scan_repos(monkeypatch):
-    """Org-wide gh search results get post-filtered against the URL
-    prefix derived from BATMAN_SCAN_REPOS, issues in repos outside
-    the scan list are dropped silently."""
-    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend,frontend")
-    monkeypatch.setenv("GH_ORG", "myorg")
-    runner = _import_batman_runner()
-    fake_rows = [
-        {"number": 10, "url": "https://github.com/myorg/backend/issues/10", "labels": []},
-        {"number": 20, "url": "https://github.com/myorg/frontend/issues/20", "labels": []},
-        {"number": 30, "url": "https://github.com/myorg/random-repo/issues/30", "labels": []},
-        {"number": 40, "url": "https://github.com/myorg/mobile/issues/40", "labels": []},
-    ]
-    monkeypatch.setattr(runner, "gh_json", lambda *_a, **_k: fake_rows)
-    out = runner._list_large_features()
-    nums = sorted(r["number"] for r in out)
-    assert nums == [10, 20], f"only backend + frontend should pass; got {nums}"
-
-
-def test_list_large_features_skip_labels_still_apply(monkeypatch):
-    """Skip-labels filter is applied AFTER the scan-repo gate, so a
-    blocked issue inside a scan repo still gets dropped."""
-    monkeypatch.setenv("BATMAN_SCAN_REPOS", "backend")
-    monkeypatch.setenv("GH_ORG", "myorg")
-    runner = _import_batman_runner()
-    fake_rows = [
-        {
-            "number": 1,
-            "url": "https://github.com/myorg/backend/issues/1",
-            "labels": [{"name": "agent:large-feature"}],
-        },
-        {
-            "number": 2,
-            "url": "https://github.com/myorg/backend/issues/2",
-            "labels": [{"name": "agent:large-feature"}, {"name": "do-not-pickup"}],
-        },
-        {
-            "number": 3,
-            "url": "https://github.com/myorg/backend/issues/3",
-            "labels": [{"name": "agent:large-feature"}, {"name": "agent:in-flight"}],
-        },
-        {
-            "number": 4,
-            "url": "https://github.com/myorg/backend/issues/4",
-            "labels": [{"name": "agent:large-feature"}, {"name": "needs:human-scope"}],
-        },
-        {
-            "number": 5,
-            "url": "https://github.com/myorg/backend/issues/5",
-            "labels": [{"name": "agent:large-feature"}, {"name": "custom-lucius-pr-open"}],
-        },
-    ]
-    monkeypatch.setattr(runner, "gh_json", lambda *_a, **_k: fake_rows)
-    out = runner._list_large_features()
-    assert [r["number"] for r in out] == [1]
-
-
-# ---------------------------------------------------------------------------
 # Issue #107: parse_parent_issue diagnostic + auto-fallback to loose shape.
 # ---------------------------------------------------------------------------
 
@@ -564,6 +523,323 @@ We want a billing-v2 rollout.
     ]
 
 
+def test_parse_parent_issue_loose_shape_preserves_cross_org_slug():
+    body = """
+We want a cross-org billing worker rollout.
+
+## Affected Repos
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend"]
+    assert plan.affected_repos == ("acme/backend",)
+
+
+def test_parse_parent_issue_loose_shape_preserves_cross_org_slug_with_bare_rollout():
+    body = """
+We want a cross-org billing worker rollout.
+
+## Affected Repos
+- acme/backend
+
+## Rollout order
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend"]
+    assert plan.affected_repos == ("acme/backend",)
+
+
+def test_parse_parent_issue_loose_shape_orders_explicit_slugs_by_default_rollout(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "DEFAULT_ROLLOUT_ORDER", ["backend", "frontend", "mobile"])
+
+    body = """
+We want a cross-org app rollout.
+
+## Affected Repos
+- acme/frontend
+- acme/backend
+
+## Acceptance Criteria
+
+### frontend
+- Wire the UI to the new API.
+
+### backend
+- Add the API.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "acme/frontend"]
+    assert plan.affected_repos == ("acme/backend", "acme/frontend")
+
+
+def test_parse_parent_issue_loose_shape_preserves_mapped_slug_with_bare_rollout(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme/acme-backend": "backend"})
+
+    body = """
+We want a cross-org billing worker rollout.
+
+## Affected Repos
+- acme/acme-backend
+
+## Rollout order
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/acme-backend"]
+    assert plan.affected_repos == ("acme/acme-backend",)
+    assert "Add the billing worker behind the `billing-v2` flag." in plan.children[0].body
+    assert "see acceptance criteria" not in plan.children[0].body
+
+
+def test_parse_parent_issue_loose_shape_qualifies_bare_mapped_slug(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
+
+    body = """
+We want a mapped backend rollout.
+
+## Affected Repos
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["myorg/acme-backend"]
+    assert plan.affected_repos == ("myorg/acme-backend",)
+
+
+def test_parse_parent_issue_loose_shape_uses_gh_org_for_bare_mapped_slug(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_ORG", "acme")
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
+
+    body = """
+We want a mapped backend rollout from a planning repo.
+
+## Affected Repos
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: billing-v2 rollout",
+        parent_repo="platform/specs",
+        parent_issue_number=42,
+    )
+
+    assert [child.repo for child in plan.children] == ["acme/acme-backend"]
+    assert plan.affected_repos == ("acme/acme-backend",)
+
+
+def test_parse_parent_issue_loose_shape_blocks_bare_mapped_slug_without_gh_org(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_ORG", "")
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme-backend": "backend"})
+
+    body = """
+We want a mapped backend rollout from a planning repo.
+
+## Affected Repos
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: billing-v2 rollout",
+        parent_repo="platform/specs",
+        parent_issue_number=42,
+    )
+
+    assert plan.children == ()
+    assert any(f.code == "ambiguous_repo_mapping" for f in plan.readiness_findings)
+
+
+def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
+    body = """
+We want the same worker in two orgs.
+
+## Affected Repos
+- acme/backend
+- beta/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "beta/backend"]
+    assert plan.affected_repos == ("acme/backend", "beta/backend")
+
+
+def test_parse_parent_issue_loose_shape_rollout_subset_keeps_remaining_repos():
+    body = """
+We want the same worker in two orgs, starting with acme.
+
+## Affected Repos
+- acme/backend
+- beta/backend
+
+## Rollout order
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "beta/backend"]
+    assert plan.affected_repos == ("acme/backend", "beta/backend")
+
+
+def test_parse_parent_issue_loose_shape_rollout_does_not_retarget_bare_repo():
+    body = """
+We want backend changes in the parent org.
+
+## Affected Repos
+- backend
+
+## Rollout order
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the shared worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["myorg/backend"]
+    assert plan.affected_repos == ("myorg/backend",)
+
+
+def test_parse_parent_issue_loose_shape_keeps_bare_repo_after_explicit_same_tail():
+    body = """
+We want backend changes in the external app and the local app.
+
+## Affected Repos
+- acme/backend
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the shared worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert {child.repo for child in plan.children} == {"acme/backend", "myorg/backend"}
+    assert set(plan.affected_repos) == {"acme/backend", "myorg/backend"}
+
+
+def test_parse_parent_issue_explicit_rollout_keeps_bare_same_tail_repo():
+    body = """
+We want backend changes in the external app and the local app.
+
+## Affected Repos
+- acme/backend
+- backend
+
+## Rollout order
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the shared worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "myorg/backend"]
+    assert plan.affected_repos == ("acme/backend", "myorg/backend")
+
+
+def test_parse_parent_issue_blocks_ambiguous_short_child_repo_key():
+    body = """
+Bundle: shared backend rollout
+
+Repos:
+- acme/backend
+- beta/backend
+
+Children:
+- backend: add the shared worker
+
+Done when:
+- Both backend repos have the shared worker.
+"""
+
+    plan = _parse_parent(body)
+
+    assert plan.children == ()
+    assert any(f.code == "ambiguous_child_repo" for f in plan.readiness_findings)
+    assert plan.readiness_blockers
+
+
 def test_parse_parent_issue_blocks_loose_shape_that_would_guess_default_rollout(
     caplog,
 ):
@@ -614,6 +890,58 @@ Done when:
     assert all("parse_parent_issue" not in r.getMessage() for r in caplog.records), [
         r.getMessage() for r in caplog.records
     ]
+
+
+def test_parse_parent_issue_canonical_bare_repos_use_parent_owner():
+    import batman as bm
+
+    body = """
+Bundle: billing-v2 rollout
+
+Repos:
+- backend
+
+Children:
+- backend: introduce BillingV2Service
+
+Done when:
+- Child merged to main
+"""
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: billing-v2 rollout",
+        parent_repo="other-org/specs",
+        parent_issue_number=42,
+    )
+
+    assert plan.affected_repos == ("other-org/backend",)
+    assert [child.repo for child in plan.children] == ["other-org/backend"]
+
+
+def test_parse_parent_issue_does_not_suffix_match_child_repo_key():
+    import batman as bm
+
+    body = """
+Bundle: core backend rollout
+
+Repos:
+- acme/core-backend
+
+Children:
+- backend: introduce BillingV2Service
+
+Done when:
+- Child merged to main
+"""
+    plan = bm.parse_parent_issue(
+        body=body,
+        title="Bundle: core backend rollout",
+        parent_repo="acme/specs",
+        parent_issue_number=42,
+    )
+
+    assert plan.children == ()
+    assert any(f.code == "missing_children" for f in plan.readiness_findings)
 
 
 # ---------------------------------------------------------------------------

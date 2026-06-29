@@ -63,7 +63,7 @@ Batman is the architect agent that leads a whole feature across repos. Where Luc
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
 
-Batman is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`. The legacy `BATMAN_SCAN_REPOS` path drafts plans and stops before child filing. The newer `BATMAN_PARENT_REPO` path halts after the plan with the default `BATMAN_AUTO_EXECUTE=0`; set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
+Batman is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`. `BATMAN_PARENT_REPO` halts after the plan with the default `BATMAN_AUTO_EXECUTE=0`; set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
 
 See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
@@ -86,7 +86,7 @@ their staging or ECS settings exist.
 
 | Codename | Role | Default schedule | What it does |
 |---|---|---|---|
-| **batman** | architect | every 1 h, approval-gated | Leads multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
+| **batman** | architect | every 1 h, approval-gated | Leads multi-repo features. Batman drafts the rollout, waits for Slack or Alfred client approval, files child `agent:implement` issues, and reports status so implementation can move in parallel. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
 | **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |

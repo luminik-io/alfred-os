@@ -155,17 +155,12 @@ there and allow repo-operating agents to pick issues or PRs from it.
 ## Batman For Multi-Repo Planning
 
 Batman is included in the full fleet and acts as the architect agent for cross-repo
-work. It has two public paths:
-
-- `BATMAN_PARENT_REPO` parent issues run the plan, approval, child-issue filing,
-  and report loop.
-- `BATMAN_SCAN_REPOS` legacy scans look for `agent:large-feature`, group
-  `agent:bundle:<slug>` siblings, draft a rollout plan, and stop before child
-  issue filing.
+work. `BATMAN_PARENT_REPO` parent issues run the plan, approval, child-issue
+filing, and report loop.
 
 Batman owns the feature shape above the repo-local work. It plans the rollout
-in both modes, and the parent-plan path files scoped child issues when the gate
-allows it so Lucius and the rest of the fleet get clear implementation work.
+and files scoped child issues when the gate allows it so Lucius and the rest of
+the fleet get clear implementation work.
 
 The full-fleet setup configures it from the start:
 

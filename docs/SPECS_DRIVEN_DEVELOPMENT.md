@@ -91,11 +91,10 @@ How to revert or disable the change if it breaks.
    bundle: if any sibling-create fails, the previously-created siblings are
    rolled back so Batman never picks up a half-filed bundle. Damian is
    opt-in and capped at three bundles per firing.
-3. **Batman plans multi-repo work.** In the scan path, labelled
-   `agent:large-feature` issues become rollout plans across the configured
-   repos. In the `BATMAN_PARENT_REPO` path, the approved parent plan can also
-   file child `agent:implement` issues. Plans are visible in Slack and in
-   `alfred serve` under Plans.
+3. **Batman plans multi-repo work.** Labelled `agent:large-feature` parent
+   issues in `BATMAN_PARENT_REPO` become rollout plans across the configured
+   repos. Approved parent plans can file child `agent:implement` issues. Plans
+   are visible in Slack and in `alfred serve` under Plans.
 4. **Lucius implements one repo at a time.** It claims a single
    `agent:implement` issue, opens an isolated worktree, invokes Claude Code or
    Codex, pushes a branch, and opens a PR.
@@ -206,13 +205,12 @@ The issue body should name:
 - known risks
 - human approval checklist
 
-Batman has two public paths. The legacy `BATMAN_SCAN_REPOS` path drafts the
-rollout plan and stops before child issue filing. The `BATMAN_PARENT_REPO`
-path parses `Repos:`, `Children:`, and `Done when:` blocks, posts the plan to
-Slack or local logs, and can file child issues only when `BATMAN_AUTO_EXECUTE`
-allows it. Treat the Slack thread as the place to change the plan before
-approval. Plain-English feedback is enough: "remove mobile", "make this
-read-only", "add an empty state", or "split this into two PRs".
+Batman parses `Repos:`, `Children:`, and `Done when:` blocks from parent
+issues, posts the plan to Slack or local logs, and can file child issues only
+when `BATMAN_AUTO_EXECUTE` allows it. Treat the Slack thread as the place to
+change the plan before approval. Plain-English feedback is enough: "remove
+mobile", "make this read-only", "add an empty state", or "split this into two
+PRs".
 
 When the bot has thread-history access on the parent-plan path, Alfred
 acknowledges newly captured plan replies in-thread with the execution scope if

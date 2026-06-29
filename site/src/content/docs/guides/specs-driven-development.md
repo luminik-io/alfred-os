@@ -80,11 +80,10 @@ How to revert or disable the change if it breaks.
 1. **Drake reads specs and roadmap context.** It files scoped
    `agent:implement` issues only when the acceptance criteria are concrete and
    testable.
-2. **Batman plans multi-repo work.** In the scan path, labelled
-   `agent:large-feature` issues become rollout plans across the configured
-   repos. In the `BATMAN_PARENT_REPO` path, the approved parent plan can also
-   file child `agent:implement` issues. Plans are visible in Slack and in
-   `alfred serve` under Plans.
+2. **Batman plans multi-repo work.** Labelled `agent:large-feature` parent
+   issues in `BATMAN_PARENT_REPO` become rollout plans across the configured
+   repos. Approved parent plans can file child `agent:implement` issues. Plans
+   are visible in Slack and in `alfred serve` under Plans.
 3. **Lucius implements one repo at a time.** It claims a single
    `agent:implement` issue, opens an isolated worktree, invokes Claude Code or
    Codex, pushes a branch, and opens a PR.
@@ -138,14 +137,12 @@ agent:large-feature
 agent:bundle:<short-slug>   # optional when several issues belong together
 ```
 
-Batman has two public paths. The legacy `BATMAN_SCAN_REPOS` path drafts the
-rollout plan and stops before child issue filing. The `BATMAN_PARENT_REPO`
-path parses `Repos:`, `Children:`, and `Done when:` blocks, posts the plan to
+Batman parses `Repos:`, `Children:`, and `Done when:` blocks, posts the plan to
 Slack or local logs, and can file child issues only when `BATMAN_AUTO_EXECUTE`
 allows it. Treat the Slack thread as the place to change the plan before
 approval. Plain-English feedback is enough: "remove mobile", "make this
-read-only", "add an empty state", or "split this into two PRs". On the
-parent-plan path, Alfred acknowledges newly captured plan replies in-thread
+read-only", "add an empty state", or "split this into two PRs". Alfred
+acknowledges newly captured plan replies in-thread
 with the execution scope if approved now, and when the configured approver
 approves with a reaction, Alfred passes those replies along as approval
 amendments. Trusted feedback users can amend the plan without approval

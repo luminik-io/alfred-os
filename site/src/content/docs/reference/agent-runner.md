@@ -23,7 +23,7 @@ Categorised by what the local-control primitive does. For deep semantics, read t
 HOME: Path                   # user's home directory
 ALFRED_HOME: Path            # runtime root, default ~/.alfred
 WORKSPACE_ROOT: Path         # parent of per-repo checkouts, default ~/code
-WORKSPACE: Path              # WORKSPACE_ROOT / "product" (back-compat alias)
+WORKSPACE: Path              # WORKSPACE_ROOT / "product" convenience alias
 GH_ORG: str                  # GitHub org slug; required for gh helpers
 
 STATE_ROOT: Path             # ALFRED_HOME / "state"

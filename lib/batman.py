@@ -1,14 +1,9 @@
-"""Bundle primitives for Batman, the multi-repo architect agent.
+"""Batman lifecycle primitives for the multi-repo architect agent.
 
-Batman picks ``agent:bundle:<slug>`` bundles across product repos,
-drafts plans, and exposes claim / release helpers for fleets that add
-their own execution layer. This module is the pure-data part: ``Bundle``
-dataclass, claim / release across the bundle, and plan parsing from
-issue bodies. Public ``bin/batman.py`` now has a parent-issue lifecycle
-that can draft, request approval, file scoped child issues, and report
-status. The legacy bundle-scan path still drafts a plan only, so
-migrated fleets keep their old safety posture unless they opt into the
-parent-issue workflow.
+Batman reads ``agent:large-feature`` parent issues, drafts plans,
+captures approval, files scoped child issues, and reports status. This
+module keeps the pure-data pieces testable: bundle labels, parent-plan
+parsing, approval envelopes, child issue creation, and report shapes.
 
 Key contract, bundle = atomic unit:
 
@@ -264,8 +259,9 @@ def release_bundle(
 class PlanShape:
     """Parsed plan extracted from an issue body."""
 
-    affected_repos: list[str]  # local repo names, in dependency order
-    repo_criteria: dict[str, str]  # local_repo -> acceptance-criteria text
+    affected_repos: list[str]  # repo keys, local names or explicit owner/repo slugs
+    repo_criteria: dict[str, str]  # repo_key -> acceptance-criteria text
+    repo_slugs: dict[str, str] = field(default_factory=dict)  # repo_key -> explicit owner/repo
     guessed_default_rollout: bool = False
     parse_notes: tuple[str, ...] = ()
 
@@ -307,6 +303,108 @@ def _normalize_repo_token(token: str) -> str | None:
         # No mapping configured: trust the author's spelling.
         return token
     return None
+
+
+def _normalize_repo_mention(token: str) -> tuple[str | None, str | None]:
+    """Return ``(local_name, explicit_owner_repo)`` for a repo mention."""
+    raw = token.strip().strip(",")
+    if "/" in raw:
+        owner, repo = raw.split("/", 1)
+        if owner and repo and re.fullmatch(r"[\w.-]+", repo):
+            explicit_slug = f"{owner.lower()}/{repo.lower()}"
+            local = (
+                GH_REPO_TO_LOCAL.get(explicit_slug)
+                or GH_REPO_TO_LOCAL.get(repo.lower())
+                or repo.lower()
+            )
+            return local, explicit_slug
+    fallback_local = _normalize_repo_token(raw)
+    if not fallback_local:
+        return None, None
+    return fallback_local, None
+
+
+def _append_repo_mention(
+    targets: list[str],
+    explicit_repo_slugs: dict[str, str],
+    token: str,
+) -> None:
+    local, explicit_slug = _normalize_repo_mention(token)
+    if not local:
+        return
+    repo_key = explicit_slug or local
+    if repo_key not in targets:
+        targets.append(repo_key)
+    if explicit_slug:
+        explicit_repo_slugs[repo_key] = explicit_slug
+
+
+def _repo_aliases(repo_key: str, explicit_repo_slugs: dict[str, str]) -> set[str]:
+    aliases = {repo_key}
+    explicit_slug = explicit_repo_slugs.get(repo_key) or (repo_key if "/" in repo_key else "")
+    if explicit_slug:
+        repo_tail = explicit_slug.rsplit("/", 1)[-1]
+        aliases.add(repo_tail)
+        mapped = GH_REPO_TO_LOCAL.get(explicit_slug) or GH_REPO_TO_LOCAL.get(repo_tail)
+        if mapped:
+            aliases.add(mapped)
+    mapped = GH_REPO_TO_LOCAL.get(repo_key)
+    if mapped:
+        aliases.add(mapped)
+    return {alias.lower() for alias in aliases if alias}
+
+
+def _criteria_for_repo_key(
+    repo_key: str,
+    repo_criteria: dict[str, str],
+    explicit_repo_slugs: dict[str, str],
+) -> str | None:
+    criteria_by_key = {key.lower(): value for key, value in repo_criteria.items()}
+    aliases = [repo_key]
+    if "/" in repo_key:
+        aliases.append(repo_key.rsplit("/", 1)[-1])
+    aliases.extend(sorted(_repo_aliases(repo_key, explicit_repo_slugs)))
+    for alias in aliases:
+        value = criteria_by_key.get(alias.lower())
+        if value:
+            return value
+    return None
+
+
+def _repo_keys_match(
+    rollout_key: str,
+    affected_key: str,
+    explicit_repo_slugs: dict[str, str],
+) -> bool:
+    rollout_slug = explicit_repo_slugs.get(rollout_key) or (
+        rollout_key if "/" in rollout_key else ""
+    )
+    affected_slug = explicit_repo_slugs.get(affected_key) or (
+        affected_key if "/" in affected_key else ""
+    )
+    if rollout_slug and affected_slug:
+        return rollout_slug == affected_slug
+    return bool(
+        _repo_aliases(rollout_key, explicit_repo_slugs)
+        & _repo_aliases(affected_key, explicit_repo_slugs)
+    )
+
+
+def _expand_rollout_repo_keys(
+    rollout: list[str],
+    affected: list[str],
+    explicit_repo_slugs: dict[str, str],
+) -> list[str]:
+    out: list[str] = []
+    for repo_key in rollout:
+        matches = [
+            target for target in affected if _repo_keys_match(repo_key, target, explicit_repo_slugs)
+        ]
+        expanded = matches if matches else [repo_key]
+        for target in expanded:
+            if target not in out:
+                out.append(target)
+    return out
 
 
 def _rollout_order() -> list[str]:
@@ -351,6 +449,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     """
     body = body or ""
     affected: list[str] = []
+    explicit_repo_slugs: dict[str, str] = {}
     rollout_override: list[str] = []
     criteria_by_repo: dict[str, str] = {}
 
@@ -361,9 +460,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
         if low.startswith("repos:") or low.startswith("affected repos:"):
             payload = stripped.split(":", 1)[1]
             for tok in re.split(r"[,\s]+", payload):
-                local = _normalize_repo_token(tok)
-                if local and local not in affected:
-                    affected.append(local)
+                _append_repo_mention(affected, explicit_repo_slugs, tok)
         elif low.startswith("rollout order:") or low.startswith("rollout:"):
             payload = stripped.split(":", 1)[1]
             # Do NOT include "-" in the splitter character class, repo
@@ -375,9 +472,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                 tok = tok.strip().lstrip("-").strip()
                 if not tok:
                     continue
-                local = _normalize_repo_token(tok)
-                if local and local not in rollout_override:
-                    rollout_override.append(local)
+                _append_repo_mention(rollout_override, explicit_repo_slugs, tok)
 
     # 2. ## Affected Repos H2 block.
     affected_h2 = re.search(
@@ -393,9 +488,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
             bullet = re.match(r"^\s*[-*]\s*(.+)$", line)
             payload = bullet.group(1) if bullet else stripped
             for tok in re.split(r"[,\s]+", payload):
-                local = _normalize_repo_token(tok)
-                if local and local not in affected:
-                    affected.append(local)
+                _append_repo_mention(affected, explicit_repo_slugs, tok)
 
     # 2b. ## Rollout (Order) H2 block, same shape relaxation as the
     # inline parser. Also accepts the explicit "## Rollout order"
@@ -417,9 +510,7 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                     tok = tok.strip().lstrip("-").strip()
                     if not tok:
                         continue
-                    local = _normalize_repo_token(tok)
-                    if local and local not in rollout_override:
-                        rollout_override.append(local)
+                    _append_repo_mention(rollout_override, explicit_repo_slugs, tok)
 
     # 3. Per-repo acceptance-criteria H3 sections.
     ac_block = re.search(
@@ -430,13 +521,16 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     if ac_block:
         ac_text = ac_block.group(1)
         for m in re.finditer(
-            r"^###\s*([\w\-]+)\s*$(.*?)(?=^###\s|\Z)",
+            r"^###\s*([\w./-]+)\s*$(.*?)(?=^###\s|\Z)",
             ac_text,
             flags=re.MULTILINE | re.DOTALL,
         ):
-            local = _normalize_repo_token(m.group(1))
+            local, explicit_slug = _normalize_repo_mention(m.group(1))
             if local:
-                criteria_by_repo[local] = m.group(2).strip()
+                repo_key = explicit_slug or local
+                criteria_by_repo[repo_key] = m.group(2).strip()
+                if explicit_slug:
+                    explicit_repo_slugs[repo_key] = explicit_slug
 
     # 3b. Backfill affected from acceptance-criteria H3s ONLY when the
     # inline "Repos:" line and the H2 list both missed (or are absent).
@@ -451,23 +545,33 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     # 4. Resolve final order.
     rollout_order = _rollout_order()
     if rollout_override:
-        for r in rollout_override:
-            if r not in affected:
-                affected.append(r)
-        ordered = [r for r in rollout_override if r in affected]
+        if affected:
+            rollout_override = _expand_rollout_repo_keys(
+                rollout_override, affected, explicit_repo_slugs
+            )
+            ordered = [r for r in rollout_override if r in affected]
+            ordered += [r for r in affected if r not in ordered]
+        else:
+            ordered = list(rollout_override)
     elif affected:
-        ordered = [r for r in rollout_order if r in affected]
+        expanded_rollout = _expand_rollout_repo_keys(rollout_order, affected, explicit_repo_slugs)
+        ordered = [r for r in expanded_rollout if r in affected]
         ordered += [r for r in affected if r not in ordered]
     else:
         ordered = list(rollout_order[:3])
         return PlanShape(
             affected_repos=ordered,
             repo_criteria=criteria_by_repo,
+            repo_slugs=explicit_repo_slugs,
             guessed_default_rollout=True,
             parse_notes=(DEFAULT_ROLLOUT_WARNING,),
         )
 
-    return PlanShape(affected_repos=ordered, repo_criteria=criteria_by_repo)
+    return PlanShape(
+        affected_repos=ordered,
+        repo_criteria=criteria_by_repo,
+        repo_slugs=explicit_repo_slugs,
+    )
 
 
 def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
@@ -476,8 +580,8 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
     Two shapes Batman accepts:
 
     - **Solo bundle** (single issue, body encodes a multi-repo plan):
-      delegate to ``parse_plan_from_issue(body)`` so legacy
-      single-issue plans still parse correctly.
+      delegate to ``parse_plan_from_issue(body)`` so the loose Markdown
+      shape still parses correctly.
     - **Multi-issue bundle** (the ``agent:bundle:<slug>`` label pattern):
       each issue lives in its own product repo; that repo IS the issue's
       affected repo. Per-repo criteria come from each issue's body. Preserve
@@ -522,10 +626,8 @@ def parse_plan_from_bundle(bundle: Bundle) -> PlanShape:
 # plan-approve-execute-report lifecycle
 # ---------------------------------------------------------------------------
 #
-# The block below extends Batman from "draft a plan and stop" to a full
-# plan -> approve -> execute -> report cycle. Wire it up via
-# ``BatmanLifecycle`` in ``bin/batman.py``; the original parsing /
-# claim helpers above stay untouched so legacy fleets keep working.
+# The block below implements Batman's full plan -> approve -> execute -> report
+# cycle. Wire it up via ``BatmanLifecycle`` in ``bin/batman.py``.
 #
 # Design rules (SOLID, DRY, 12-factor):
 #
@@ -1169,16 +1271,16 @@ def _slugify_bundle_title(title: str, prefix: str = "") -> str:
     return slug
 
 
-def _parse_repo_lines(block: str) -> list[str]:
+def _parse_repo_lines(block: str, *, fallback_org: str = "") -> list[str]:
     """Parse a `Repos:` block into a list of ``owner/repo`` slugs.
 
     Accepts two shapes (issue #116):
 
     - ``owner/repo`` (canonical): kept verbatim.
-    - bare ``repo``: qualified with ``GH_ORG`` when set, so the
-      operator's natural shorthand works under the common
-      "one-org fleet" setup. Without ``GH_ORG`` the bare line is
-      skipped with a stderr warning rather than silently dropped.
+    - bare ``repo``: qualified with the parent repo owner, falling back
+      to ``GH_ORG`` when this parser is called outside a parent issue.
+      Without either owner, the bare line is skipped with a stderr
+      warning rather than silently dropped.
 
     Lines that match neither shape (and can't be qualified) get a
     single warning each; the previous behaviour was to drop them
@@ -1195,15 +1297,15 @@ def _parse_repo_lines(block: str) -> list[str]:
         if "/" in token:
             out.append(token)
             continue
-        # Bare repo name. Qualify with GH_ORG when available so the
-        # operator's natural shorthand (`palette`, `palette-web`) works
-        # in a single-org fleet without forcing them to spell out
-        # `owner/` on every line.
-        if GH_ORG:
-            qualified = f"{GH_ORG}/{token}"
+        # Bare repo name. Prefer the parent repo owner so canonical and
+        # loose parent-issue shapes route the same scope to the same org.
+        owner = fallback_org or GH_ORG
+        if owner:
+            qualified = f"{owner}/{token}"
+            owner_source = "parent repo owner" if fallback_org else "GH_ORG"
             print(
                 f"[BATMAN-PARSE-INFO] _parse_repo_lines: qualified bare repo "
-                f"name {token!r} with GH_ORG ({qualified!r}). For multi-org "
+                f"name {token!r} with {owner_source} ({qualified!r}). For multi-org "
                 f"fleets, write `owner/repo` explicitly.",
                 file=sys.stderr,
             )
@@ -1214,7 +1316,7 @@ def _parse_repo_lines(block: str) -> list[str]:
         # of after a wasted Slack approval cycle.
         print(
             f"[BATMAN-PARSE-WARN] _parse_repo_lines: skipping bare repo "
-            f"name {token!r}: no `/` and `GH_ORG` is unset. Write "
+            f"name {token!r}: no `/`, parent repo owner, or `GH_ORG` is set. Write "
             f"`owner/{token}` or set GH_ORG in `~/.alfredrc`. See "
             f"docs/BATMAN_PARENT_ISSUE_TEMPLATE.md.",
             file=sys.stderr,
@@ -1243,20 +1345,30 @@ def _parse_children_lines(block: str) -> list[tuple[str, str]]:
     return out
 
 
-def _resolve_child_repo(short: str, affected: list[str]) -> str | None:
-    """Map ``backend`` to ``owner/backend`` using the affected list.
-
-    Trailing-segment match: ``backend`` matches ``my-org/my-backend`` only
-    when no exact ``my-org/backend`` is present. Exact match wins.
-    """
+def _matching_child_repos(short: str, affected: list[str]) -> list[str]:
     short = short.lower()
-    exact = [r for r in affected if r.split("/", 1)[-1].lower() == short]
-    if exact:
-        return exact[0]
-    sub = [r for r in affected if r.split("/", 1)[-1].lower().endswith(short)]
-    if len(sub) == 1:
-        return sub[0]
+    full_slug = [r for r in affected if r.lower() == short]
+    if full_slug:
+        return full_slug
+    return [r for r in affected if r.split("/", 1)[-1].lower() == short]
+
+
+def _resolve_child_repo(short: str, affected: list[str]) -> str | None:
+    """Map ``backend`` to one ``owner/backend`` slug using the affected list."""
+    matches = _matching_child_repos(short, affected)
+    if len(matches) == 1:
+        return matches[0]
     return None
+
+
+def _qualify_github_repo_slug(repo_slug: str, *, fallback_org: str = "") -> str:
+    """Return a ``owner/repo`` slug when an org is known."""
+    if "/" in repo_slug:
+        return repo_slug
+    owner = fallback_org or GH_ORG
+    if owner:
+        return f"{owner}/{repo_slug}"
+    return repo_slug
 
 
 def parse_parent_issue(
@@ -1291,11 +1403,12 @@ def parse_parent_issue(
     """
     body = body or ""
     slug = _slugify_bundle_title(title, prefix=bundle_slug_prefix)
+    parent_org = parent_repo.split("/", 1)[0] if "/" in parent_repo else ""
 
     repos: list[str] = []
     rm = _REPOS_BLOCK_RE.search(body)
     if rm:
-        repos = _parse_repo_lines(rm.group(1))
+        repos = _parse_repo_lines(rm.group(1), fallback_org=parent_org)
 
     children_pairs: list[tuple[str, str]] = []
     cm = _CHILDREN_BLOCK_RE.search(body)
@@ -1325,11 +1438,18 @@ def parse_parent_issue(
             flags=re.IGNORECASE | re.MULTILINE,
         )
     )
-    loose_scope_notes: list[str] = []
+    loose_scope_findings: list[PlanReadinessFinding] = []
     if not repos and not children_pairs and _has_loose_markers:
         loose = parse_plan_from_issue(body)
         if loose.needs_scope_resolution:
-            loose_scope_notes.extend(loose.parse_notes)
+            loose_scope_findings.extend(
+                PlanReadinessFinding(
+                    code="guessed_default_rollout",
+                    severity="error",
+                    message=note,
+                )
+                for note in loose.parse_notes
+            )
             logger.warning(
                 "parse_parent_issue: loose-shape fallback would require a default "
                 "rollout guess; blocking until the parent issue names affected repos."
@@ -1338,17 +1458,43 @@ def parse_parent_issue(
             # Map local repo names from the loose parser back to
             # `owner/repo` slugs using GH_REPO_TO_LOCAL.
             local_to_gh = {v: k for k, v in GH_REPO_TO_LOCAL.items()}
-            parent_org = parent_repo.split("/", 1)[0] if "/" in parent_repo else ""
-            for local in loose.affected_repos:
+            loose_repos: list[tuple[str, str]] = []
+            for repo_key in loose.affected_repos:
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
                 # back to <parent_org>/<local> so a fresh fleet with no
-                # mapping still produces a usable owner/repo pair. Local
-                # name `gh_slug` avoids shadowing the `full` used in the
-                # main children-pairs loop below (which would otherwise
-                # widen its type to `str | None` and trip mypy).
-                gh_slug = local_to_gh.get(local) or (
-                    f"{parent_org}/{local}" if parent_org else local
-                )
+                # mapping still produces a usable owner/repo pair.
+                explicit_slug = loose.repo_slugs.get(repo_key)
+                mapped_slug = local_to_gh.get(repo_key)
+                if explicit_slug:
+                    gh_slug = explicit_slug
+                elif mapped_slug:
+                    if "/" not in mapped_slug and not GH_ORG:
+                        loose_scope_findings.append(
+                            PlanReadinessFinding(
+                                code="ambiguous_repo_mapping",
+                                severity="error",
+                                message=(
+                                    f"GH_REPO_TO_LOCAL maps `{repo_key}` to bare repo "
+                                    f"`{mapped_slug}`, but GH_ORG is unset. Use "
+                                    "`owner/repo` in GH_REPO_TO_LOCAL or set GH_ORG."
+                                ),
+                            )
+                        )
+                        continue
+                    gh_slug = _qualify_github_repo_slug(
+                        mapped_slug,
+                        fallback_org=GH_ORG,
+                    )
+                else:
+                    raw_gh_slug = (
+                        repo_key
+                        if "/" in repo_key
+                        else f"{parent_org}/{repo_key}"
+                        if parent_org
+                        else repo_key
+                    )
+                    gh_slug = _qualify_github_repo_slug(raw_gh_slug, fallback_org=parent_org)
+                loose_repos.append((repo_key, gh_slug))
                 if gh_slug not in repos:
                     repos.append(gh_slug)
             # Synthesize one child per affected repo so the plan post
@@ -1356,15 +1502,16 @@ def parse_parent_issue(
             # acceptance-criteria block (if present) becomes the seed
             # context the implementer reads; otherwise the child body
             # falls back to a generic "implement <slug>" stub.
-            for local in loose.affected_repos:
-                child_title = f"{local}: implement {slug or 'large-feature'}"
-                children_pairs.append((local, child_title))
+            for repo_key, gh_slug in loose_repos:
+                child_title = f"{repo_key}: implement {slug or 'large-feature'}"
+                children_pairs.append((gh_slug, child_title))
             if not done_when:
                 # Reuse the per-repo criteria as a done-when summary so
                 # the Slack plan post is not empty under "Done when".
                 joined = "\n".join(
-                    f"- {repo}: {loose.repo_criteria.get(repo, 'see acceptance criteria')}"
-                    for repo in loose.affected_repos
+                    f"- {repo_key}: "
+                    f"{_criteria_for_repo_key(repo_key, loose.repo_criteria, loose.repo_slugs) or 'see acceptance criteria'}"
+                    for repo_key in loose.affected_repos
                 )
                 done_when = joined
             logger.warning(
@@ -1386,7 +1533,27 @@ def parse_parent_issue(
     bundle_label_str = label_constants.bundle_label(slug)
     base_labels = (label_constants.IMPLEMENT, bundle_label_str)
     children: list[ChildIssue] = []
+    child_resolution_findings: list[PlanReadinessFinding] = []
     for short, child_title in children_pairs:
+        matches = _matching_child_repos(short, repos)
+        if len(matches) > 1:
+            child_resolution_findings.append(
+                PlanReadinessFinding(
+                    code="ambiguous_child_repo",
+                    severity="error",
+                    message=(
+                        f"Child `{short}` matches multiple affected repositories: "
+                        f"{', '.join(matches)}. Use a fully qualified child key."
+                    ),
+                )
+            )
+            logger.warning(
+                "child %r references ambiguous repo %r (%s); skipping",
+                child_title,
+                short,
+                ", ".join(matches),
+            )
+            continue
         full = _resolve_child_repo(short, repos)
         if not full:
             logger.warning("child %r references unknown repo %r; skipping", child_title, short)
@@ -1408,17 +1575,10 @@ def parse_parent_issue(
             )
         )
 
-    if loose_scope_notes:
-        readiness_findings = [
-            PlanReadinessFinding(
-                code="guessed_default_rollout",
-                severity="error",
-                message=note,
-            )
-            for note in loose_scope_notes
-        ]
+    if loose_scope_findings:
+        readiness_findings = loose_scope_findings
     else:
-        readiness_findings = _assess_plan_readiness(
+        readiness_findings = child_resolution_findings + _assess_plan_readiness(
             affected_repos=repos,
             children=children,
             done_when=done_when,
@@ -1738,7 +1898,7 @@ def _children_by_repo(plan: BundlePlan) -> dict[str, int]:
 class SlackReporter:
     """Default reporter: posts plan + report through ``slack_format``.
 
-    Falls back to the legacy webhook (``slack_post`` from
+    Falls back to the webhook surface (``slack_post`` from
     ``agent_runner``) when the bot-token surface is unavailable; the
     operator still sees the plan even on a half-configured fleet, but
     without a ``message_ts`` the approval gate is bypassed (callers

@@ -1,34 +1,21 @@
 #!/usr/bin/env python3
 """``batman``, multi-repo feature architect.
 
-Picks the oldest open ``agent:large-feature`` issue across the
-configured product repos. When the issue carries an
-``agent:bundle:<slug>`` label, every sibling issue sharing that label
-is pulled in and the resulting bundle is treated as the atomic unit.
-
-Bundle primitives live in ``lib/batman.py`` so the parsing /
-claim-rollback / plan-shape logic stays unit-testable. This file owns
-the runner path: preflight, select a parent issue or legacy bundle,
-draft the rollout, capture approval when configured, file scoped child
-issues, and report what happened. Batman does not directly edit repo
-files in the OSS reference runner; Lucius, Bane, and Nightwing own the
-worktrees and PRs that flow from those child issues.
+Picks the oldest open ``agent:large-feature`` parent issue from
+``BATMAN_PARENT_REPO``, drafts the rollout, captures approval when
+configured, files scoped child issues, and reports what happened.
+Batman does not directly edit repo files in the OSS reference runner;
+Lucius, Bane, and Nightwing own the worktrees and PRs that flow from
+those child issues.
 
 Wiring:
 
-  - Reads ``GH_ORG`` from the environment.
-  - Reads ``BATMAN_SCAN_REPOS`` (comma-separated) for the search scope.
-    Defaults to "no scan" when unset, so a fresh install with nothing
-    configured is a no-op rather than a crash.
+  - Reads ``BATMAN_PARENT_REPO`` as the single parent queue repo.
   - Posts a plan summary via the ``slack_format`` thread root when a
-    bot token is configured, falling back to the legacy webhook
-    ``slack_post`` otherwise.
+    bot token is configured, falling back to the webhook ``slack_post``
+    otherwise.
   - Honours the fleet enable file: if ``batman`` is not enabled there,
     the runner exits early with a one-line stderr note.
-
-The legacy bundle-scan path remains plan-only for migrated fleets. The
-parent-issue lifecycle is the current path for plan -> approval -> child
-issue execution.
 """
 
 from __future__ import annotations
@@ -51,8 +38,6 @@ for candidate in (
 
 import labels as label_constants  # noqa: E402
 from agent_runner import (  # noqa: E402
-    GH_ORG,
-    GH_REPO_TO_LOCAL,
     LIFECYCLE_LABELS,
     STATE_ROOT,
     EventLog,
@@ -60,7 +45,6 @@ from agent_runner import (  # noqa: E402
     agent_engine,
     doctor_mode,
     ensure_labels,
-    gh_issue_comment,
     gh_issue_edit,
     gh_json,
     is_agent_enabled,
@@ -70,21 +54,15 @@ from agent_runner import (  # noqa: E402
 )
 from batman import (  # noqa: E402
     APPROVAL_MODE_FILE,
-    BUNDLE_LABEL_PREFIX,
     EXEC_GATE_DISABLED,
     EXEC_NO_CHILDREN,
     LARGE_FEATURE_LABEL,
     ApprovalEnvelope,
     BatmanLifecycle,
     BatmanLifecycleConfig,
-    Bundle,
     SlackReporter,
-    list_issues_by_bundle_label,
-    parse_plan_from_bundle,
 )
-from dependencies import sort_issues_by_dependencies  # noqa: E402
 from labels import PLAN_PENDING_APPROVAL  # noqa: E402
-from slack_format import firing_thread_root  # noqa: E402
 
 CODENAME = os.environ.get("AGENT_CODENAME", "batman")
 BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
@@ -101,43 +79,6 @@ BATMAN_PICKUP_BLOCKING_LABELS = {
 }
 
 
-def _scan_repos() -> list[str]:
-    """Comma-separated list of local repo names Batman searches.
-
-    Empty when unset, a fresh install opts out of cross-repo
-    discovery until the operator wires it explicitly. This keeps the
-    skeleton runner from blasting ``gh search`` against nothing
-    sensible.
-    """
-    raw = (os.environ.get("BATMAN_SCAN_REPOS") or "").strip()
-    if not raw:
-        return []
-    return [t.strip() for t in raw.split(",") if t.strip()]
-
-
-def _repo_arg_for_scan_token(token: str) -> str | None:
-    """Return the ``owner/repo`` value passed to ``gh search --repo``."""
-    token = token.strip()
-    if not token:
-        return None
-    if "/" in token:
-        return token
-    repo_slug = next(
-        (
-            github_repo
-            for github_repo, local_repo in GH_REPO_TO_LOCAL.items()
-            if token in {github_repo, local_repo}
-        ),
-        token,
-    )
-    return f"{GH_ORG}/{repo_slug}" if GH_ORG else None
-
-
-def _scan_repo_args() -> list[str]:
-    repo_args = [_repo_arg_for_scan_token(repo) for repo in _scan_repos()]
-    return [repo for repo in repo_args if repo]
-
-
 def _has_batman_pickup_blocker(label_names: set[str] | frozenset[str]) -> bool:
     """Batman owns large-feature and bundle labels; block only hard gates."""
     labels = set(label_names)
@@ -146,119 +87,11 @@ def _has_batman_pickup_blocker(label_names: set[str] | frozenset[str]) -> bool:
     )
 
 
-def _list_large_features() -> list[dict]:
-    """Cross-repo search for open ``agent:large-feature`` issues.
-
-    Filters out issues that look claimed (``agent:in-flight``) or
-    blocked (``do-not-pickup``). Returns ``[]`` on missing GH_ORG or
-    empty ``BATMAN_SCAN_REPOS`` so a half-configured fleet exits
-    cleanly instead of org-wide blasting issues into the picker.
-
-    The post-search filter (URL prefix match) keeps results scoped to
-    the operator-configured repos even though ``gh search`` only takes
-    ``--owner``, not ``--repo`` per call. Hits in repos outside the
-    scan list are dropped silently.
-    """
-    if not GH_ORG:
-        return []
-    repo_args = _scan_repo_args()
-    if not repo_args:
-        return []
-    cmd = ["gh", "search", "issues"]
-    for repo in repo_args:
-        cmd.extend(["--repo", repo])
-    cmd.extend(
-        [
-            "--label",
-            LARGE_FEATURE_LABEL,
-            "--state",
-            "open",
-            "--json",
-            "number,title,url,labels,createdAt,body",
-            "--limit",
-            "20",
-        ]
-    )
-    rows = gh_json(cmd, default=[])
-    if not isinstance(rows, list):
-        return []
-    allowed_prefixes = tuple(f"https://github.com/{repo}/" for repo in repo_args)
-    eligible: list[dict] = []
-    for r in rows:
-        url = r.get("url") or ""
-        if not url.startswith(allowed_prefixes):
-            continue
-        labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
-        if _has_batman_pickup_blocker(labels):
-            continue
-        eligible.append(r)
-    return eligible
-
-
-def _bundle_label(issue: dict) -> str | None:
-    for label in issue.get("labels", []):
-        if isinstance(label, dict):
-            name = label.get("name") or ""
-            if name.startswith(BUNDLE_LABEL_PREFIX):
-                return name
-    return None
-
-
-def _bundle_for_issue(issue: dict) -> Bundle:
-    """Resolve the full bundle for an issue.
-
-    If the issue carries an ``agent:bundle:<slug>`` label, every
-    sibling sharing that label is pulled in. Otherwise it's a bundle
-    of one, the issue itself.
-    """
-    label = _bundle_label(issue)
-    if not label:
-        return Bundle(issues=[issue], bundle_label=None)
-    siblings = list_issues_by_bundle_label(label, allowed_repos=_scan_repo_args())
-    by_url = {s.get("url"): s for s in siblings if s.get("url")}
-    by_url[issue.get("url")] = issue  # always include the trigger issue
-    return Bundle(issues=sort_issues_by_dependencies(by_url.values()), bundle_label=label)
-
-
 def _firing_id() -> str:
     import secrets
 
     stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     return f"{stamp}-{secrets.token_hex(2)}"
-
-
-def _repo_slug_from_issue_url(url: str) -> str | None:
-    parts = (url or "").split("/")
-    if len(parts) < 5 or parts[2] != "github.com":
-        return None
-    return f"{parts[3]}/{parts[4]}"
-
-
-def _block_legacy_plan_for_scope_resolution(issue: dict, plan) -> None:
-    """Stop the legacy plan-only path before it posts a guessed rollout."""
-    repo = _repo_slug_from_issue_url(issue.get("url") or "")
-    number = int(issue.get("number") or 0)
-    notes = "\n".join(f"- {note}" for note in plan.parse_notes) or (
-        "- The issue body is missing enough structure for Batman to plan safely."
-    )
-    body = (
-        "Batman could not safely draft this as an execution plan yet.\n\n"
-        f"{notes}\n\n"
-        "Please update the issue with:\n"
-        "- `Affected Repos: repo-a, repo-b` or a `## Affected Repos` section\n"
-        "- `## Acceptance Criteria` with `### <repo>` subsections for each repo\n"
-        "- any rollout ordering constraints if one repo must land before another\n\n"
-        "I moved this to `needs:human-scope` so it will not be picked up again "
-        "until the scope is explicit."
-    )
-    if repo and number:
-        gh_issue_comment(repo, number, body)
-        gh_issue_edit(repo, number, add_labels=["needs:human-scope"])
-    slack_post(
-        f"[BATMAN-NEEDS-SCOPE] issue #{number}: affected repos / acceptance "
-        "criteria are missing, so no plan was posted. Moved to needs:human-scope.",
-        severity="warn",
-    )
 
 
 def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
@@ -366,10 +199,8 @@ def _run_lifecycle_body(
     one place. The returned ``outcome`` string is the terminal classification
     stamped on the ``firing_complete`` record.
     """
-    # Build the lifecycle. Imports here are deferred so the lifecycle
-    # module is only loaded when the new path is active; legacy fleets
-    # that never set BATMAN_PARENT_REPO never pay for the optional
-    # slack_approval / slack_sdk dependency.
+    # Build the lifecycle. Imports here are deferred so no-op firings
+    # do not pay for the optional slack_approval / slack_sdk dependency.
     reporter = SlackReporter(firing_id=firing_id, codename=CODENAME)
     gate = None
     file_only_approval = config.approval_mode == APPROVAL_MODE_FILE
@@ -709,9 +540,17 @@ def main() -> int:
         )
         return 0
 
+    # Pick a single parent issue from BATMAN_PARENT_REPO and run
+    # plan -> approve -> execute -> report. With the scan path removed,
+    # a fully-qualified parent repo is enough; GH_ORG is no longer required.
+    lifecycle_config = BatmanLifecycleConfig.from_env()
+    if not lifecycle_config.parent_repo:
+        print("[BATMAN-NOOP] BATMAN_PARENT_REPO is not configured")
+        return 0
+
     spec = PreflightSpec(
         agent=CODENAME,
-        env_vars=["ALFRED_HOME", "WORKSPACE_ROOT", "GH_ORG"],
+        env_vars=["ALFRED_HOME", "WORKSPACE_ROOT"],
         bins=["gh", "git"],
         require_gh_auth=True,
     )
@@ -723,83 +562,19 @@ def main() -> int:
 
     with_lock(CODENAME)
 
-    # New (lifecycle) path: pick a single parent issue from BATMAN_PARENT_REPO
-    # and run plan -> approve -> execute -> report. The lifecycle path is
-    # the one new operators should reach for; the legacy cross-repo
-    # bundle scan stays for fleets that already use agent:bundle:<slug>
-    # labels across multiple repos.
-    lifecycle_config = BatmanLifecycleConfig.from_env()
-    if lifecycle_config.parent_repo:
-        parents = _list_parent_repo_large_features(lifecycle_config.parent_repo)
-        parent_issue = _pick_parent_issue(parents, picker=lifecycle_config.picker)
-        if parent_issue is None:
-            print(
-                f"[BATMAN-NOOP] no eligible {LARGE_FEATURE_LABEL} issues in "
-                f"{lifecycle_config.parent_repo}"
-            )
-            return 0
-        return _run_lifecycle(
-            config=lifecycle_config,
-            parent_issue=parent_issue,
-            firing_id=_firing_id(),
-        )
-
-    # Legacy path: cross-repo bundle scan, plan-only output.
-    issues = _list_large_features()
-    if not issues:
-        print("[BATMAN-NOOP] no eligible agent:large-feature issues")
-        return 0
-    # Oldest first.
-    issues.sort(key=lambda i: i.get("createdAt", ""))
-    bundle = _bundle_for_issue(issues[0])
-    plan = parse_plan_from_bundle(bundle)
-
-    firing_id = _firing_id()
-    primary = bundle.primary_issue
-    if plan.needs_scope_resolution:
-        _block_legacy_plan_for_scope_resolution(primary, plan)
+    parents = _list_parent_repo_large_features(lifecycle_config.parent_repo)
+    parent_issue = _pick_parent_issue(parents, picker=lifecycle_config.picker)
+    if parent_issue is None:
         print(
-            f"[BATMAN-NEEDS-SCOPE] firing_id={firing_id} bundle={bundle.slug}; "
-            "plan scope is not explicit"
+            f"[BATMAN-NOOP] no eligible {LARGE_FEATURE_LABEL} issues in "
+            f"{lifecycle_config.parent_repo}"
         )
         return 0
-
-    summary = (
-        f"plan drafted for {bundle.slug} "
-        f"({len(bundle.issues)} issue(s), {len(plan.affected_repos)} repo(s))"
+    return _run_lifecycle(
+        config=lifecycle_config,
+        parent_issue=parent_issue,
+        firing_id=_firing_id(),
     )
-    body = (
-        f"*Alfred plan ready* · <{primary.get('url')}|{primary.get('title')}>\n"
-        f"*Bundle:* `{bundle.slug}`\n"
-        f"*Scope:* {', '.join(plan.affected_repos) or '(none)'}\n"
-        f"*Rollout:* {' -> '.join(plan.affected_repos) or '(default)'}\n"
-        f"*Engine:* `{BATMAN_ENGINE}`\n\n"
-        f"*Next step:* reply in this thread to steer the plan. This legacy scan "
-        f"path is plan-only; move the scope to a `BATMAN_PARENT_REPO` parent "
-        f"issue when you want approval and child issue filing.\n"
-        f"*Replies Alfred understands:*\n"
-        f"- `change:` adjust behavior or scope\n"
-        f"- `acceptance:` add a done condition\n"
-        f"- `test:` require a verification step\n"
-        f"- `add repo:` or `remove repo:` change execution scope\n"
-        f"- `question:` records an open decision for the parent-plan issue\n\n"
-        f"*Execution:* no child issues are filed from `BATMAN_SCAN_REPOS`.\n"
-    )
-    # Try the bot-token thread root first; fall back to the
-    # webhook surface so the operator gets *some* visibility on
-    # fleets without a bot token configured.
-    handle = firing_thread_root(
-        codename=CODENAME,
-        firing_id=firing_id,
-        summary_one_liner=summary,
-        severity="info",
-        body=body,
-    )
-    if handle is None:
-        slack_post(f"[BATMAN-PLAN-DRAFTED] {summary}\n{body}", severity="info")
-
-    print(f"[BATMAN-PLAN-DRAFTED] firing_id={firing_id} bundle={bundle.slug}")
-    return 0
 
 
 if __name__ == "__main__":

@@ -184,8 +184,7 @@ Title: Use `org_slug` in account-scoped URLs
 Labels: agent:implement, agent:bundle:add-org-slug
 
 ## Goal
-Switch internal account-scoped link generation to slug form. Keep id-keyed
-URLs working for back-compat.
+Switch internal account-scoped link generation to slug form.
 
 ## Files in scope
 - src/lib/routes.ts
