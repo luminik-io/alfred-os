@@ -1,9 +1,10 @@
 # Batman: the architect agent
 
-Batman is Alfred's architect agent for features that span more than one
+Batman is Alfred's OSS architect agent for features that span more than one
 repository. It reads a single parent issue, drafts the rollout, posts the plan
-to Slack for operator approval, files scoped child issues across the named
-repos, and posts a follow-up report naming the children that landed.
+to Slack or the local client for operator approval, files scoped child issues
+across the named repos, and posts a follow-up report naming the child issues it
+filed.
 
 Use Batman when the change spans multiple repos or packages and needs one
 accountable agent above the repo-local work. For a feature that fits in one
@@ -18,7 +19,9 @@ repo, the right shape is Drake scoping the issue and Lucius implementing it.
   a consumer service, and a data pipeline.
 
 The common shape: one parent issue, multiple downstream
-repos, child scopes that can be worked in parallel once approved.
+repos, child scopes that can be worked in parallel once approved. Batman owns
+that plan and fan-out boundary; Lucius, Bane, Nightwing, reviewers, and the
+merge gate own the resulting PRs.
 
 ## When to use Lucius or Drake instead
 

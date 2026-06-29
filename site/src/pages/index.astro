@@ -36,7 +36,7 @@ type JobState = "live" | "warn" | "idle" | "info";
 const jobs: { title: string; body: string; log: string[]; state: JobState }[] = [
   {
     title: "Architect: Batman drives cross-repo features",
-    body: "Leads large work that touches more than one repo: reads the parent issue or Slack plan, checks the affected repos, gets approval, files the repo-level work, and keeps the bundle moving.",
+    body: "Included in the OSS fleet. Reads the parent issue or Slack plan, checks the affected repos, gets approval, and files scoped repo-level work for the implementation fleet.",
     log: [
       "[10:30] batman drafted bundle:billing-v2",
       "[10:31] batman posted plan to Slack",
@@ -315,7 +315,7 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
       <SectionHeader
         eyebrow="FROM ROUGH REQUEST TO SCOPED WORK"
         title="Batman architects the rollout. Lucius ships the PRs. Drake keeps smaller work scoped."
-        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman leads multi-repo features, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
+        lede="Start with a Slack thread, a GitHub issue, or a plain-text plan. Batman handles approved multi-repo fan-out, Lucius handles repo-local implementation, and Drake turns smaller requests into clear tasks."
       />
       <SpecsDrivenFlow />
       <p style="margin-top:24px;">
@@ -328,8 +328,8 @@ const heroFlow = ["Slack or spec", "Plan", "Build", "Review", "Merge"];
     <div class="m-container">
       <SectionHeader
         eyebrow="THE ARCHITECT AGENT"
-        title="Batman drives cross-repo features end to end."
-        lede="Batman is the accountable lead for work that spans repos. It reads the parent issue, checks the affected repos, plans the rollout, gets approval in Slack, files scoped repo-level work, and keeps the bundle visible while Lucius, Bane, Nightwing, reviewers, and the merge gate finish each PR."
+        title="Batman turns one large feature into repo-level work."
+        lede="Batman is the accountable architect for work that spans repos. In the public OSS runner, it reads the parent issue, checks the affected repos, plans the rollout, gets approval in Slack or the local client, and files scoped child issues. Lucius, Bane, Nightwing, reviewers, and the merge gate then finish each PR."
       />
       <BatmanFanOut />
       <div class="batman-cta">

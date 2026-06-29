@@ -23,9 +23,10 @@ work unless you let it.
 - **Ra's al Ghul** reviews them.
 - **Bane** adds the tests.
 - **Nightwing** clears the review comments.
-- **Batman** is the architect for multi-repo work: he plans large features,
-  files child issues on the approved parent-plan path, and keeps the bundle
-  moving through reviewed, gated PRs.
+- **Batman** is the OSS architect for multi-repo work: he plans large
+  features, waits for approval, and files scoped child issues. Lucius, Bane,
+  Nightwing, Ra's al Ghul, and the merge gate carry those child issues through
+  reviewed PRs.
 
 **It runs on the Claude Max or Codex Pro subscription you already pay for. No API
 keys, no separate token bill.** Alfred shells out to your local `claude` and
@@ -132,7 +133,7 @@ gaps, and multi-repo rollouts.
 
 - **Narrow, single-purpose roles.** Drake plans, Lucius implements, Ra's al
   Ghul reviews, Bane adds tests, Nightwing clears review comments, and Batman
-  drives multi-repo rollouts into repo-sized PRs.
+  turns approved multi-repo rollouts into repo-sized work.
 - **Coordinate through ordinary repo primitives.** Issues, pull requests, labels,
   specs, isolated worktrees, commit trailers, and Slack summaries. The dashboard
   and desktop app read the same local state and GitHub records.
@@ -162,14 +163,17 @@ or Codex implements -> a PR opens with `agent:authored` -> Ra's al Ghul reviews
 -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge lands the small
 safe PRs you allow -> Slack reports what changed.
 
-Multi-repo flow has two public modes. A fresh full-fleet setup configures
-Batman for the scan path: `BATMAN_SCAN_REPOS` lets him find `agent:large-feature`
-and bundle-labelled work, draft the rollout, and stop before filing child work.
-When you also set `BATMAN_PARENT_REPO` and `BATMAN_AUTO_EXECUTE=approval-gate`,
-one parent issue can become an approved rollout: Batman captures the exact
-scope, files linked child `agent:implement` issues across repos, and Lucius,
-Bane, Nightwing, Ra's al Ghul, and the merge gate carry each child PR to
-completion.
+Multi-repo flow is public OSS code, not an internal-only path. A fresh
+full-fleet setup configures Batman for the scan path: `BATMAN_SCAN_REPOS` lets
+him find `agent:large-feature` and bundle-labelled work, draft the rollout, and
+stop before filing child work. When you also set `BATMAN_PARENT_REPO` and
+`BATMAN_AUTO_EXECUTE=approval-gate`, one parent issue can become an approved
+rollout: Batman captures the exact scope and files linked child
+`agent:implement` issues across repos. From there, Lucius implements, Ra's al
+Ghul reviews, Bane adds focused tests, Nightwing handles high-priority review
+fixes, and your merge policy or a human lands each PR. Batman v1 does not yet
+auto-close the parent or poll every child PR to completion; that bundle rollup
+is tracked as the next Batman iteration.
 
 ## Quick start
 
