@@ -1137,74 +1137,81 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_dry_run(args: argparse.Namespace) -> int:
-    if args.codename == "all":
-        rc = 0
-        for codename in sorted(_record_map()):
-            child_args = argparse.Namespace(
-                codename=codename,
-                native=args.native,
-                simulate=args.simulate,
-                json=False,
-            )
-            rc = cmd_dry_run(child_args) or rc
-            print("")
-        return rc
-    record = _resolve_agent_record(args.codename)
-    if record is None:
-        print(f"alfred dry-run: unknown agent '{args.codename}'", file=sys.stderr)
-        return 1
-    codename = _codename_from_label(record["label"])
-    script = _script_path(record["script"])
-    native = args.native and script.name in NATIVE_DRY_RUN_SCRIPTS and not args.simulate
-    payload = {
-        "codename": codename,
-        "label": record["label"],
-        "script": str(script),
-        "role": record.get("role") or "-",
-        "schedule": record.get("schedule") or "-",
-        "mode": "native" if native else "simulated",
-        "side_effects": "stubbed" if native else "none",
-    }
-    if args.json:
-        print(json.dumps(payload, indent=2))
-        return 0
-    print(f"alfred dry-run: {codename}")
-    print(f"  role: {payload['role']}")
-    print(f"  label: {payload['label']}")
-    print(f"  script: {payload['script']}")
-    print(f"  schedule: {payload['schedule']}")
-    if not script.exists():
-        print("  status: script missing; deploy or install the runner first")
-        return 1
-    if not native:
-        print("  mode: safe simulation")
-        print(
-            "  would: resolve config, acquire the agent lock, run preflight, and enter the runner"
-        )
-        print(
-            "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files"
-        )
-        if args.native:
-            print("  note: native lifecycle dry-run is not declared for this runner yet")
-        else:
-            print("  note: pass --native to execute supported runner dry-run hooks")
-        return 0
-    env = agent_runner.launcher_env()
-    pythonpath = str(_HERE.parent / "lib")
-    if env.get("PYTHONPATH", "").strip():
-        pythonpath = f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
-    env.update(
-        {
-            "ALFRED_DRY_RUN": "1",
-            "AGENT_CODENAME": codename,
-            "LAUNCHD_LABEL": record["label"],
-            "PYTHONPATH": pythonpath,
+    launcher_env = agent_runner.launcher_env()
+    previous_env = os.environ.copy()
+    os.environ.update(launcher_env)
+    try:
+        if args.codename == "all":
+            rc = 0
+            for codename in sorted(_record_map()):
+                child_args = argparse.Namespace(
+                    codename=codename,
+                    native=args.native,
+                    simulate=args.simulate,
+                    json=False,
+                )
+                rc = cmd_dry_run(child_args) or rc
+                print("")
+            return rc
+        record = _resolve_agent_record(args.codename)
+        if record is None:
+            print(f"alfred dry-run: unknown agent '{args.codename}'", file=sys.stderr)
+            return 1
+        codename = _codename_from_label(record["label"])
+        script = _script_path(record["script"])
+        native = args.native and script.name in NATIVE_DRY_RUN_SCRIPTS and not args.simulate
+        payload = {
+            "codename": codename,
+            "label": record["label"],
+            "script": str(script),
+            "role": record.get("role") or "-",
+            "schedule": record.get("schedule") or "-",
+            "mode": "native" if native else "simulated",
+            "side_effects": "stubbed" if native else "none",
         }
-    )
-    cmd = [sys.executable, str(script), "--dry-run"]
-    print("  mode: native lifecycle dry-run")
-    print(f"  exec: {shlex.join(cmd)}")
-    return subprocess.run(cmd, check=False, env=env).returncode
+        if args.json:
+            print(json.dumps(payload, indent=2))
+            return 0
+        print(f"alfred dry-run: {codename}")
+        print(f"  role: {payload['role']}")
+        print(f"  label: {payload['label']}")
+        print(f"  script: {payload['script']}")
+        print(f"  schedule: {payload['schedule']}")
+        if not script.exists():
+            print("  status: script missing; deploy or install the runner first")
+            return 1
+        if not native:
+            print("  mode: safe simulation")
+            print(
+                "  would: resolve config, acquire the agent lock, run preflight, and enter the runner"
+            )
+            print(
+                "  would not: call the host scheduler, mutate GitHub, post Slack, invoke an LLM, or edit files"
+            )
+            if args.native:
+                print("  note: native lifecycle dry-run is not declared for this runner yet")
+            else:
+                print("  note: pass --native to execute supported runner dry-run hooks")
+            return 0
+        env = dict(launcher_env)
+        pythonpath = str(_HERE.parent / "lib")
+        if env.get("PYTHONPATH", "").strip():
+            pythonpath = f"{pythonpath}{os.pathsep}{env['PYTHONPATH']}"
+        env.update(
+            {
+                "ALFRED_DRY_RUN": "1",
+                "AGENT_CODENAME": codename,
+                "LAUNCHD_LABEL": record["label"],
+                "PYTHONPATH": pythonpath,
+            }
+        )
+        cmd = [sys.executable, str(script), "--dry-run"]
+        print("  mode: native lifecycle dry-run")
+        print(f"  exec: {shlex.join(cmd)}")
+        return subprocess.run(cmd, check=False, env=env).returncode
+    finally:
+        os.environ.clear()
+        os.environ.update(previous_env)
 
 
 def _normalize_agent_name(agent: str) -> str:

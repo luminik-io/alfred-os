@@ -220,7 +220,7 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     (runtime / "launchd" / "agents.conf").write_text(
-        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        "custom.fleet.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(home))
@@ -251,8 +251,10 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
     assert env["CUSTOM_FROM_ENV"] == "loaded-from-env"
     assert env["ALFRED_DRY_RUN"] == "1"
     assert env["AGENT_CODENAME"] == "lucius"
-    assert env["LAUNCHD_LABEL"] == "alfred.lucius"
+    assert env["LAUNCHD_LABEL"] == "custom.fleet.lucius"
     assert str(CLI.parent.parent / "lib") in env["PYTHONPATH"].split(os.pathsep)
+    assert "ALFRED_HOME" not in os.environ
+    assert "WORKSPACE_ROOT" not in os.environ
 
 
 def test_cli_engine_set_supports_batman(tmp_path):
