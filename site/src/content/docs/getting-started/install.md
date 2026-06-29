@@ -79,12 +79,14 @@ This is the zero-guess path for a solo builder or an AI coding tool setting up
 one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has
 completed, and `claude` has completed first-run auth. The repo owner must match
 `GH_ORG`; the runtime agents store the bare repo name in `~/.alfredrc` and build
-`GH_ORG/repo` at firing time. The command enables the full engineering fleet:
-Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing, Robin, automerge,
-agent-cleanup, memory-harvest, memory-auto-promote, code-map-refresh,
-agent-morning-brief, fleet-doctor, fleet-recap-morning, fleet-recap-evening,
-shipped-summary-daily, and shipped-summary-weekly. Huntress and Gordon are in
-the fleet catalog too, but their scheduler rows are generated only when
+`GH_ORG/repo` at firing time. The command enables the full engineering fleet
+using exact installer selectors: `drake`, `batman`, `lucius`, `rasalghul`,
+`bane`, `nightwing`, `robin`, `automerge`, `agent-cleanup`,
+`memory-harvest`, `memory-auto-promote`, `code-map-refresh`,
+`agent-morning-brief`, `fleet-doctor`, `fleet-recap-morning`,
+`fleet-recap-evening`, `shipped-summary-daily`, and
+`shipped-summary-weekly`. Huntress and Gordon are in the fleet catalog too, but
+their scheduler rows are generated only when
 `ALFRED_HUNTRESS_TARGET_URL` and `ALFRED_GORDON_ECS_CLUSTER` are present in the
 install config or runtime env files. If you add those settings later, rerun
 `alfred-init` and deploy the regenerated schedule. It assigns the selected repo
@@ -94,9 +96,10 @@ writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
 `~/.alfredrc`, runs deploy, and runs doctor.
 
 Batman is included in the full fleet. It only acts on approved
-`agent:large-feature` parent issues after you configure the parent planning repo
-set `BATMAN_AUTO_EXECUTE=approval-gate` and the required approval settings, then
-explicitly arm the runner with `alfred enable batman`.
+`agent:large-feature` parent issues after `alfred batman setup` writes the
+parent planning repo, approval channel, trusted operator settings, and
+`BATMAN_AUTO_EXECUTE=approval-gate`; then explicitly arm the runner with
+`alfred enable batman`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
