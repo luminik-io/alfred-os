@@ -28,10 +28,11 @@ from __future__ import annotations
 
 import json
 import os
+import plistlib
 import re
 import shutil
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -77,6 +78,52 @@ _CODE_MEMORY_DISCOVERY_IGNORES = {
     "venv",
 }
 _CODE_MEMORY_GRAPH_SUFFIXES = {".db", ".sqlite", ".sqlite3"}
+_ALFRED_LAUNCHD_IDENTITY_TOKENS = frozenset({"alfred"})
+_ALFRED_LAUNCHD_ROLE_TOKENS = frozenset(
+    {
+        "automerge",
+        "bane",
+        "batman",
+        "damian",
+        "drake",
+        "gordon",
+        "huntress",
+        "lucius",
+        "nightwing",
+        "rasalghul",
+        "robin",
+    }
+)
+_ALFRED_LAUNCHD_LABEL_PHRASES = frozenset(
+    {
+        "agent-cleanup",
+        "brand-mention-scanner",
+        "code-map-refresh",
+        "cold-backup",
+        "content-drift",
+        "fleet-brain",
+        "fleet-doctor",
+        "fleet-ingest",
+        "fleet-recap",
+        "memory-auto-promote",
+        "memory-harvest",
+        "morning-brief",
+        "proof-telemetry",
+        "shipped-summary",
+        "slack-listener",
+    }
+)
+_LAUNCHD_ORPHAN_SKIP_PREFIXES = ("application.", "com.apple.")
+_LAUNCHCTL_PRINT_TIMEOUT_SECONDS = 0.25
+_ALFRED_SCHEDULER_LAUNCHER_NAMES = frozenset({"agent-launch"})
+_ENV_LEGACY_LAUNCHD_LABEL_PREFIXES = "ALFRED_SETUP_LEGACY_LAUNCHD_LABEL_PREFIXES"
+_DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIX_PARTS = (("luminik", "eng"),)
+_DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIXES = tuple(
+    ".".join(parts) + "." for parts in _DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIX_PARTS
+)
+_INFERRED_LEGACY_PREFIX_MIN_EVIDENCE = 2
+_LAUNCHD_PROBE_UNAVAILABLE = "launchd probe unavailable"
+_LAUNCHD_UNREADABLE_SUFFIX = " (unreadable)"
 
 _DEMO_FILENAME = "setup-demo-cards.json"
 # A made-up slug the demo cards live under. It is never a real ``owner/repo``,
@@ -1200,6 +1247,7 @@ def install_inventory(
     token_path = home / "state" / "server-token"
     conf_path = _install_agents_conf_path(home)
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
+    unmanaged_scheduler_jobs = _unmanaged_alfred_launchd_jobs(resolved_env, home)
     selected = repos if repos is not None else setup_board_repos(resolved_env)
     selected_env_present = any(_has_config_key(resolved_env, key) for key in _REPO_ENV_KEYS)
     board_env_present = any(_has_config_key(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
@@ -1237,6 +1285,13 @@ def install_inventory(
                 else "No deployed agents.conf found yet"
             ),
             conf_path,
+        ),
+        _inventory_item(
+            "scheduler_unmanaged",
+            "Unmanaged scheduler jobs",
+            not unmanaged_scheduler_jobs,
+            _unmanaged_scheduler_detail(unmanaged_scheduler_jobs),
+            _launch_agents_dir(resolved_env) if unmanaged_scheduler_jobs else None,
         ),
         _inventory_item(
             "repos",
@@ -1292,6 +1347,7 @@ def install_inventory(
             bool(conf_path and conf_path.is_file()),
             bool(selected),
             token_path.is_file(),
+            bool(unmanaged_scheduler_jobs),
         )
     )
     return {
@@ -1302,6 +1358,8 @@ def install_inventory(
         "agents_conf_path": str(conf_path) if conf_path else None,
         "agents_conf_present": bool(conf_path and conf_path.is_file()),
         "scheduled_runs": len(scheduled_runs),
+        "unmanaged_scheduler_jobs": unmanaged_scheduler_jobs,
+        "unmanaged_scheduler_count": len(unmanaged_scheduler_jobs),
         "selected_repos_env_present": selected_env_present,
         "slack_configured": slack_configured,
         "memory_configured": memory_overridden,
@@ -1337,6 +1395,328 @@ def _install_agents_conf_path(home: Path) -> Path | None:
         if conf.is_file():
             return conf
     return None
+
+
+def _launch_agents_dir(env: Mapping[str, str]) -> Path | None:
+    home = _safe_home(env)
+    if home is None:
+        return None
+    return home / "Library" / "LaunchAgents"
+
+
+def _managed_launchd_labels(home: Path) -> set[str]:
+    return _agents_conf_launchd_labels(_install_agents_conf_path(home))
+
+
+def _agents_conf_launchd_labels(path: Path | None) -> set[str]:
+    if path is None:
+        return set()
+    with suppress(OSError):
+        labels: set[str] = set()
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            label = raw_line.split("\t", 1)[0].strip()
+            if label:
+                labels.add(label)
+        return labels
+    return set()
+
+
+def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[str]:
+    launch_agents = _launch_agents_dir(env)
+    if launch_agents is None:
+        return []
+    managed = _managed_launchd_labels(home)
+    loaded = _loaded_launchd_labels(env)
+    if loaded is None:
+        return [_LAUNCHD_PROBE_UNAVAILABLE]
+    if not loaded:
+        return []
+    legacy_prefixes = _legacy_launchd_label_prefixes(env, loaded)
+    labels: list[str] = []
+    checked_labels: set[str] = set()
+    unreadable_labels: set[str] = set()
+    if launch_agents.is_dir():
+        for plist in launch_agents.glob("*.plist"):
+            label, plist_args = _launchd_plist_identity(plist)
+            if not label or label in managed or label not in loaded:
+                continue
+            active_args = _launchctl_program_args(label, env)
+            if active_args is None:
+                if _looks_like_alfred_launchd_label(
+                    label, legacy_prefixes
+                ) or _program_runs_from_alfred_home(plist_args, home):
+                    unreadable_labels.add(label)
+                continue
+            checked_labels.add(label)
+            program_args = active_args
+            if _is_current_auxiliary_launchd_job(program_args):
+                continue
+            if _program_is_alfred_scheduler(program_args, home, label, legacy_prefixes):
+                labels.append(label)
+    for label in _loaded_launchd_labels_to_probe(loaded, managed, legacy_prefixes):
+        if label in checked_labels:
+            continue
+        program_args = _launchctl_program_args(label, env)
+        if program_args is None:
+            if label in unreadable_labels or _looks_like_alfred_launchd_label(
+                label, legacy_prefixes
+            ):
+                labels.append(_unreadable_launchd_label(label))
+            continue
+        if _is_current_auxiliary_launchd_job(program_args):
+            continue
+        if _program_is_alfred_scheduler(program_args, home, label, legacy_prefixes):
+            labels.append(label)
+    return sorted(set(labels))
+
+
+def _loaded_launchd_labels(env: Mapping[str, str]) -> set[str] | None:
+    fixture = env.get("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "").strip()
+    if fixture:
+        return {line.strip() for line in fixture.splitlines() if line.strip()}
+    if os.uname().sysname != "Darwin":
+        return set()
+    try:
+        cp = subprocess.run(
+            ["launchctl", "list"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if cp.returncode != 0:
+        return None
+    labels: set[str] = set()
+    for raw in (cp.stdout or "").splitlines():
+        parts = raw.split()
+        if len(parts) >= 3 and parts[-1] != "Label":
+            labels.add(parts[-1])
+    return labels
+
+
+def _loaded_launchd_labels_to_probe(
+    loaded: set[str],
+    managed: set[str],
+    legacy_prefixes: tuple[str, ...] = (),
+) -> list[str]:
+    candidates = [
+        label for label in loaded if label not in managed and _is_probeable_launchd_label(label)
+    ]
+    candidates.sort(
+        key=lambda label: (not _looks_like_alfred_launchd_label(label, legacy_prefixes), label)
+    )
+    return candidates
+
+
+def _is_probeable_launchd_label(label: str) -> bool:
+    stripped = label.strip()
+    if not stripped or any(char.isspace() for char in stripped):
+        return False
+    normalized = stripped.lower()
+    return not normalized.startswith(_LAUNCHD_ORPHAN_SKIP_PREFIXES)
+
+
+def _legacy_launchd_label_prefixes(
+    env: Mapping[str, str], loaded: Iterable[str]
+) -> tuple[str, ...]:
+    prefixes = set(_DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIXES)
+    prefixes.update(_configured_legacy_launchd_label_prefixes(env))
+    prefixes.update(_inferred_legacy_launchd_label_prefixes(loaded))
+    return tuple(sorted(prefixes))
+
+
+def _configured_legacy_launchd_label_prefixes(env: Mapping[str, str]) -> tuple[str, ...]:
+    prefixes: list[str] = []
+    for raw in (env.get(_ENV_LEGACY_LAUNCHD_LABEL_PREFIXES) or "").split(","):
+        prefix = raw.strip().lower()
+        if not prefix or any(char.isspace() for char in prefix):
+            continue
+        prefixes.append(prefix if prefix.endswith(".") else f"{prefix}.")
+    return tuple(prefixes)
+
+
+def _inferred_legacy_launchd_label_prefixes(labels: Iterable[str]) -> tuple[str, ...]:
+    evidence_counts: dict[str, int] = {}
+    for label in labels:
+        normalized = label.strip().lower()
+        parts = normalized.split(".")
+        if len(parts) < 3 or not _has_alfred_prefix_inference_evidence(normalized):
+            continue
+        prefix = ".".join(parts[:-1]) + "."
+        evidence_counts[prefix] = evidence_counts.get(prefix, 0) + 1
+    return tuple(
+        sorted(
+            prefix
+            for prefix, count in evidence_counts.items()
+            if count >= _INFERRED_LEGACY_PREFIX_MIN_EVIDENCE
+        )
+    )
+
+
+def _looks_like_alfred_launchd_label(label: str, legacy_prefixes: tuple[str, ...] = ()) -> bool:
+    normalized = label.strip().lower()
+    if not normalized:
+        return False
+    if legacy_prefixes and any(normalized.startswith(prefix) for prefix in legacy_prefixes):
+        return True
+    return _base_looks_like_alfred_launchd_label(normalized)
+
+
+def _base_looks_like_alfred_launchd_label(normalized: str) -> bool:
+    if any(phrase in normalized for phrase in _ALFRED_LAUNCHD_LABEL_PHRASES):
+        return True
+    tokens = set(re.split(r"[^a-z0-9]+", normalized))
+    return bool(tokens.intersection(_ALFRED_LAUNCHD_IDENTITY_TOKENS))
+
+
+def _has_alfred_prefix_inference_evidence(normalized: str) -> bool:
+    if _base_looks_like_alfred_launchd_label(normalized):
+        return True
+    tokens = set(re.split(r"[^a-z0-9]+", normalized))
+    return bool(tokens.intersection(_ALFRED_LAUNCHD_ROLE_TOKENS))
+
+
+def _launchctl_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
+    if os.uname().sysname != "Darwin":
+        return None
+    try:
+        cp = subprocess.run(
+            ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+            capture_output=True,
+            text=True,
+            timeout=_LAUNCHCTL_PRINT_TIMEOUT_SECONDS,
+            check=False,
+            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if cp.returncode != 0:
+        return None
+    lines = (cp.stdout or "").splitlines()
+    program: str | None = None
+    for index, raw in enumerate(lines):
+        line = raw.strip()
+        if line.startswith("program = "):
+            value = line.removeprefix("program = ").strip()
+            if value:
+                program = value
+            continue
+        if line == "arguments = {":
+            args: list[str] = []
+            for arg_raw in lines[index + 1 :]:
+                arg = arg_raw.strip()
+                if arg == "}":
+                    break
+                if "=>" in arg:
+                    arg = arg.split("=>", 1)[1].strip()
+                if arg:
+                    args.append(arg)
+            if args:
+                return args
+    return [program] if program else None
+
+
+def _launchd_plist_identity(path: Path) -> tuple[str, list[str]]:
+    try:
+        data = plistlib.loads(path.read_bytes())
+    except Exception:
+        return path.stem, []
+    if not isinstance(data, dict):
+        return path.stem, []
+    raw_args = data.get("ProgramArguments")
+    args = [str(arg) for arg in raw_args] if isinstance(raw_args, list) else []
+    if not args:
+        raw_program = data.get("Program")
+        if isinstance(raw_program, str) and raw_program.strip():
+            args = [raw_program.strip()]
+    label = data.get("Label")
+    return (str(label).strip() if label else path.stem), args
+
+
+def _is_current_auxiliary_launchd_job(program_args: list[str]) -> bool:
+    first = program_args[0] if program_args else ""
+    return first.endswith("/ams-launch.sh")
+
+
+def _program_runs_from_alfred_home(program_args: list[str], home: Path) -> bool:
+    for path in _program_argument_paths(program_args):
+        with suppress(ValueError):
+            path.relative_to(home / "bin")
+            return True
+    return False
+
+
+def _program_is_alfred_scheduler(
+    program_args: list[str],
+    home: Path,
+    label: str,
+    legacy_prefixes: tuple[str, ...] = (),
+) -> bool:
+    if _program_runs_from_alfred_home(program_args, home):
+        return True
+    argument_paths = _program_argument_paths(program_args)
+    if any(_path_is_external_alfred_scheduler_launcher(path) for path in argument_paths):
+        return True
+    if not _looks_like_alfred_launchd_label(label, legacy_prefixes):
+        return False
+    return any(
+        path.name in _ALFRED_SCHEDULER_LAUNCHER_NAMES and path.parent.name == "bin"
+        for path in argument_paths
+    )
+
+
+def _path_is_external_alfred_scheduler_launcher(path: Path) -> bool:
+    if path.name not in _ALFRED_SCHEDULER_LAUNCHER_NAMES or path.parent.name != "bin":
+        return False
+    return any("alfred" in part.lower() for part in path.parts[:-2])
+
+
+def _program_argument_paths(program_args: list[str]) -> list[Path]:
+    paths: list[Path] = []
+    for raw in program_args:
+        path = _safe_expand_path(raw)
+        if path is not None:
+            paths.append(path)
+    return paths
+
+
+def _unreadable_launchd_label(label: str) -> str:
+    return f"{label}{_LAUNCHD_UNREADABLE_SUFFIX}"
+
+
+def _unmanaged_scheduler_detail(labels: list[str]) -> str:
+    if not labels:
+        return "No unmanaged Alfred launchd jobs found."
+    if labels == [_LAUNCHD_PROBE_UNAVAILABLE]:
+        return (
+            "Could not query launchd for unmanaged Alfred jobs. Retry setup or inspect "
+            "launchctl before switching this host to OSS scheduling."
+        )
+    unreadable = [
+        label.removesuffix(_LAUNCHD_UNREADABLE_SUFFIX)
+        for label in labels
+        if label.endswith(_LAUNCHD_UNREADABLE_SUFFIX)
+    ]
+    if unreadable and len(unreadable) == len(labels):
+        shown = ", ".join(unreadable[:5])
+        suffix = f", and {len(unreadable) - 5} more" if len(unreadable) > 5 else ""
+        return (
+            f"Could not verify {len(unreadable)} loaded launchd "
+            f"label{'' if len(unreadable) == 1 else 's'}: {shown}{suffix}. "
+            "Retry setup or inspect launchctl before switching this host to OSS scheduling."
+        )
+    shown = ", ".join(labels[:5])
+    suffix = f", and {len(labels) - 5} more" if len(labels) > 5 else ""
+    return (
+        f"{len(labels)} unmanaged Alfred launchd job{'' if len(labels) == 1 else 's'} "
+        f"found: {shown}{suffix}. Remove them before switching this host to OSS scheduling."
+    )
 
 
 def _has_config_value(env: dict[str, str], key: str) -> bool:

@@ -104,4 +104,33 @@ describe("InstallInventoryPanel", () => {
     expect(screen.getByText(/1 to finish/i)).toBeInTheDocument();
     expect(screen.queryByText(/ready to use/i)).not.toBeInTheDocument();
   });
+
+  it("blocks ready state when unmanaged scheduler jobs are detected", () => {
+    const mixedInventory = inventory({
+      env_present: true,
+      unmanaged_scheduler_jobs: ["old.agent.batman"],
+      unmanaged_scheduler_count: 1,
+      items: [
+        ...inventory().items.map((item) =>
+          item.key === "env"
+            ? { ...item, ok: true, detail: "Found /tmp/alfred-home/.env" }
+            : item,
+        ),
+        {
+          key: "scheduler_unmanaged",
+          label: "Unmanaged scheduler jobs",
+          ok: false,
+          detail: "1 unmanaged Alfred launchd job found: old.agent.batman.",
+          path: "/Users/alice/Library/LaunchAgents",
+        },
+      ],
+    });
+
+    render(<InstallInventoryPanel inventory={mixedInventory} />);
+
+    expect(screen.getByText(/unmanaged scheduler jobs/i)).toBeInTheDocument();
+    expect(screen.getByText(/old\.agent\.batman/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 to finish/i)).toBeInTheDocument();
+    expect(screen.queryByText(/ready to use/i)).not.toBeInTheDocument();
+  });
 });

@@ -541,6 +541,8 @@ export type SetupInstallInventory = {
   agents_conf_path: string | null;
   agents_conf_present: boolean;
   scheduled_runs: number;
+  unmanaged_scheduler_jobs?: string[];
+  unmanaged_scheduler_count?: number;
   selected_repos_env_present: boolean;
   slack_configured: boolean;
   memory_configured: boolean;
