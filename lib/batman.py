@@ -1487,18 +1487,21 @@ def parse_parent_issue(
                 # Prefer an explicit GH_REPO_TO_LOCAL mapping, then fall
                 # back to <parent_org>/<local> so a fresh fleet with no
                 # mapping still produces a usable owner/repo pair.
-                raw_gh_slug = (
-                    loose.repo_slugs.get(repo_key)
-                    or local_to_gh.get(repo_key)
-                    or (
+                explicit_slug = loose.repo_slugs.get(repo_key)
+                mapped_slug = local_to_gh.get(repo_key)
+                if explicit_slug:
+                    gh_slug = explicit_slug
+                elif mapped_slug:
+                    gh_slug = _qualify_github_repo_slug(mapped_slug, fallback_org=GH_ORG)
+                else:
+                    raw_gh_slug = (
                         repo_key
                         if "/" in repo_key
                         else f"{parent_org}/{repo_key}"
                         if parent_org
                         else repo_key
                     )
-                )
-                gh_slug = _qualify_github_repo_slug(raw_gh_slug, fallback_org=parent_org)
+                    gh_slug = _qualify_github_repo_slug(raw_gh_slug, fallback_org=parent_org)
                 loose_repos.append((repo_key, gh_slug))
                 if gh_slug not in repos:
                     repos.append(gh_slug)
