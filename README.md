@@ -164,7 +164,8 @@ or Codex implements -> a PR opens with `agent:authored` -> Ra's al Ghul reviews
 safe PRs you allow -> Slack reports what changed.
 
 Multi-repo flow is public OSS code, not an internal-only path. A fresh
-full-fleet setup configures Batman with a `BATMAN_PARENT_REPO`: one
+full-fleet setup includes Batman, asks for the explicit `BATMAN_PARENT_REPO`
+planning queue, and keeps Batman idle until that repo is configured: one
 `agent:large-feature` parent issue can become an approved rollout, with scoped
 child `agent:implement` issues filed across repos after the approval gate you
 choose. From there, Lucius implements, Ra's al Ghul reviews, Bane adds focused

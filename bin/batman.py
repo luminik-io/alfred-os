@@ -540,9 +540,17 @@ def main() -> int:
         )
         return 0
 
+    # Pick a single parent issue from BATMAN_PARENT_REPO and run
+    # plan -> approve -> execute -> report. With the scan path removed,
+    # a fully-qualified parent repo is enough; GH_ORG is no longer required.
+    lifecycle_config = BatmanLifecycleConfig.from_env()
+    if not lifecycle_config.parent_repo:
+        print("[BATMAN-NOOP] BATMAN_PARENT_REPO is not configured")
+        return 0
+
     spec = PreflightSpec(
         agent=CODENAME,
-        env_vars=["ALFRED_HOME", "WORKSPACE_ROOT", "GH_ORG"],
+        env_vars=["ALFRED_HOME", "WORKSPACE_ROOT"],
         bins=["gh", "git"],
         require_gh_auth=True,
     )
@@ -553,13 +561,6 @@ def main() -> int:
         return 0
 
     with_lock(CODENAME)
-
-    # Pick a single parent issue from BATMAN_PARENT_REPO and run
-    # plan -> approve -> execute -> report.
-    lifecycle_config = BatmanLifecycleConfig.from_env()
-    if not lifecycle_config.parent_repo:
-        print("[BATMAN-NOOP] BATMAN_PARENT_REPO is not configured")
-        return 0
 
     parents = _list_parent_repo_large_features(lifecycle_config.parent_repo)
     parent_issue = _pick_parent_issue(parents, picker=lifecycle_config.picker)

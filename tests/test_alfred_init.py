@@ -184,12 +184,14 @@ def test_render_agents_conf_custom_codename(init_mod, tmp_path):
     assert "alfred.robin-hood\tlucius.py" in text
 
 
-def test_render_agents_conf_includes_batman(init_mod, tmp_path):
+def test_render_agents_conf_gates_batman_until_parent_repo_is_configured(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
     text = init_mod.render_agents_conf(state)
+    assert "# gated until configured: batman needs BATMAN_PARENT_REPO" in text
     assert (
-        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect" in text
+        "#alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect" in text
     )
+    assert "\nalfred.batman\t" not in text
 
 
 def test_render_agents_conf_comments_config_gated_rows_without_env(init_mod, tmp_path, monkeypatch):
@@ -225,6 +227,19 @@ def test_render_agents_conf_schedules_config_gated_rows_with_config(
     assert "#alfred.gordon" not in text
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
     assert "\nalfred.gordon\tgordon.py\tcron:8:00" in text
+
+
+def test_render_agents_conf_schedules_batman_with_explicit_parent_repo(
+    init_mod, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    state = _state_with(init_mod, tmp_path, roles=("cross_repo_coordinator",))
+    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+
+    text = init_mod.render_agents_conf(state)
+
+    assert "#alfred.batman" not in text
+    assert "\nalfred.batman\tbatman.py\tinterval:3600" in text
 
 
 def test_render_agents_conf_ignores_transient_env_for_config_gates(init_mod, tmp_path, monkeypatch):
@@ -460,7 +475,7 @@ def test_env_assignments_includes_codenames_and_repos(init_mod, tmp_path):
     assert out["ALFRED_LUCIUS_REPOS"] == "foo,bar"
 
 
-def test_env_assignments_batman_uses_parent_repo(init_mod, tmp_path):
+def test_env_assignments_batman_requires_explicit_parent_repo(init_mod, tmp_path):
     state = _state_with(
         init_mod,
         tmp_path,
@@ -469,11 +484,26 @@ def test_env_assignments_batman_uses_parent_repo(init_mod, tmp_path):
     )
     out = init_mod.env_assignments_for(state)
     assert out["AGENT_CODENAME_CROSS_REPO_COORDINATOR"] == "batman"
-    assert out["BATMAN_PARENT_REPO"] == "acme/api"
+    assert "BATMAN_PARENT_REPO" not in out
     assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
     removed_scan_key = "BATMAN" + "_SCAN_REPOS"
     assert removed_scan_key not in out
     assert "ALFRED_BATMAN_REPOS" not in out
+
+
+def test_env_assignments_batman_writes_explicit_parent_repo(init_mod, tmp_path):
+    state = _state_with(
+        init_mod,
+        tmp_path,
+        roles=("cross_repo_coordinator",),
+        repos={"cross_repo_coordinator": ["acme/api", "acme/web"]},
+    )
+    state.role_to_extras["cross_repo_coordinator"] = {"BATMAN_PARENT_REPO": "acme/specs"}
+
+    out = init_mod.env_assignments_for(state)
+
+    assert out["BATMAN_PARENT_REPO"] == "acme/specs"
+    assert out["BATMAN_ROLLOUT_ORDER"] == "api,web"
 
 
 def test_env_assignments_wires_repo_scoped_utility_agents(init_mod, tmp_path):

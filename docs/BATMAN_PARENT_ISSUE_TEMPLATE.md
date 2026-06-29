@@ -30,20 +30,23 @@ Done when:
 
 File the resulting issue in `BATMAN_PARENT_REPO`, label it `agent:large-feature`, and Batman will pick it up on the next firing.
 
-## Hard requirements (the parser silently rejects without these)
+## Canonical inline requirements
 
-### `Repos:` entries must be full `<owner>/<repo>` slugs
+### `Repos:` entries should be full `<owner>/<repo>` slugs
 
 ```
 Repos:
 - myorg/backend          ← correct
 - myorg/frontend         ← correct
-- backend                ← SILENTLY DROPPED (per #116)
-- frontend               ← SILENTLY DROPPED
+- backend                ← only qualified when GH_ORG is configured
+- frontend               ← only qualified when GH_ORG is configured
 ```
 
-The canonical `Repos:` parser (`_parse_repo_lines`) skips any line without `/`.
-Use `owner/repo` here so Batman can file children without guessing.
+The canonical `Repos:` parser (`_parse_repo_lines`) keeps `owner/repo` slugs
+verbatim. Bare repo names are accepted only for a single-org fleet with
+`GH_ORG` configured; otherwise they are skipped with a parser warning. Use
+`owner/repo` here so Batman can file children without guessing, and so
+`BATMAN_PARENT_REPO=<owner>/<repo>` does not need any separate org fallback.
 
 ### `Children:` entries use bare repo names (short form)
 
@@ -68,9 +71,14 @@ Two gotchas:
 
 2. Batman now auto-creates per-bundle labels on target repos before filing child issues. If a target repo forbids label creation for your token, execution will report that repo as failed instead of silently continuing.
 
-## Optional sections (parser ignores unknown sections gracefully)
+## Optional sections
 
-You can add markdown anywhere outside the four required sections (`## Vision`, `## Out of scope`, `## References`, etc.). The parser only reads the four lines that start with `Repos:`, `Children:`, `Rollout order:`, `Done when:` (case-insensitive).
+You can add markdown anywhere outside the canonical sections (`## Vision`,
+`## Out of scope`, `## References`, etc.). For the inline shape, Batman reads
+the sections that start with `Repos:`, `Children:`, `Rollout order:`, and
+`Done when:` (case-insensitive). If the canonical sections are missing but the
+body contains `## Affected Repos` or `## Acceptance Criteria`, Batman may use
+the loose fallback described below.
 
 ```markdown
 ## Vision
@@ -139,10 +147,10 @@ Bundle slug `tier-colour-sync` → `agent:bundle:tier-colour-sync` (27 chars tot
 The canonical lifecycle parser (`parse_parent_issue` in `lib/batman.py`) expects
 the inline `Repos:` / `Children:` / `Done when:` blocks documented above.
 
-Batman also accepts a loose Markdown fallback for issue bodies Drake already
-produces: `## Affected Repos` H2 blocks, bare repo names, and
-`## Acceptance Criteria` H3 sections. That fallback lets imperfect parent
-issues become reviewable plans, but new parent issues should use this template.
+Batman also accepts a loose Markdown fallback: `## Affected Repos` H2 blocks,
+bare repo names, and `## Acceptance Criteria` H3 sections. That fallback lets
+imperfect parent issues become reviewable plans, but new parent issues should
+use this template.
 
 Follow this doc for `BATMAN_PARENT_REPO` parent issues.
 
@@ -193,7 +201,7 @@ If `children: 0`, the body shape doesn't match: fix and re-run before filing the
 
 - #107: silent `children=0` when body shape doesn't match (this template is the documented mitigation).
 - #115: Batman re-drafts plans on every firing while approval is pending. Combines with body-shape bugs to produce N broken plan posts in a row.
-- #116: lifecycle parser rejects bare repo names. This template tells you to use full slugs.
+- #116: lifecycle parser no longer drops bare repo names silently. This template still tells you to use full slugs.
 - #117: bundle label auto-creation on target repos + ~50-char label-length limit.
 - #118: meta-tracker for the broader lifecycle hardening backlog.
 - #119: `bin/doctor.sh --lifecycle` synthetic-fire validator.

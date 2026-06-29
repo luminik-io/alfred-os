@@ -185,6 +185,7 @@ STARTER_ROLES = (
 )
 OPT_IN_ROLES = {"cross_repo_coordinator"}
 CONFIG_GATED_ROLE_ENVS = {
+    "cross_repo_coordinator": ("BATMAN_PARENT_REPO",),
     "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),
     "ops_morning": ("ALFRED_GORDON_ECS_CLUSTER",),
 }
@@ -276,8 +277,14 @@ SETUP_LABELS: list[tuple[str, str, str]] = [
     ("severity:p3", "0e8a16", "Trivial or won't fix."),
 ]
 
-# Repo-operating agents that need a staging URL / cluster name beyond repos.
+# Repo-operating agents that need runtime settings beyond selected repos.
 SPECIAL_PROMPTS = {
+    "batman": [
+        (
+            "BATMAN_PARENT_REPO",
+            "Parent issue repo Batman should read (owner/repo; blank keeps Batman idle)",
+        )
+    ],
     "huntress": [("ALFRED_HUNTRESS_TARGET_URL", "Staging URL Huntress should hit")],
     "gordon": [
         ("ALFRED_GORDON_ECS_CLUSTER", "ECS cluster name for Gordon"),
@@ -938,10 +945,6 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
         if repos:
             runtime_repos = repo_runtime_values(repos)
             if role == "cross_repo_coordinator":
-                parent_repo = repos[0].strip()
-                if "/" not in parent_repo and state.gh_org:
-                    parent_repo = f"{state.gh_org}/{parent_repo}"
-                out["BATMAN_PARENT_REPO"] = parent_repo
                 out["BATMAN_ROLLOUT_ORDER"] = ",".join(runtime_repos)
             elif role in ROLE_REPO_ENV_KEYS:
                 for env_key in ROLE_REPO_ENV_KEYS[role]:

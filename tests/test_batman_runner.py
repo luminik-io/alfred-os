@@ -48,8 +48,8 @@ def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
 
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
     monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: True)
-    monkeypatch.setattr(runner, "preflight", lambda *_a, **_kw: None)
-    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: None)
+    monkeypatch.setattr(runner, "preflight", lambda *_a, **_kw: pytest.fail("no preflight"))
+    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: pytest.fail("no lock"))
     monkeypatch.setattr(
         runner.BatmanLifecycleConfig,
         "from_env",
@@ -63,6 +63,27 @@ def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
 
     assert runner.main() == 0
     assert "BATMAN_PARENT_REPO is not configured" in capsys.readouterr().out
+
+
+def test_main_parent_repo_does_not_require_gh_org(monkeypatch, capsys):
+    runner = _load_runner()
+    specs = []
+
+    monkeypatch.delenv("GH_ORG", raising=False)
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_a, **_kw: True)
+    monkeypatch.setattr(runner, "preflight", lambda spec: specs.append(spec))
+    monkeypatch.setattr(runner, "with_lock", lambda *_a, **_kw: None)
+    monkeypatch.setattr(
+        runner.BatmanLifecycleConfig,
+        "from_env",
+        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="myorg/specs")),
+    )
+    monkeypatch.setattr(runner, "_list_parent_repo_large_features", lambda _repo: [])
+
+    assert runner.main() == 0
+    assert specs and "GH_ORG" not in specs[0].env_vars
+    assert "no eligible agent:large-feature issues in myorg/specs" in capsys.readouterr().out
 
 
 def test_lifecycle_empty_plan_fails_before_approval(monkeypatch, capsys):
