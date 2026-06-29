@@ -738,7 +738,7 @@ def test_install_inventory_blocks_unreadable_configured_legacy_prefix(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
-def test_install_inventory_blocks_unreadable_default_legacy_prefix(
+def test_install_inventory_ignores_private_legacy_prefix_without_opt_in(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -755,8 +755,8 @@ def test_install_inventory_blocks_unreadable_default_legacy_prefix(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == [f"{label} (unreadable)"]
-    assert inventory["unmanaged_scheduler_count"] == 1
+    assert inventory["unmanaged_scheduler_jobs"] == []
+    assert inventory["unmanaged_scheduler_count"] == 0
 
 
 def test_install_inventory_treats_agents_conf_labels_as_managed(

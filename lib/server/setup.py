@@ -118,10 +118,6 @@ _LAUNCHD_ORPHAN_SKIP_PREFIXES = ("application.", "com.apple.")
 _LAUNCHCTL_PRINT_TIMEOUT_SECONDS = 0.25
 _ALFRED_SCHEDULER_LAUNCHER_NAMES = frozenset({"agent-launch"})
 _ENV_LEGACY_LAUNCHD_LABEL_PREFIXES = "ALFRED_SETUP_LEGACY_LAUNCHD_LABEL_PREFIXES"
-_DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIX_PARTS = (("luminik", "eng"),)
-_DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIXES = tuple(
-    ".".join(parts) + "." for parts in _DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIX_PARTS
-)
 _INFERRED_LEGACY_PREFIX_MIN_EVIDENCE = 2
 _LAUNCHD_PROBE_UNAVAILABLE = "launchd probe unavailable"
 _SYSTEMD_PROBE_UNAVAILABLE = "systemd probe unavailable"
@@ -1654,7 +1650,7 @@ def _is_probeable_launchd_label(label: str) -> bool:
 def _legacy_launchd_label_prefixes(
     env: Mapping[str, str], loaded: Iterable[str]
 ) -> tuple[str, ...]:
-    prefixes = set(_DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIXES)
+    prefixes: set[str] = set()
     prefixes.update(_configured_legacy_launchd_label_prefixes(env))
     prefixes.update(_inferred_legacy_launchd_label_prefixes(loaded))
     return tuple(sorted(prefixes))
