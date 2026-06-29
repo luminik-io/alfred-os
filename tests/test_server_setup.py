@@ -748,6 +748,7 @@ def test_install_inventory_detects_single_old_alfred_install_launcher(
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_LEGACY_LAUNCHD_LABEL_PREFIXES", "team.eng")
     monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "team.eng.worker\n")
 
     def fake_program_args(label: str, _env: dict[str, str]) -> list[str]:
@@ -815,6 +816,32 @@ def test_install_inventory_ignores_external_agent_launch_with_alfred_substring(
     assert inventory["unmanaged_scheduler_count"] == 0
 
 
+def test_install_inventory_ignores_old_alfred_launcher_without_alfred_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    (home / "Library" / "LaunchAgents").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "com.vendor.worker\n")
+
+    def fake_program_args(label: str, _env: dict[str, str]) -> list[str]:
+        if label == "com.vendor.worker":
+            return ["/opt/internal-alfred/bin/agent-launch"]
+        return []
+
+    monkeypatch.setattr(setup_mod, "_launchctl_program_args", fake_program_args)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == []
+    assert inventory["unmanaged_scheduler_count"] == 0
+
+
 def test_install_inventory_blocks_unreadable_plist_with_old_alfred_launcher(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -824,14 +851,14 @@ def test_install_inventory_blocks_unreadable_plist_with_old_alfred_launcher(
     old_runtime = tmp_path / "internal-alfred"
     launch_agents = home / "Library" / "LaunchAgents"
     launch_agents.mkdir(parents=True)
-    (launch_agents / "com.example.worker.plist").write_text(
+    (launch_agents / "old.alfred.worker.plist").write_text(
         """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.example.worker</string>
+  <string>old.alfred.worker</string>
   <key>ProgramArguments</key>
   <array>
     <string>{agent_launch}</string>
@@ -846,12 +873,12 @@ def test_install_inventory_blocks_unreadable_plist_with_old_alfred_launcher(
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
-    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "com.example.worker\n")
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "old.alfred.worker\n")
     monkeypatch.setattr(setup_mod, "_launchctl_program_args", lambda *_args: None)
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.worker (unreadable)"]
+    assert inventory["unmanaged_scheduler_jobs"] == ["old.alfred.worker (unreadable)"]
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
@@ -893,10 +920,10 @@ def test_install_inventory_detects_shell_wrapper_with_embedded_agent_launch(
     monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
-    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "com.example.worker\n")
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "com.example.alfred.worker\n")
 
     def fake_program_args(label: str, _env: dict[str, str]) -> list[str]:
-        if label == "com.example.worker":
+        if label == "com.example.alfred.worker":
             return [
                 "/bin/sh",
                 "-c",
@@ -908,7 +935,7 @@ def test_install_inventory_detects_shell_wrapper_with_embedded_agent_launch(
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.worker"]
+    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.alfred.worker"]
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
@@ -956,6 +983,11 @@ def test_install_inventory_reports_unmanaged_systemd_timer(
     monkeypatch.delenv("ALFRED_REPO", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
     monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "com.example.worker.timer\n")
+    monkeypatch.setattr(
+        setup_mod.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1, stdout=""),
+    )
 
     inventory = setup_mod.install_inventory()
 
@@ -964,6 +996,70 @@ def test_install_inventory_reports_unmanaged_systemd_timer(
     by_key = {item["key"]: item for item in inventory["items"]}
     assert by_key["scheduler_unmanaged"]["ok"] is False
     assert by_key["scheduler_unmanaged"]["path"] == str(systemd_user)
+    assert "unmanaged Alfred systemd timer" in by_key["scheduler_unmanaged"]["detail"]
+
+
+def test_install_inventory_prefers_active_systemd_unit_over_stale_service_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "com.example.worker.service").write_text(
+        "[Service]\nExecStart=/usr/bin/true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "com.example.worker.timer\n")
+
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            returncode=0,
+            stdout=f"{{ path={runtime / 'bin' / 'agent-launch'} ; argv[]={runtime / 'bin' / 'agent-launch'} lucius.py ; ignore_errors=no ; }}\n",
+        )
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.worker"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
+def test_install_inventory_ignores_stale_systemd_service_when_active_unit_clean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "com.example.worker.service").write_text(
+        f"[Service]\nExecStart={runtime / 'bin' / 'agent-launch'} lucius.py\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "com.example.worker.timer\n")
+
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=0, stdout="/usr/bin/true\n")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == []
+    assert inventory["unmanaged_scheduler_count"] == 0
 
 
 def test_install_inventory_treats_agents_conf_systemd_timer_as_managed(
@@ -1015,13 +1111,49 @@ def test_install_inventory_blocks_when_systemd_list_fails(
 
     monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
 
-    inventory = setup_mod.install_inventory()
+    inventory = setup_mod.install_inventory(
+        env={
+            "HOME": str(home),
+            "ALFRED_HOME": str(runtime),
+            "WORKSPACE_ROOT": str(tmp_path / "missing-workspace"),
+        }
+    )
 
     assert inventory["unmanaged_scheduler_jobs"] == ["systemd probe unavailable"]
     assert inventory["unmanaged_scheduler_count"] == 1
     by_key = {item["key"]: item for item in inventory["items"]}
     assert by_key["scheduler_unmanaged"]["ok"] is False
     assert "Could not query systemd" in by_key["scheduler_unmanaged"]["detail"]
+
+
+def test_install_inventory_probe_failure_does_not_mark_clean_host_initialized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "missing-alfred"
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory(
+        env={
+            "HOME": str(home),
+            "ALFRED_HOME": str(runtime),
+            "WORKSPACE_ROOT": str(tmp_path / "missing-workspace"),
+        }
+    )
+
+    assert inventory["initialized"] is False
+    assert inventory["unmanaged_scheduler_jobs"] == ["systemd probe unavailable"]
+    assert inventory["unmanaged_scheduler_count"] == 1
 
 
 def test_launchctl_program_args_parses_arguments_array(

@@ -125,6 +125,7 @@ _DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIXES = tuple(
 _INFERRED_LEGACY_PREFIX_MIN_EVIDENCE = 2
 _LAUNCHD_PROBE_UNAVAILABLE = "launchd probe unavailable"
 _SYSTEMD_PROBE_UNAVAILABLE = "systemd probe unavailable"
+_SCHEDULER_PROBE_UNAVAILABLE = frozenset({_LAUNCHD_PROBE_UNAVAILABLE, _SYSTEMD_PROBE_UNAVAILABLE})
 _LAUNCHD_UNREADABLE_SUFFIX = " (unreadable)"
 
 _DEMO_FILENAME = "setup-demo-cards.json"
@@ -1292,7 +1293,10 @@ def install_inventory(
             "scheduler_unmanaged",
             "Unmanaged scheduler jobs",
             not unmanaged_scheduler_jobs,
-            _unmanaged_scheduler_detail(unmanaged_scheduler_jobs),
+            _unmanaged_scheduler_detail(
+                unmanaged_scheduler_jobs,
+                scheduler_kind=_scheduler_probe_kind(resolved_env),
+            ),
             _scheduler_inventory_path(resolved_env) if unmanaged_scheduler_jobs else None,
         ),
         _inventory_item(
@@ -1349,7 +1353,7 @@ def install_inventory(
             bool(conf_path and conf_path.is_file()),
             bool(selected),
             token_path.is_file(),
-            bool(unmanaged_scheduler_jobs),
+            _unmanaged_scheduler_jobs_indicate_install(unmanaged_scheduler_jobs),
         )
     )
     return {
@@ -1387,6 +1391,10 @@ def _inventory_item(
         "path": str(path) if path else None,
         "optional": optional,
     }
+
+
+def _unmanaged_scheduler_jobs_indicate_install(labels: list[str]) -> bool:
+    return bool(labels) and any(label not in _SCHEDULER_PROBE_UNAVAILABLE for label in labels)
 
 
 def _install_agents_conf_path(home: Path) -> Path | None:
@@ -1717,6 +1725,9 @@ def _launchctl_program_args(label: str, env: Mapping[str, str]) -> list[str] | N
 
 
 def _systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
+    active = _active_systemd_service_program_args(label, env)
+    if active is not None:
+        return active
     systemd_user_dir = _systemd_user_dir(env)
     if systemd_user_dir is not None:
         service = systemd_user_dir / f"{label}.service"
@@ -1724,6 +1735,10 @@ def _systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[st
             parsed = _systemd_execstart_program_args(service.read_text(encoding="utf-8"), env)
             if parsed is not None:
                 return parsed
+    return None
+
+
+def _active_systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
     if os.uname().sysname != "Linux":
         return None
     try:
@@ -1749,7 +1764,7 @@ def _systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[st
     value = (cp.stdout or "").strip()
     if not value:
         return None
-    return [_expand_systemd_home_specifier(value, env)]
+    return _systemd_execstart_value_program_args(value, env)
 
 
 def _systemd_execstart_program_args(text: str, env: Mapping[str, str]) -> list[str] | None:
@@ -1762,8 +1777,20 @@ def _systemd_execstart_program_args(text: str, env: Mapping[str, str]) -> list[s
             continue
         if value.startswith("-"):
             value = value[1:].strip()
-        return [_expand_systemd_home_specifier(value, env)]
+        return _systemd_execstart_value_program_args(value, env)
     return None
+
+
+def _systemd_execstart_value_program_args(value: str, env: Mapping[str, str]) -> list[str] | None:
+    value = value.strip()
+    if not value:
+        return None
+    argv_marker = "argv[]="
+    if argv_marker in value:
+        value = value.split(argv_marker, 1)[1].split(";", 1)[0].strip()
+    elif value.startswith("{") and "path=" in value:
+        value = value.split("path=", 1)[1].split(";", 1)[0].strip()
+    return [_expand_systemd_home_specifier(value, env)] if value else None
 
 
 def _expand_systemd_home_specifier(value: str, env: Mapping[str, str]) -> str:
@@ -1811,10 +1838,11 @@ def _program_is_alfred_scheduler(
 ) -> bool:
     if _program_runs_from_alfred_home(program_args, home):
         return True
+    looks_like_alfred_label = _looks_like_alfred_launchd_label(label, legacy_prefixes)
     argument_paths = _program_argument_paths(program_args)
     if any(_path_is_external_alfred_scheduler_launcher(path) for path in argument_paths):
-        return True
-    if not _looks_like_alfred_launchd_label(label, legacy_prefixes):
+        return looks_like_alfred_label
+    if not looks_like_alfred_label:
         return False
     return any(
         path.name in _ALFRED_SCHEDULER_LAUNCHER_NAMES and path.parent.name == "bin"
@@ -1866,7 +1894,7 @@ def _unreadable_launchd_label(label: str) -> str:
     return f"{label}{_LAUNCHD_UNREADABLE_SUFFIX}"
 
 
-def _unmanaged_scheduler_detail(labels: list[str]) -> str:
+def _unmanaged_scheduler_detail(labels: list[str], *, scheduler_kind: str = "launchd") -> str:
     if not labels:
         return "No unmanaged Alfred scheduler jobs found."
     if labels == [_LAUNCHD_PROBE_UNAVAILABLE]:
@@ -1884,18 +1912,22 @@ def _unmanaged_scheduler_detail(labels: list[str]) -> str:
         for label in labels
         if label.endswith(_LAUNCHD_UNREADABLE_SUFFIX)
     ]
+    scheduler_noun = "systemd timer" if scheduler_kind == "systemd" else "launchd label"
+    scheduler_command = "systemctl --user" if scheduler_kind == "systemd" else "launchctl"
     if unreadable and len(unreadable) == len(labels):
         shown = ", ".join(unreadable[:5])
         suffix = f", and {len(unreadable) - 5} more" if len(unreadable) > 5 else ""
         return (
-            f"Could not verify {len(unreadable)} loaded launchd "
-            f"label{'' if len(unreadable) == 1 else 's'}: {shown}{suffix}. "
-            "Retry setup or inspect launchctl before switching this host to OSS scheduling."
+            f"Could not verify {len(unreadable)} loaded {scheduler_noun}"
+            f"{'' if len(unreadable) == 1 else 's'}: {shown}{suffix}. "
+            f"Retry setup or inspect {scheduler_command} before switching this host "
+            "to OSS scheduling."
         )
     shown = ", ".join(labels[:5])
     suffix = f", and {len(labels) - 5} more" if len(labels) > 5 else ""
     return (
-        f"{len(labels)} unmanaged Alfred launchd job{'' if len(labels) == 1 else 's'} "
+        f"{len(labels)} unmanaged Alfred {scheduler_noun}"
+        f"{'' if len(labels) == 1 else 's'} "
         f"found: {shown}{suffix}. Remove them before switching this host to OSS scheduling."
     )
 
