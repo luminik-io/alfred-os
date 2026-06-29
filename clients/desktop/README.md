@@ -28,8 +28,8 @@ plane:
    `alfred` CLI verbs.
 
 You can run the fleet headless with just the CLI. For a normal Mac/Linux local
-install, start with the desktop app and keep the CLI visible for advanced
-inspection and repair.
+install, install the CLI/runtime first, then use the desktop app as the friendly
+control plane while keeping the CLI visible for advanced inspection and repair.
 
 The app navigation is five primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
