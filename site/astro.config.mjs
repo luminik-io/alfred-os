@@ -252,6 +252,7 @@ export default defineConfig({
   site: SITE_URL,
   base: SITE_BASE,
   trailingSlash: "ignore",
+  compressHTML: false,
   integrations: [
     // @astrojs/sitemap emits /sitemap-index.xml + /sitemap-0.xml at build
     // time from every page Astro renders. Hooks straight into the site
