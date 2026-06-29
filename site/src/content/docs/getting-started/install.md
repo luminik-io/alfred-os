@@ -41,11 +41,11 @@ want `main`, framework edits, or Linux.
 Alfred Desktop is the native Mac/Linux starting point for most local installs.
 It watches the fleet, reviews plans, checks memory candidates, runs safe local
 repairs, detects existing configuration, and starts or reconnects to the local
-runtime.
+runtime. It is a control surface over the local Alfred CLI/runtime, so install
+the runtime first.
 
-1. Download the signed Mac package or Linux build from [Download](/download/).
-2. If you are installing from source or need a headless host, finish the core
-   install above.
+1. Install the Alfred CLI/runtime with the source or Homebrew path above.
+2. Download the signed Mac package or Linux build from [Download](/download/).
 3. Start or reconnect the local API from Setup, or run it directly:
 
    ```sh
@@ -88,7 +88,8 @@ writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
 
 Batman is included in the full fleet. It only acts on approved
 `agent:large-feature` parent issues after you configure the parent planning repo
-and gate settings.
+and approval settings, then explicitly arm the runner with `alfred enable
+batman`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
