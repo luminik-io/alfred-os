@@ -422,6 +422,53 @@ def test_install_inventory_ignores_unreadable_current_ams_plist(
     assert inventory["unmanaged_scheduler_count"] == 0
 
 
+def test_install_inventory_reprobes_loaded_label_after_unreadable_ams_plist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    launch_agents = home / "Library" / "LaunchAgents"
+    launch_agents.mkdir(parents=True)
+    (launch_agents / "io.luminik.alfred.ams.plist").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.luminik.alfred.ams</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{ams_launch}</string>
+  </array>
+</dict>
+</plist>
+""".format(ams_launch=runtime / "bin" / "ams-launch.sh"),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "io.luminik.alfred.ams\n")
+    calls: list[str] = []
+
+    def fake_program_args(label: str, _env: dict[str, str]) -> list[str] | None:
+        calls.append(label)
+        if len(calls) == 1:
+            return None
+        return [str(runtime / "bin" / "agent-launch"), "lucius.py"]
+
+    monkeypatch.setattr(setup_mod, "_launchctl_program_args", fake_program_args)
+
+    inventory = setup_mod.install_inventory()
+
+    assert calls == ["io.luminik.alfred.ams", "io.luminik.alfred.ams"]
+    assert inventory["unmanaged_scheduler_jobs"] == ["io.luminik.alfred.ams"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
 def test_install_inventory_ignores_unreadable_non_alfred_loaded_plist(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

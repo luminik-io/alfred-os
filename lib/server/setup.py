@@ -1486,7 +1486,6 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
             active_args = _launchctl_program_args(label, env)
             if active_args is None:
                 if _is_current_auxiliary_launchd_job(plist_args):
-                    checked_labels.add(label)
                     continue
                 if _strong_unreadable_alfred_scheduler_label(
                     label, legacy_prefixes
