@@ -898,6 +898,92 @@ def test_install_inventory_detects_no_plist_job_without_launch_agents_dir(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
+def test_install_inventory_reports_unmanaged_systemd_timer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "com.example.worker.service").write_text(
+        f"[Service]\nExecStart={runtime / 'bin' / 'agent-launch'} lucius.py\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "com.example.worker.timer\n")
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.worker"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+    by_key = {item["key"]: item for item in inventory["items"]}
+    assert by_key["scheduler_unmanaged"]["ok"] is False
+    assert by_key["scheduler_unmanaged"]["path"] == str(systemd_user)
+
+
+def test_install_inventory_treats_agents_conf_systemd_timer_as_managed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    conf = runtime / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "com.example.worker\tlucius.py\tinterval:1200\tyes\t\tCurrent worker\n",
+        encoding="utf-8",
+    )
+    (systemd_user / "com.example.worker.service").write_text(
+        f"[Service]\nExecStart={runtime / 'bin' / 'agent-launch'} lucius.py\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "com.example.worker.timer\n")
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == []
+    assert inventory["unmanaged_scheduler_count"] == 0
+
+
+def test_install_inventory_blocks_when_systemd_list_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    (home / ".config" / "systemd" / "user").mkdir(parents=True)
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    def fake_run(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["systemd probe unavailable"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+    by_key = {item["key"]: item for item in inventory["items"]}
+    assert by_key["scheduler_unmanaged"]["ok"] is False
+    assert "Could not query systemd" in by_key["scheduler_unmanaged"]["detail"]
+
+
 def test_launchctl_program_args_parses_arguments_array(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

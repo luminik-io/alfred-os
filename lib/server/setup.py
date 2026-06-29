@@ -124,6 +124,7 @@ _DEFAULT_LEGACY_LAUNCHD_LABEL_PREFIXES = tuple(
 )
 _INFERRED_LEGACY_PREFIX_MIN_EVIDENCE = 2
 _LAUNCHD_PROBE_UNAVAILABLE = "launchd probe unavailable"
+_SYSTEMD_PROBE_UNAVAILABLE = "systemd probe unavailable"
 _LAUNCHD_UNREADABLE_SUFFIX = " (unreadable)"
 
 _DEMO_FILENAME = "setup-demo-cards.json"
@@ -1248,7 +1249,7 @@ def install_inventory(
     token_path = home / "state" / "server-token"
     conf_path = _install_agents_conf_path(home)
     scheduled_runs = setup_schedule.upcoming_runs(conf_path=conf_path) if conf_path else []
-    unmanaged_scheduler_jobs = _unmanaged_alfred_launchd_jobs(resolved_env, home)
+    unmanaged_scheduler_jobs = _unmanaged_alfred_scheduler_jobs(resolved_env, home)
     selected = repos if repos is not None else setup_board_repos(resolved_env)
     selected_env_present = any(_has_config_key(resolved_env, key) for key in _REPO_ENV_KEYS)
     board_env_present = any(_has_config_key(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
@@ -1292,7 +1293,7 @@ def install_inventory(
             "Unmanaged scheduler jobs",
             not unmanaged_scheduler_jobs,
             _unmanaged_scheduler_detail(unmanaged_scheduler_jobs),
-            _launch_agents_dir(resolved_env) if unmanaged_scheduler_jobs else None,
+            _scheduler_inventory_path(resolved_env) if unmanaged_scheduler_jobs else None,
         ),
         _inventory_item(
             "repos",
@@ -1405,6 +1406,22 @@ def _launch_agents_dir(env: Mapping[str, str]) -> Path | None:
     return home / "Library" / "LaunchAgents"
 
 
+def _systemd_user_dir(env: Mapping[str, str]) -> Path | None:
+    configured = env.get("ALFRED_SYSTEMD_USER_DIR", "").strip()
+    if configured:
+        return _safe_expand_path(configured) or Path(configured)
+    home = _safe_home(env)
+    if home is None:
+        return None
+    return home / ".config" / "systemd" / "user"
+
+
+def _scheduler_inventory_path(env: Mapping[str, str]) -> Path | None:
+    if os.uname().sysname == "Linux":
+        return _systemd_user_dir(env)
+    return _launch_agents_dir(env)
+
+
 def _managed_launchd_labels(home: Path) -> set[str]:
     return _agents_conf_launchd_labels(_install_agents_conf_path(home))
 
@@ -1423,6 +1440,13 @@ def _agents_conf_launchd_labels(path: Path | None) -> set[str]:
                 labels.add(label)
         return labels
     return set()
+
+
+def _unmanaged_alfred_scheduler_jobs(env: Mapping[str, str], home: Path) -> list[str]:
+    system = os.uname().sysname
+    if system == "Linux":
+        return _unmanaged_alfred_systemd_jobs(env, home)
+    return _unmanaged_alfred_launchd_jobs(env, home)
 
 
 def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[str]:
@@ -1474,6 +1498,31 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
     return sorted(set(labels))
 
 
+def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[str]:
+    systemd_user_dir = _systemd_user_dir(env)
+    if systemd_user_dir is None:
+        return []
+    managed = _managed_launchd_labels(home)
+    loaded = _loaded_systemd_timer_labels(env)
+    if loaded is None:
+        return [_SYSTEMD_PROBE_UNAVAILABLE]
+    if not loaded:
+        return []
+    legacy_prefixes = _legacy_launchd_label_prefixes(env, loaded)
+    labels: list[str] = []
+    for label in sorted(loaded):
+        if label in managed:
+            continue
+        program_args = _systemd_service_program_args(label, env)
+        if program_args is None:
+            if _looks_like_alfred_launchd_label(label, legacy_prefixes):
+                labels.append(_unreadable_launchd_label(label))
+            continue
+        if _program_is_alfred_scheduler(program_args, home, label, legacy_prefixes):
+            labels.append(label)
+    return sorted(set(labels))
+
+
 def _loaded_launchd_labels(env: Mapping[str, str]) -> set[str] | None:
     fixture = env.get("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "").strip()
     if fixture:
@@ -1498,6 +1547,43 @@ def _loaded_launchd_labels(env: Mapping[str, str]) -> set[str] | None:
         parts = raw.split()
         if len(parts) >= 3 and parts[-1] != "Label":
             labels.add(parts[-1])
+    return labels
+
+
+def _loaded_systemd_timer_labels(env: Mapping[str, str]) -> set[str] | None:
+    fixture = env.get("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "").strip()
+    if fixture:
+        return {
+            line.strip().removesuffix(".timer") for line in fixture.splitlines() if line.strip()
+        }
+    if os.uname().sysname != "Linux":
+        return set()
+    try:
+        cp = subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "list-units",
+                "--type=timer",
+                "--state=active",
+                "--no-legend",
+                "--no-pager",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if cp.returncode != 0:
+        return None
+    labels: set[str] = set()
+    for raw in (cp.stdout or "").splitlines():
+        unit = raw.split(maxsplit=1)[0] if raw.split() else ""
+        if unit.endswith(".timer"):
+            labels.add(unit.removesuffix(".timer"))
     return labels
 
 
@@ -1623,6 +1709,63 @@ def _launchctl_program_args(label: str, env: Mapping[str, str]) -> list[str] | N
     return [program] if program else None
 
 
+def _systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
+    systemd_user_dir = _systemd_user_dir(env)
+    if systemd_user_dir is not None:
+        service = systemd_user_dir / f"{label}.service"
+        with suppress(OSError):
+            parsed = _systemd_execstart_program_args(service.read_text(encoding="utf-8"), env)
+            if parsed is not None:
+                return parsed
+    if os.uname().sysname != "Linux":
+        return None
+    try:
+        cp = subprocess.run(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                f"{label}.service",
+                "--property=ExecStart",
+                "--value",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+            env={"PATH": _join_search_path(_engine_search_path(env), os.environ.get("PATH", ""))},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if cp.returncode != 0:
+        return None
+    value = (cp.stdout or "").strip()
+    if not value:
+        return None
+    return [_expand_systemd_home_specifier(value, env)]
+
+
+def _systemd_execstart_program_args(text: str, env: Mapping[str, str]) -> list[str] | None:
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("ExecStart="):
+            continue
+        value = line.removeprefix("ExecStart=").strip()
+        if not value:
+            continue
+        if value.startswith("-"):
+            value = value[1:].strip()
+        return [_expand_systemd_home_specifier(value, env)]
+    return None
+
+
+def _expand_systemd_home_specifier(value: str, env: Mapping[str, str]) -> str:
+    if "%h" not in value:
+        return value
+    home = _safe_home(env)
+    return value.replace("%h", str(home)) if home else value
+
+
 def _launchd_plist_identity(path: Path) -> tuple[str, list[str]]:
     try:
         data = plistlib.loads(path.read_bytes())
@@ -1713,11 +1856,16 @@ def _unreadable_launchd_label(label: str) -> str:
 
 def _unmanaged_scheduler_detail(labels: list[str]) -> str:
     if not labels:
-        return "No unmanaged Alfred launchd jobs found."
+        return "No unmanaged Alfred scheduler jobs found."
     if labels == [_LAUNCHD_PROBE_UNAVAILABLE]:
         return (
             "Could not query launchd for unmanaged Alfred jobs. Retry setup or inspect "
             "launchctl before switching this host to OSS scheduling."
+        )
+    if labels == [_SYSTEMD_PROBE_UNAVAILABLE]:
+        return (
+            "Could not query systemd for unmanaged Alfred jobs. Retry setup or inspect "
+            "systemctl --user before switching this host to OSS scheduling."
         )
     unreadable = [
         label.removesuffix(_LAUNCHD_UNREADABLE_SUFFIX)
