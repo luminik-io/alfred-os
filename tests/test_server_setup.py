@@ -1605,6 +1605,79 @@ def test_install_inventory_uses_systemd_timer_file_when_unit_lookup_fails(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
+def test_install_inventory_blocks_alfred_timer_when_unit_lookup_fails_despite_timer_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "old-alfred.timer").write_text(
+        "[Timer]\nUnit=backup.service\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "old-alfred.timer\n")
+
+    def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
+        if "old-alfred.timer" in args:
+            return SimpleNamespace(returncode=1, stdout="")
+        if any(unit.endswith(".service") for unit in args):
+            raise AssertionError(
+                "Alfred-looking timer lookup failures must not trust disk fallback"
+            )
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["old-alfred (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
+def test_install_inventory_defaults_systemd_timer_file_without_unit_to_same_name_service(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "com.example.worker.timer").write_text(
+        "[Timer]\nOnCalendar=hourly\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "com.example.worker.timer\n")
+
+    def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
+        if "com.example.worker.timer" in args:
+            return SimpleNamespace(returncode=1, stdout="")
+        if "com.example.worker.service" in args:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{runtime / 'bin' / 'agent-launch'} lucius.py\n",
+            )
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["com.example.worker"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
 def test_install_inventory_ignores_systemd_timer_file_for_non_service_unit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

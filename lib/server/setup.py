@@ -1534,8 +1534,13 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
         if service_lookup_failed:
             if _strong_unreadable_alfred_scheduler_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
-            continue
-        if service_label is None:
+                continue
+            service_label, timer_file_found = _systemd_timer_file_service_label(label, env)
+            if not timer_file_found:
+                continue
+            if service_label is None:
+                continue
+        elif service_label is None:
             continue
         program_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=False)
         if program_args is None:
@@ -1820,11 +1825,9 @@ def _systemd_timer_service_label(
             env=_scheduler_probe_subprocess_env(env),
         )
     except (OSError, subprocess.SubprocessError):
-        fallback_label, found = _systemd_timer_file_service_label(label, env)
-        return (fallback_label, False) if found else (None, True)
+        return None, True
     if cp.returncode != 0:
-        fallback_label, found = _systemd_timer_file_service_label(label, env)
-        return (fallback_label, False) if found else (None, True)
+        return None, True
     unit = (cp.stdout or "").strip()
     if not unit:
         return label, False
@@ -1851,6 +1854,7 @@ def _systemd_timer_file_service_label(
             if not unit.endswith(".service"):
                 return None, True
             return unit.removesuffix(".service"), True
+        return label, True
     return None, False
 
 
