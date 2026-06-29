@@ -1485,6 +1485,9 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
                 continue
             active_args = _launchctl_program_args(label, env)
             if active_args is None:
+                if _is_current_auxiliary_launchd_job(plist_args):
+                    checked_labels.add(label)
+                    continue
                 if _looks_like_alfred_launchd_label(
                     label, legacy_prefixes
                 ) or _program_is_alfred_scheduler(plist_args, home, label, legacy_prefixes):
@@ -1533,7 +1536,7 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             if _looks_like_alfred_launchd_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
             continue
-        program_args = _systemd_service_program_args(service_label, env)
+        program_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=False)
         if program_args is None:
             if _looks_like_alfred_launchd_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
@@ -1732,10 +1735,17 @@ def _launchctl_program_args(label: str, env: Mapping[str, str]) -> list[str] | N
     return [program] if program else None
 
 
-def _systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
+def _systemd_service_program_args(
+    label: str,
+    env: Mapping[str, str],
+    *,
+    allow_disk_fallback: bool = True,
+) -> list[str] | None:
     active = _active_systemd_service_program_args(label, env)
     if active is not None:
         return active
+    if not allow_disk_fallback:
+        return None
     systemd_user_dir = _systemd_user_dir(env)
     if systemd_user_dir is not None:
         service = systemd_user_dir / f"{label}.service"

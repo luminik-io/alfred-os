@@ -384,6 +384,44 @@ def test_install_inventory_blocks_loaded_plist_when_active_read_fails(
     assert "Could not verify 1 loaded launchd label" in by_key["scheduler_unmanaged"]["detail"]
 
 
+def test_install_inventory_ignores_unreadable_current_ams_plist(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    launch_agents = home / "Library" / "LaunchAgents"
+    launch_agents.mkdir(parents=True)
+    (launch_agents / "io.luminik.alfred.ams.plist").write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.luminik.alfred.ams</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{ams_launch}</string>
+  </array>
+</dict>
+</plist>
+""".format(ams_launch=runtime / "bin" / "ams-launch.sh"),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_LAUNCHD_LIST_FIXTURE", "io.luminik.alfred.ams\n")
+    monkeypatch.setattr(setup_mod, "_launchctl_program_args", lambda *_args: None)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == []
+    assert inventory["unmanaged_scheduler_count"] == 0
+
+
 def test_install_inventory_ignores_unreadable_non_alfred_loaded_plist(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1013,6 +1051,11 @@ def test_install_inventory_reports_unmanaged_systemd_timer(
     def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
         if "com.example.worker.timer" in args:
             return SimpleNamespace(returncode=0, stdout="com.example.worker.service\n")
+        if "com.example.worker.service" in args:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"{runtime / 'bin' / 'agent-launch'} lucius.py\n",
+            )
         return SimpleNamespace(returncode=1, stdout="")
 
     monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
@@ -1050,6 +1093,11 @@ def test_install_inventory_detects_prefixed_systemd_launcher(
     def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
         if "old-alfred.timer" in args:
             return SimpleNamespace(returncode=0, stdout="old-alfred.service\n")
+        if "old-alfred.service" in args:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=f"@!!{old_runtime / 'bin' / 'agent-launch'} lucius.py\n",
+            )
         return SimpleNamespace(returncode=1, stdout="")
 
     monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
@@ -1218,6 +1266,40 @@ def test_install_inventory_blocks_when_systemd_timer_unit_lookup_fails(
             return SimpleNamespace(returncode=1, stdout="")
         if "old-alfred.service" in args:
             raise AssertionError("stale same-name service must not be probed")
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["old-alfred (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
+def test_install_inventory_blocks_when_loaded_systemd_execstart_lookup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    systemd_user = home / ".config" / "systemd" / "user"
+    systemd_user.mkdir(parents=True)
+    (systemd_user / "old-alfred.service").write_text(
+        "[Service]\nExecStart=/usr/bin/true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "old-alfred.timer\n")
+
+    def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
+        if "old-alfred.timer" in args:
+            return SimpleNamespace(returncode=0, stdout="old-alfred.service\n")
+        if "old-alfred.service" in args:
+            return SimpleNamespace(returncode=1, stdout="")
         return SimpleNamespace(returncode=1, stdout="")
 
     monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
