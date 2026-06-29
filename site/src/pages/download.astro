@@ -193,26 +193,28 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
     <div class="m-container">
       <SectionHeader
         eyebrow="WHAT YOU GET"
-        title="Core runtime first. Desktop when you want the app."
-        lede="Alfred core picks up the Slack drafts, plans, and GitHub issues you mark for it, writes code in isolated repo copies, opens pull requests, routes review, and posts a short summary to Slack. Alfred Desktop reads and controls that local runtime."
+        title="Desktop-first setup, full fleet underneath."
+        lede="Alfred Desktop is the recommended local control surface. Under it, the open-source runtime schedules the engineering fleet, works in isolated repo copies, opens pull requests, routes review, and reports the result through the app, Slack, and GitHub."
       />
       <div class="dl-reqs">
         <article class="m-card">
-          <h3 class="m-h3">Alfred core runtime</h3>
+          <h3 class="m-h3">Full engineering fleet</h3>
           <ul class="dl-reqs__list">
-            <li>Four agents to start: Drake, Lucius, Ra's al Ghul, and a cleanup agent</li>
-            <li>Scheduled runs for each agent while your chosen host is awake</li>
-            <li>Planning and approval in Slack, plus optional inspection in Alfred Desktop</li>
+            <li>Drake plans, Batman coordinates approved multi-repo work, and Lucius builds</li>
+            <li>Ra's al Ghul reviews, Bane adds tests, and Nightwing handles high-priority review fixes</li>
+            <li>Robin, cleanup, release, memory, code-map, and status jobs keep the loop inspectable</li>
+            <li>Scheduled runs continue while your chosen host is awake</li>
             <li>Open source, MIT licensed, yours to read and fork</li>
           </ul>
         </article>
         <article class="m-card">
           <h3 class="m-h3">Alfred Desktop</h3>
           <ul class="dl-reqs__list">
+            <li>Guides setup, detects existing installs, and reconnects to the local runtime</li>
             <li>Shows plans, agents, logs, setup checks, memory review, and safe actions</li>
             <li>Starts or reconnects to <span class="m-mono">alfred serve</span> on localhost</li>
-            <li>Opens Slack and GitHub links outside the app</li>
-            <li>Does not replace the CLI, scheduler, GitHub labels, or Slack approval gates</li>
+            <li>Keeps Slack and GitHub as the shared approval and review surfaces</li>
+            <li>Leaves the CLI, scheduler, labels, and approval gates visible instead of hiding them</li>
           </ul>
         </article>
       </div>

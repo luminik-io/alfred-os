@@ -36,20 +36,21 @@ commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
 `alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
 want `main`, framework edits, or Linux.
 
-## Install Alfred Desktop
+## Recommended: Install Alfred Desktop
 
-The core fleet runs without a UI. Alfred Desktop is the native Mac/Linux app for
-watching the fleet, reviewing plans, checking memory candidates, and running safe
-local repairs.
+Alfred Desktop is the native Mac/Linux starting point for most local installs.
+It watches the fleet, reviews plans, checks memory candidates, runs safe local
+repairs, detects existing configuration, and starts or reconnects to the local
+runtime.
 
-1. Finish the core install above.
-2. Start the local API:
+1. Download the signed Mac package or Linux build from [Download](/download/).
+2. If you are installing from source or need a headless host, finish the core
+   install above.
+3. Start or reconnect the local API from Setup, or run it directly:
 
    ```sh
    alfred serve --port 7010 --no-browser
    ```
-
-3. Download the signed Mac package or Linux build from [Download](/download/).
 
 For source builds:
 
@@ -60,7 +61,8 @@ npm run tauri dev
 ```
 
 The desktop app reads the same `$ALFRED_HOME` state and GitHub records as the
-CLI. You can keep using Alfred entirely from the terminal when you prefer.
+CLI. You can still run Alfred entirely from the terminal when you are setting up
+a server, CI-like host, or headless agent box.
 
 Full fleet for one repo or an explicit comma-separated repo list:
 
@@ -73,14 +75,20 @@ Full fleet for one repo or an explicit comma-separated repo list:
 ```
 
 This is the zero-guess path for a solo builder or an AI coding tool setting up
-one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has completed, and
-`claude` has completed first-run auth. The repo owner must match `GH_ORG`; the
-runtime agents store the bare repo name in `~/.alfredrc` and build
-`GH_ORG/repo` at firing time. The command enables the full engineering fleet,
-assigns the selected repo to each repo-operating agent, skips Slack safely,
-seeds prompt templates into `~/.alfred/prompts/`, creates standard GitHub labels
-on the selected repos, writes `launchd/agents.conf`, the shared scheduler
-manifest, updates `~/.alfredrc`, runs deploy, and runs doctor.
+one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has
+completed, and `claude` has completed first-run auth. The repo owner must match
+`GH_ORG`; the runtime agents store the bare repo name in `~/.alfredrc` and build
+`GH_ORG/repo` at firing time. The command enables the full engineering fleet:
+Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing, Robin, release, cleanup,
+memory, code-map, and status jobs. It assigns the selected repo list to each
+repo-operating agent, skips Slack safely, seeds prompt templates into
+`~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
+writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
+`~/.alfredrc`, runs deploy, and runs doctor.
+
+Batman is included in the full fleet. It only acts on approved
+`agent:large-feature` parent issues after you configure the parent planning repo
+and gate settings.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
