@@ -1820,15 +1820,47 @@ def _systemd_execstart_value_program_args(value: str, env: Mapping[str, str]) ->
         return None
     argv_marker = "argv[]="
     if argv_marker in value:
-        value = value.split(argv_marker, 1)[1].split(";", 1)[0].strip()
+        value = _systemd_structured_field_value(value, argv_marker) or ""
     elif value.startswith("{") and "path=" in value:
-        value = value.split("path=", 1)[1].split(";", 1)[0].strip()
+        value = _systemd_structured_field_value(value, "path=") or ""
     value = _expand_systemd_home_specifier(value, env)
     with suppress(ValueError):
         args = shlex.split(value)
         if args:
             return args
     return [value] if value else None
+
+
+def _systemd_structured_field_value(text: str, marker: str) -> str | None:
+    start = text.find(marker)
+    if start < 0:
+        return None
+    index = start + len(marker)
+    quote: str | None = None
+    escaped = False
+    chars: list[str] = []
+    while index < len(text):
+        if quote is None and text[index] == "}":
+            break
+        if quote is None and text.startswith(" ; ", index):
+            rest = text[index + 3 :]
+            field = rest.split("=", 1)[0].strip()
+            if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?", field or ""):
+                break
+        char = text[index]
+        chars.append(char)
+        if escaped:
+            escaped = False
+        elif char == "\\":
+            escaped = quote is not None
+        elif char in {"'", '"'}:
+            if quote == char:
+                quote = None
+            elif quote is None:
+                quote = char
+        index += 1
+    value = "".join(chars).strip()
+    return value or None
 
 
 def _scheduler_probe_subprocess_env(env: Mapping[str, str]) -> dict[str, str]:

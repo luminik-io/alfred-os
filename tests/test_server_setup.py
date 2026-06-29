@@ -1131,6 +1131,43 @@ def test_install_inventory_detects_systemd_shell_wrapper_launcher(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
+def test_install_inventory_preserves_systemd_wrapper_semicolons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    old_runtime = tmp_path / "internal-alfred"
+    (home / ".config" / "systemd" / "user").mkdir(parents=True)
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", "old.alfred.timer\n")
+
+    def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
+        if "old.alfred.timer" in args:
+            return SimpleNamespace(returncode=0, stdout="old.alfred.service\n")
+        if "old.alfred.service" in args:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=(
+                    "{ path=/bin/sh ; "
+                    f"argv[]=/bin/sh -c 'cd /tmp; exec {old_runtime / 'bin' / 'agent-launch'} lucius.py' ; "
+                    "ignore_errors=no ; }\n"
+                ),
+            )
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == ["old.alfred"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
 def test_install_inventory_treats_agents_conf_systemd_timer_as_managed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
