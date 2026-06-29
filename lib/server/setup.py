@@ -1488,7 +1488,7 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
                 if _is_current_auxiliary_launchd_job(plist_args):
                     checked_labels.add(label)
                     continue
-                if _strong_alfred_scheduler_label(
+                if _strong_unreadable_alfred_scheduler_label(
                     label, legacy_prefixes
                 ) or _program_is_alfred_scheduler(plist_args, home, label, legacy_prefixes):
                     unreadable_labels.add(label)
@@ -1504,7 +1504,9 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
             continue
         program_args = _launchctl_program_args(label, env)
         if program_args is None:
-            if label in unreadable_labels or _strong_alfred_scheduler_label(label, legacy_prefixes):
+            if label in unreadable_labels or _strong_unreadable_alfred_scheduler_label(
+                label, legacy_prefixes
+            ):
                 labels.append(_unreadable_launchd_label(label))
             continue
         if _is_current_auxiliary_launchd_job(program_args):
@@ -1531,17 +1533,17 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             continue
         service_label, service_lookup_failed = _systemd_timer_service_label(label, env)
         if service_lookup_failed:
-            if _strong_alfred_scheduler_label(label, legacy_prefixes):
+            if _strong_unreadable_alfred_scheduler_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
             continue
         if service_label is None:
             continue
         program_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=False)
         if program_args is None:
-            if _strong_alfred_scheduler_label(
+            if _strong_unreadable_alfred_scheduler_label(
                 label,
                 legacy_prefixes,
-            ) or _strong_alfred_scheduler_label(service_label, legacy_prefixes):
+            ) or _strong_unreadable_alfred_scheduler_label(service_label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
             continue
         if _program_is_alfred_scheduler_for_labels(
@@ -1705,6 +1707,18 @@ def _strong_alfred_scheduler_label(label: str, legacy_prefixes: tuple[str, ...] 
     if normalized.startswith(("alfred.", "alfred-", "old.alfred", "old-alfred")):
         return True
     return any(phrase in normalized for phrase in _ALFRED_LAUNCHD_LABEL_PHRASES)
+
+
+def _strong_unreadable_alfred_scheduler_label(
+    label: str,
+    legacy_prefixes: tuple[str, ...] = (),
+) -> bool:
+    normalized = label.strip().lower()
+    if not normalized:
+        return False
+    if _label_matches_legacy_prefix(normalized, legacy_prefixes):
+        return True
+    return normalized.startswith(("alfred.", "alfred-", "old.alfred", "old-alfred"))
 
 
 def _label_matches_legacy_prefix(
