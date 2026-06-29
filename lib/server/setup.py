@@ -1951,12 +1951,7 @@ def _program_is_alfred_scheduler(
     argument_paths = _program_argument_paths(program_args)
     if any(_path_is_external_alfred_scheduler_launcher(path) for path in argument_paths):
         return looks_like_alfred_label
-    if not looks_like_alfred_label:
-        return False
-    return any(
-        path.name in _ALFRED_SCHEDULER_LAUNCHER_NAMES and path.parent.name == "bin"
-        for path in argument_paths
-    )
+    return False
 
 
 def _path_is_external_alfred_scheduler_launcher(path: Path) -> bool:
