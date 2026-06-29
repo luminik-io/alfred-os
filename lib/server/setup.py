@@ -1675,7 +1675,11 @@ def _program_is_alfred_scheduler(
 def _path_is_external_alfred_scheduler_launcher(path: Path) -> bool:
     if path.name not in _ALFRED_SCHEDULER_LAUNCHER_NAMES or path.parent.name != "bin":
         return False
-    return any("alfred" in part.lower() for part in path.parts[:-2])
+    return any(_path_part_is_alfred_install_name(part) for part in path.parts[:-2])
+
+
+def _path_part_is_alfred_install_name(part: str) -> bool:
+    return "alfred" in set(re.split(r"[^a-z0-9]+", part.lower()))
 
 
 def _program_argument_paths(program_args: list[str]) -> list[Path]:
