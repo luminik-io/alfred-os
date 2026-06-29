@@ -354,6 +354,23 @@ def _repo_aliases(repo_key: str, explicit_repo_slugs: dict[str, str]) -> set[str
     return {alias.lower() for alias in aliases if alias}
 
 
+def _criteria_for_repo_key(
+    repo_key: str,
+    repo_criteria: dict[str, str],
+    explicit_repo_slugs: dict[str, str],
+) -> str | None:
+    criteria_by_key = {key.lower(): value for key, value in repo_criteria.items()}
+    aliases = [repo_key]
+    if "/" in repo_key:
+        aliases.append(repo_key.rsplit("/", 1)[-1])
+    aliases.extend(sorted(_repo_aliases(repo_key, explicit_repo_slugs)))
+    for alias in aliases:
+        value = criteria_by_key.get(alias.lower())
+        if value:
+            return value
+    return None
+
+
 def _repo_keys_match(
     rollout_key: str,
     affected_key: str,
@@ -1487,7 +1504,7 @@ def parse_parent_issue(
                 # the Slack plan post is not empty under "Done when".
                 joined = "\n".join(
                     f"- {repo_key}: "
-                    f"{loose.repo_criteria.get(repo_key) or loose.repo_criteria.get(repo_key.split('/', 1)[-1], 'see acceptance criteria')}"
+                    f"{_criteria_for_repo_key(repo_key, loose.repo_criteria, loose.repo_slugs) or 'see acceptance criteria'}"
                     for repo_key in loose.affected_repos
                 )
                 done_when = joined

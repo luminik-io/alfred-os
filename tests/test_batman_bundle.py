@@ -620,6 +620,8 @@ We want a cross-org billing worker rollout.
 
     assert [child.repo for child in plan.children] == ["acme/acme-backend"]
     assert plan.affected_repos == ("acme/acme-backend",)
+    assert "Add the billing worker behind the `billing-v2` flag." in plan.children[0].body
+    assert "see acceptance criteria" not in plan.children[0].body
 
 
 def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
