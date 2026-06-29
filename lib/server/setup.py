@@ -1546,7 +1546,7 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             continue
         service_label, service_lookup_failed = _systemd_timer_service_label(label, env)
         if service_lookup_failed:
-            if _strong_alfred_scheduler_label(label, legacy_prefixes):
+            if _strong_unreadable_alfred_systemd_timer_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
                 continue
             service_label, timer_file_found = _systemd_timer_file_service_label(label, env)
@@ -1739,9 +1739,21 @@ def _strong_unreadable_alfred_scheduler_label(
         return False
     if _label_matches_legacy_prefix(normalized, legacy_prefixes):
         return True
-    if _label_has_legacy_engineering_shape(normalized):
-        return True
     return normalized.startswith(("alfred.", "alfred-", "old.alfred", "old-alfred"))
+
+
+def _strong_unreadable_alfred_systemd_timer_label(
+    label: str,
+    legacy_prefixes: tuple[str, ...] = (),
+) -> bool:
+    normalized = label.strip().lower()
+    if _strong_alfred_scheduler_label(normalized, legacy_prefixes):
+        return True
+    if _strong_unreadable_alfred_scheduler_label(normalized, legacy_prefixes):
+        return True
+    # launchd labels are broad enough that a bare ``*.eng.*`` label needs
+    # executable proof, but an active systemd timer is itself a scheduler signal.
+    return _label_has_legacy_engineering_shape(normalized)
 
 
 def _label_matches_legacy_prefix(

@@ -738,7 +738,7 @@ def test_install_inventory_blocks_unreadable_configured_legacy_prefix(
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
-def test_install_inventory_blocks_unreadable_legacy_engineering_shape_without_opt_in(
+def test_install_inventory_ignores_unreadable_legacy_engineering_shape_without_proof(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -755,8 +755,8 @@ def test_install_inventory_blocks_unreadable_legacy_engineering_shape_without_op
 
     inventory = setup_mod.install_inventory()
 
-    assert inventory["unmanaged_scheduler_jobs"] == [f"{label} (unreadable)"]
-    assert inventory["unmanaged_scheduler_count"] == 1
+    assert inventory["unmanaged_scheduler_jobs"] == []
+    assert inventory["unmanaged_scheduler_count"] == 0
 
 
 def test_install_inventory_treats_agents_conf_labels_as_managed(
@@ -1600,6 +1600,34 @@ def test_install_inventory_blocks_when_systemd_timer_unit_lookup_fails(
     inventory = setup_mod.install_inventory()
 
     assert inventory["unmanaged_scheduler_jobs"] == ["old-alfred (unreadable)"]
+    assert inventory["unmanaged_scheduler_count"] == 1
+
+
+def test_install_inventory_blocks_legacy_engineering_systemd_timer_when_unit_lookup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    runtime = tmp_path / "alfred"
+    label = ".".join(("luminik", "eng", "worker"))
+    (home / ".config" / "systemd" / "user").mkdir(parents=True)
+    monkeypatch.setattr(setup_mod.os, "uname", lambda: SimpleNamespace(sysname="Linux"))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.setenv("ALFRED_SETUP_SYSTEMD_LIST_FIXTURE", f"{label}.timer\n")
+
+    def fake_run(args: list[str], **_kwargs: object) -> SimpleNamespace:
+        if f"{label}.timer" in args:
+            return SimpleNamespace(returncode=1, stdout="")
+        return SimpleNamespace(returncode=1, stdout="")
+
+    monkeypatch.setattr(setup_mod.subprocess, "run", fake_run)
+
+    inventory = setup_mod.install_inventory()
+
+    assert inventory["unmanaged_scheduler_jobs"] == [f"{label} (unreadable)"]
     assert inventory["unmanaged_scheduler_count"] == 1
 
 
