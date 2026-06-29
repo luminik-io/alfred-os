@@ -113,11 +113,12 @@ from urllib.parse import urlparse
 _HERE = Path(__file__).resolve().parent
 for candidate in (
     Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+    # Processed last, so source checkout lib lands at sys.path[0].
     _HERE.parent / "lib",
 ):
     candidate_path = str(candidate)
     if candidate.is_dir():
-        if candidate_path in sys.path:
+        while candidate_path in sys.path:
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
 

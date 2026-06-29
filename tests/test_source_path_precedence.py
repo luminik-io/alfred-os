@@ -17,6 +17,7 @@ def _script_path_order(
     runtime_home: Path,
     *,
     alfred_home: bool = True,
+    seed_duplicates: bool = False,
 ) -> list[str]:
     repo_lib = str(script_path.resolve().parents[1] / "lib")
     runtime_lib = str(runtime_home / "lib")
@@ -33,6 +34,8 @@ import sys
 repo_lib = {repo_lib!r}
 runtime_lib = {runtime_lib!r}
 sys.path = [entry for entry in sys.path if entry not in {{repo_lib, runtime_lib}}]
+if {seed_duplicates!r}:
+    sys.path[:0] = [repo_lib, runtime_lib, repo_lib, runtime_lib]
 runpy.run_path({str(script_path)!r})
 print(json.dumps([entry for entry in sys.path if entry in {{repo_lib, runtime_lib}}]))
 """
@@ -86,3 +89,22 @@ def test_source_scripts_keep_deployed_lib_when_checkout_lib_is_absent(
     copied_script.write_text((ROOT / script).read_text(encoding="utf-8"), encoding="utf-8")
 
     assert _script_path_order(copied_script, runtime_lib.parent) == [str(runtime_lib)]
+
+
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_source_scripts_remove_duplicate_lib_entries(
+    tmp_path: Path,
+    script: str,
+) -> None:
+    runtime_lib = tmp_path / "runtime" / "lib"
+    runtime_lib.mkdir(parents=True)
+    script_path = ROOT / script
+
+    assert _script_path_order(
+        script_path,
+        runtime_lib.parent,
+        seed_duplicates=True,
+    ) == [
+        str(ROOT / "lib"),
+        str(runtime_lib),
+    ]

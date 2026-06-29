@@ -35,10 +35,14 @@ from pathlib import Path
 # script's own checkout so source-run servers cannot import stale
 # deployed libraries just because ALFRED_HOME is set.
 _HERE = Path(__file__).resolve().parent
-for candidate in (Path(os.environ.get("ALFRED_HOME", "")) / "lib", _HERE.parent / "lib"):
+for candidate in (
+    Path(os.environ.get("ALFRED_HOME", "")) / "lib",
+    # Processed last, so source checkout lib lands at sys.path[0].
+    _HERE.parent / "lib",
+):
     candidate_path = str(candidate)
     if candidate.is_dir():
-        if candidate_path in sys.path:
+        while candidate_path in sys.path:
             sys.path.remove(candidate_path)
         sys.path.insert(0, candidate_path)
 
