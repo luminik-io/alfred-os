@@ -1821,15 +1821,38 @@ def _systemd_timer_service_label(
             env=_scheduler_probe_subprocess_env(env),
         )
     except (OSError, subprocess.SubprocessError):
-        return None, True
+        fallback_label, found = _systemd_timer_file_service_label(label, env)
+        return (fallback_label, False) if found else (None, True)
     if cp.returncode != 0:
-        return None, True
+        fallback_label, found = _systemd_timer_file_service_label(label, env)
+        return (fallback_label, False) if found else (None, True)
     unit = (cp.stdout or "").strip()
     if not unit:
         return label, False
     if not unit.endswith(".service"):
         return None, False
     return unit.removesuffix(".service"), False
+
+
+def _systemd_timer_file_service_label(
+    label: str, env: Mapping[str, str]
+) -> tuple[str | None, bool]:
+    systemd_user_dir = _systemd_user_dir(env)
+    if systemd_user_dir is None:
+        return None, False
+    timer = systemd_user_dir / f"{label}.timer"
+    with suppress(OSError):
+        for raw in timer.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line.startswith("Unit="):
+                continue
+            unit = line.removeprefix("Unit=").strip()
+            if not unit:
+                return label, True
+            if not unit.endswith(".service"):
+                return None, True
+            return unit.removesuffix(".service"), True
+    return None, False
 
 
 def _active_systemd_service_program_args(label: str, env: Mapping[str, str]) -> list[str] | None:
