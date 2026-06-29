@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   addTrustedSlackUser,
-  alternateDefaultBaseUrl,
   clientBaseUrl,
   convertFollowupToDraft,
   decidePlan,
@@ -134,24 +133,11 @@ export function useAlfred() {
       setError(null);
       setErrorRaw(null);
       try {
-        try {
-          const next = await loadSnapshot(targetBaseUrl);
-          if (id !== reqRef.current) return;
-          setSnapshot(next);
-          setBaseUrl(targetBaseUrl);
-          rememberBaseUrl(targetBaseUrl);
-        } catch (firstErr) {
-          const alternateBaseUrl = alternateDefaultBaseUrl(targetBaseUrl);
-          if (alternateBaseUrl) {
-            const next = await loadSnapshot(alternateBaseUrl);
-            if (id !== reqRef.current) return;
-            setSnapshot(next);
-            setBaseUrl(alternateBaseUrl);
-            rememberBaseUrl(alternateBaseUrl);
-          } else {
-            throw firstErr;
-          }
-        }
+        const next = await loadSnapshot(targetBaseUrl);
+        if (id !== reqRef.current) return;
+        setSnapshot(next);
+        setBaseUrl(targetBaseUrl);
+        rememberBaseUrl(targetBaseUrl);
       } catch (err) {
         if (id !== reqRef.current) return;
         setError(err instanceof Error ? err.message : String(err));
@@ -179,21 +165,8 @@ export function useAlfred() {
       const id = ++shippedReqRef.current;
       setShippedState("loading");
       try {
-        let resolvedBaseUrl = target;
-        let board: ShippedBoard;
-        try {
-          board = await loadShipped(target, 14, { demo: includeDemo });
-        } catch (firstErr) {
-          const alternateBaseUrl = alternateDefaultBaseUrl(target);
-          if (!alternateBaseUrl) throw firstErr;
-          board = await loadShipped(alternateBaseUrl, 14, { demo: includeDemo });
-          resolvedBaseUrl = alternateBaseUrl;
-        }
+        const board = await loadShipped(target, 14, { demo: includeDemo });
         if (id !== shippedReqRef.current) return;
-        if (resolvedBaseUrl !== target) {
-          setBaseUrl(resolvedBaseUrl);
-          rememberBaseUrl(resolvedBaseUrl);
-        }
         setShipped(board);
         setShippedError(null);
         setShippedState("idle");
@@ -215,28 +188,14 @@ export function useAlfred() {
       const id = ++usageReqRef.current;
       setUsageState("loading");
       try {
-        let resolvedBaseUrl = target;
-        let next: UsageResponse;
-        try {
-          next = await loadUsage(target);
-        } catch (firstErr) {
-          const alternateBaseUrl = alternateDefaultBaseUrl(target);
-          if (!alternateBaseUrl) throw firstErr;
-          next = await loadUsage(alternateBaseUrl);
-          resolvedBaseUrl = alternateBaseUrl;
-        }
+        const next = await loadUsage(target);
         if (id !== usageReqRef.current) return;
-        if (resolvedBaseUrl !== target) {
-          setBaseUrl(resolvedBaseUrl);
-          rememberBaseUrl(resolvedBaseUrl);
-        }
         setUsage(next);
         setUsageState("idle");
       } catch (err) {
         if (id !== usageReqRef.current) return;
-        // A transport failure (runtime down, older server without the route):
-        // synthesize the same "unavailable" shape the server returns so the
-        // panel renders one consistent degraded state.
+        // A transport failure synthesizes the same "unavailable" shape the
+        // server returns so the panel renders one consistent degraded state.
         setUsage({
           available: false,
           kind: "subscription",

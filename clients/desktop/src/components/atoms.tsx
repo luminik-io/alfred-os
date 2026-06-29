@@ -193,7 +193,7 @@ export function NativeResultPanel({
 function friendlyActionLabel(result: NativeCommandResult | null): string | null {
   if (!result) return null;
   const joined = result.command.join(" ");
-  if (joined.includes("brain status") || joined.includes("brain-doctor")) return "Memory check complete";
+  if (joined.includes("brain doctor") || joined.includes("brain-doctor")) return "Memory check complete";
   if (joined.includes("redis")) return "Redis memory check complete";
   if (joined.includes("auth status")) return "Auth check complete";
   if (joined.includes("status --json") || /\bstatus\b/.test(joined)) return "Agent status refreshed";

@@ -16,7 +16,7 @@ import type { ConverseResponse } from "../../types";
 // These tests exercise the assistant-ui ExternalStore adapter wiring that the
 // migration introduced: onNew streaming (tokens appended in place), message
 // conversion (user vs assistant bubbles, the draft tool-call part), and the
-// last-5 recent-threads switcher (resume, v1 migration surfacing). The broader
+// last-5 recent-threads switcher. The broader
 // converse/draft/control/cancel behavior is covered in ComposeChat.test.tsx.
 
 vi.mock("../../api", async () => {
@@ -316,26 +316,6 @@ describe("Ask recent-threads switcher (last-5 persistence)", () => {
     expect(screen.getByText(/a question to persist/i)).toBeInTheDocument();
   });
 
-  it("rehydrates a migrated legacy v1 conversation on mount", async () => {
-    window.localStorage.setItem(
-      "alfred.ask.history.v1",
-      JSON.stringify({
-        version: 1,
-        draftId: "legacy-draft",
-        draft: converseResponse().draft,
-        turns: [
-          { kind: "message", role: "user", content: "legacy request" },
-          { kind: "message", role: "assistant", content: "legacy reply" },
-        ],
-        updatedAt: 1000,
-      }),
-    );
-
-    renderChat();
-    // The migrated v1 conversation shows up as the active thread.
-    expect(await screen.findByText(/legacy reply/i)).toBeInTheDocument();
-    expect(screen.getByText(/legacy request/i)).toBeInTheDocument();
-  });
 });
 
 describe("Ask hero and copy", () => {

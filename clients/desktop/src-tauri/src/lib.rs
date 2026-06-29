@@ -80,30 +80,6 @@ async fn run_alfred_action(
         return start_github_auth_login().await;
     }
 
-    if action_name == "brain_doctor" {
-        let primary = run_native_command(
-            "alfred".to_string(),
-            vec![
-                "brain".to_string(),
-                "doctor".to_string(),
-                "--json".to_string(),
-            ],
-        )
-        .await?;
-        if primary.success || !is_unknown_brain_doctor(&primary) {
-            return Ok(primary);
-        }
-        return run_native_command(
-            "alfred".to_string(),
-            vec![
-                "brain".to_string(),
-                "status".to_string(),
-                "--json".to_string(),
-            ],
-        )
-        .await;
-    }
-
     let (program, args) = build_alfred_action(action_name, target.as_deref(), cadence.as_deref())?;
     if action_name == "code_memory_status" {
         return run_native_command_with_timeout(program, args, code_memory_doctor_timeout()).await;
@@ -722,10 +698,6 @@ fn validate_base_url(raw: &str) -> Result<Url, String> {
         return Err("only localhost, 127.0.0.1, or ::1 are allowed".to_string());
     }
 
-    if url.port_or_known_default() == Some(7000) {
-        url.set_port(Some(7010))
-            .map_err(|_| "could not normalize local Alfred port".to_string())?;
-    }
     url.set_path("/");
     url.set_query(None);
     url.set_fragment(None);
@@ -1214,7 +1186,14 @@ fn build_alfred_action(
             "alfred".to_string(),
             vec!["auth".to_string(), "status".to_string()],
         )),
-        "brain_doctor" => unreachable!("brain_doctor is handled with compatibility fallback"),
+        "brain_doctor" => Ok((
+            "alfred".to_string(),
+            vec![
+                "brain".to_string(),
+                "doctor".to_string(),
+                "--json".to_string(),
+            ],
+        )),
         "code_memory_status" => Ok((
             "alfred".to_string(),
             vec!["code-memory".to_string(), "doctor".to_string()],
@@ -1526,13 +1505,6 @@ fn trim_text(text: &str) -> String {
     trimmed
 }
 
-fn is_unknown_brain_doctor(result: &NativeCommandResult) -> bool {
-    let haystack = format!("{}\n{}", result.stdout, result.stderr).to_ascii_lowercase();
-    haystack.contains("invalid choice")
-        || haystack.contains("unknown command")
-        || haystack.contains("usage: alfred-brain")
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1701,10 +1673,10 @@ mod tests {
     }
 
     #[test]
-    fn base_url_rewrites_legacy_airplay_port() {
-        let url = validate_base_url("http://127.0.0.1:7000")
-            .expect("legacy localhost port should still be accepted");
-        assert_eq!(url.as_str(), "http://127.0.0.1:7010/");
+    fn base_url_keeps_custom_local_ports() {
+        let url = validate_base_url("http://127.0.0.1:7123")
+            .expect("custom localhost ports should be accepted");
+        assert_eq!(url.as_str(), "http://127.0.0.1:7123/");
     }
 
     #[test]

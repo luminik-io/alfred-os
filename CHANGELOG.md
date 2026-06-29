@@ -8,6 +8,14 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 
 - Long Ask conversations no longer run out of room. When a chat grows past a configurable length, Alfred keeps the opening task and the most recent turns intact and replaces the middle with one compact, model-written summary, so the original goal and the live working state both survive. If a turn still overflows the model's context, Alfred condenses and retries once instead of failing. Every condensation is written down as an auditable record, short chats are left untouched, and every threshold is environment-overridable.
 
+### Changed
+
+- Alfred Desktop now uses the exact local runtime URL the operator chooses instead of silently retrying or rewriting stale localhost ports. The setup console also shows the current `alfred brain doctor --json` command.
+
+### Removed
+
+- Removed obsolete Ask history migration code and the stale native memory-check fallback. Ask history is now v2-only, and the memory check runs the current doctor command directly.
+
 ## [0.5.3] - 2026-06-24
 
 The signed, notarized macOS desktop app and Linux packages are published on this

@@ -15,7 +15,6 @@ import type {
 // vi.mock is hoisted above module init, so the mocks and constants the factory
 // needs are declared via vi.hoisted.
 const DEFAULT_BASE_URL = "http://127.0.0.1:7010";
-const LEGACY_AIRPLAY_BASE_URL = "http://127.0.0.1:7000";
 
 const hooks = vi.hoisted(() => ({
   loadSnapshotMock: vi.fn(),
@@ -28,7 +27,6 @@ const hooks = vi.hoisted(() => ({
   discardPlanMock: vi.fn(),
   filePlanIssueMock: vi.fn(),
   DEFAULT_BASE_URL: "http://127.0.0.1:7010",
-  LEGACY_AIRPLAY_BASE_URL: "http://127.0.0.1:7000",
 }));
 
 const loadSnapshotMock = hooks.loadSnapshotMock as ReturnType<
@@ -50,15 +48,7 @@ vi.mock("../api", () => ({
   initialBaseUrl: () => hooks.DEFAULT_BASE_URL,
   clientBaseUrl: (value?: string | null) => {
     const normalized = (value?.trim() || hooks.DEFAULT_BASE_URL).replace(/\/$/, "");
-    return normalized === hooks.LEGACY_AIRPLAY_BASE_URL ? hooks.DEFAULT_BASE_URL : normalized;
-  },
-  alternateDefaultBaseUrl: (value: string) => {
-    const normalized = value.trim().replace(/\/$/, "");
-    if (normalized === hooks.DEFAULT_BASE_URL) return null;
-    if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(normalized)) {
-      return hooks.DEFAULT_BASE_URL;
-    }
-    return null;
+    return normalized;
   },
   rememberBaseUrl: (value: string) => hooks.rememberBaseUrlMock(value),
   loadSnapshot: (baseUrl: string) => hooks.loadSnapshotMock(baseUrl),
@@ -215,8 +205,8 @@ describe("useAlfred refresh race", () => {
   });
 });
 
-describe("useAlfred fallback port", () => {
-  it("does not retry on 7000 when the preferred 7010 endpoint fails", async () => {
+describe("useAlfred base URL handling", () => {
+  it("surfaces the default endpoint failure without retrying another port", async () => {
     loadSnapshotMock.mockRejectedValue(new Error("connection refused"));
 
     const { result } = renderHook(() => useAlfred());
@@ -224,11 +214,12 @@ describe("useAlfred fallback port", () => {
     await waitFor(() => expect(result.current.error).toMatch(/connection refused/i));
     expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
     expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
-    expect(loadSnapshotMock).not.toHaveBeenCalledWith(LEGACY_AIRPLAY_BASE_URL);
-    expect(rememberBaseUrlMock).not.toHaveBeenCalledWith(LEGACY_AIRPLAY_BASE_URL);
+    expect(loadSnapshotMock).toHaveBeenCalledTimes(1);
+    expect(rememberBaseUrlMock).not.toHaveBeenCalled();
   });
 
-  it("normalizes a saved legacy 7000 endpoint before fetching", async () => {
+  it("uses an explicit custom local endpoint as-is", async () => {
+    const customUrl = "http://127.0.0.1:7123";
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
 
     const { result } = renderHook(() => useAlfred());
@@ -239,17 +230,16 @@ describe("useAlfred fallback port", () => {
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("lucius")]));
 
     await act(async () => {
-      await result.current.refresh(LEGACY_AIRPLAY_BASE_URL);
+      await result.current.refresh(customUrl);
     });
 
-    expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
+    expect(result.current.baseUrl).toBe(customUrl);
     expect(result.current.error).toBeNull();
-    expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
-    expect(loadSnapshotMock).not.toHaveBeenCalledWith(LEGACY_AIRPLAY_BASE_URL);
-    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
+    expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
+    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(customUrl);
   });
 
-  it("recovers from a stale saved localhost port", async () => {
+  it("does not retry a stale saved localhost port on the default port", async () => {
     const staleUrl = "http://127.0.0.1:7011";
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("bane")]));
 
@@ -268,13 +258,13 @@ describe("useAlfred fallback port", () => {
     });
 
     expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
-    expect(result.current.error).toBeNull();
+    expect(result.current.error).toMatch(/connection refused/i);
     expect(loadSnapshotMock).toHaveBeenCalledWith(staleUrl);
-    expect(loadSnapshotMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
-    expect(rememberBaseUrlMock).toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
+    expect(loadSnapshotMock).not.toHaveBeenLastCalledWith(DEFAULT_BASE_URL);
+    expect(rememberBaseUrlMock).not.toHaveBeenCalledWith(staleUrl);
   });
 
-  it("also retries board and usage on the preferred port when the saved port is stale", async () => {
+  it("surfaces board and usage errors for a stale saved localhost port", async () => {
     const staleUrl = "http://127.0.0.1:7011";
     loadSnapshotMock.mockResolvedValue(snapshot([agent("bane")]));
     loadShippedMock.mockImplementation(async (baseUrl: string) => {
@@ -294,14 +284,13 @@ describe("useAlfred fallback port", () => {
     });
 
     expect(result.current.baseUrl).toBe(DEFAULT_BASE_URL);
-    expect(result.current.shippedState).toBe("idle");
-    expect(result.current.shippedError).toBeNull();
-    expect(result.current.usageState).toBe("idle");
-    expect(result.current.usage?.available).toBe(true);
+    expect(result.current.shippedState).toBe("error");
+    expect(result.current.shippedError).toMatch(/board timed out/i);
+    expect(result.current.usageState).toBe("error");
+    expect(result.current.usage?.available).toBe(false);
+    expect(result.current.usage?.error).toMatch(/usage timed out/i);
     expect(loadShippedMock).toHaveBeenCalledWith(staleUrl);
-    expect(loadShippedMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
     expect(loadUsageMock).toHaveBeenCalledWith(staleUrl);
-    expect(loadUsageMock).toHaveBeenCalledWith(DEFAULT_BASE_URL);
   });
 });
 

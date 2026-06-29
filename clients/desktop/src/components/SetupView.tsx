@@ -393,7 +393,7 @@ export function SetupView({
                 <code>alfred status --json</code>
                 <code>alfred auth status</code>
                 <code>alfred agents</code>
-                <code>alfred brain status --json</code>
+                <code>alfred brain doctor --json</code>
                 <code>alfred code-memory doctor</code>
                 <code>alfred brain redis-status --json</code>
                 <code>alfred dry-run &lt;codename&gt;</code>

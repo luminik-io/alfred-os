@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   MAX_PERSISTED_CONVERSATIONS,
@@ -13,7 +13,6 @@ import {
 } from "./chatHistory";
 
 const STORAGE_KEY = "alfred.ask.history.v2";
-const LEGACY_STORAGE_KEY = "alfred.ask.history.v1";
 
 function messageTurn(role: "user" | "assistant", content: string): PersistedTurn {
   return { kind: "message", role, content };
@@ -94,226 +93,6 @@ describe("chatHistory last-5 persistence", () => {
     expect(alpha?.turns[0]).toMatchObject({ content: "alpha question" });
   });
 
-  it("migrates the legacy v1 single-conversation blob forward as the most recent", () => {
-    // Seed a v1 payload as an older build would have written it.
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        draftId: "legacy-draft",
-        draft: { title: "Legacy plan", repos: ["your-org/frontend"] },
-        turns: [messageTurn("user", "legacy request"), messageTurn("assistant", "legacy reply")],
-        updatedAt: 1000,
-      }),
-    );
-    // No v2 store yet.
-    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
-
-    const latest = loadConversation();
-    expect(latest).not.toBeNull();
-    expect(latest?.draftId).toBe("legacy-draft");
-    expect(latest?.title).toBe("legacy request");
-    expect(latest?.turns).toHaveLength(2);
-
-    // Saving a new conversation keeps the migrated legacy entry in the list.
-    saveConversation({ id: "new", turns: [messageTurn("user", "new request")] });
-    const all = loadConversations();
-    expect(all.map((c) => c.turns[0]).map((t) => (t.kind === "message" ? t.content : ""))).toContain(
-      "legacy request",
-    );
-  });
-
-  it("folds the legacy v1 thread into Recent even when v2 already has chats", () => {
-    // A v2 store already has a conversation...
-    saveConversation({ id: "v2-a", turns: [messageTurn("user", "v2 request")] });
-    // ...and a valid legacy v1 blob still exists alongside it.
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        draftId: "legacy-draft",
-        turns: [messageTurn("user", "legacy request")],
-        updatedAt: 500,
-      }),
-    );
-
-    const titles = loadConversations().map((c) => c.title);
-    expect(titles).toContain("v2 request");
-    expect(titles).toContain("legacy request");
-  });
-
-  it("does not duplicate the legacy thread across repeated loads", () => {
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
-    );
-    // Loading twice (stable legacy id) must not accumulate copies.
-    loadConversations();
-    const second = loadConversations();
-    expect(second.filter((c) => c.title === "legacy request")).toHaveLength(1);
-  });
-
-  it("a stampless legacy thread does not evict a full set of v2 chats", () => {
-    for (let i = 0; i < 5; i += 1) {
-      saveConversation({ id: `v2-${i}`, turns: [messageTurn("user", `v2 ${i}`)] });
-    }
-    // A legacy v1 blob with NO updatedAt (the eviction case).
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy")] }),
-    );
-    const all = loadConversations();
-    // Still capped at 5, and every real v2 chat survives (legacy did not evict).
-    expect(all).toHaveLength(MAX_PERSISTED_CONVERSATIONS);
-    expect(all.every((c) => c.title.startsWith("v2 "))).toBe(true);
-  });
-
-  it("a timestamped legacy thread cannot evict a real v2 chat on save", () => {
-    // Four real v2 chats...
-    for (let i = 0; i < 4; i += 1) {
-      saveConversation({ id: `v2-${i}`, turns: [messageTurn("user", `v2 ${i}`)] });
-    }
-    // ...and a legacy v1 blob with a RECENT stamp (the eviction case: a fold
-    // that would sort ahead of a real chat under the cap).
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({
-        version: 1,
-        turns: [messageTurn("user", "legacy request")],
-        updatedAt: 9_999_999_999_999,
-      }),
-    );
-    // Saving a fifth real chat must keep all five real chats; the legacy fold
-    // is read-only and must never be persisted into v2 to push one off.
-    saveConversation({ id: "v2-4", turns: [messageTurn("user", "v2 4")] });
-    const all = loadConversations();
-    expect(all).toHaveLength(MAX_PERSISTED_CONVERSATIONS);
-    expect(all.every((c) => c.title.startsWith("v2 "))).toBe(true);
-    expect(all.map((c) => c.id).sort()).toEqual(["v2-0", "v2-1", "v2-2", "v2-3", "v2-4"]);
-  });
-
-  it("a pristine legacy fold persisted by an older build cannot evict a real chat on save", () => {
-    // Simulate the buggy historical state: an earlier build folded the legacy
-    // thread and persisted a PRISTINE copy (same single turn as the still-present
-    // v1 blob) into v2 with a recent timestamp.
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy")], updatedAt: 7 }),
-    );
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        version: 2,
-        conversations: [
-          { id: "legacy-v1", turns: [messageTurn("user", "legacy")], updatedAt: 9_999_999_999_999, title: "legacy" },
-          { id: "v2-0", turns: [messageTurn("user", "v2 0")], updatedAt: 4, title: "v2 0" },
-          { id: "v2-1", turns: [messageTurn("user", "v2 1")], updatedAt: 3, title: "v2 1" },
-          { id: "v2-2", turns: [messageTurn("user", "v2 2")], updatedAt: 2, title: "v2 2" },
-          { id: "v2-3", turns: [messageTurn("user", "v2 3")], updatedAt: 1, title: "v2 3" },
-        ],
-      }),
-    );
-    // Saving a fifth real chat: the pristine fold is demoted, not allowed to keep
-    // a slot and evict a real chat (it re-folds from the v1 key when there is room).
-    saveConversation({ id: "v2-4", turns: [messageTurn("user", "v2 4")] });
-    const ids = loadConversations().map((c) => c.id);
-    expect(ids).toHaveLength(MAX_PERSISTED_CONVERSATIONS);
-    expect(ids).not.toContain("legacy-v1");
-    expect(ids.slice().sort()).toEqual(["v2-0", "v2-1", "v2-2", "v2-3", "v2-4"]);
-  });
-
-  it("a continued legacy thread is never overwritten by the stale v1 blob on reload", () => {
-    // Greptile's path: a continued legacy thread saved into v2, then enough newer
-    // chats to push it off the cap, must NOT resurrect as the stale one-turn blob.
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
-    );
-    const legacy = loadConversations().find((c) => c.title === "legacy request");
-    // Continue the legacy thread (now two turns).
-    saveConversation({
-      id: legacy!.id,
-      turns: [messageTurn("user", "legacy request"), messageTurn("assistant", "continued reply")],
-    });
-    // Saving the legacy thread migrated it forward, so the stale v1 blob is gone.
-    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
-    // Push it off the cap with five newer chats.
-    for (let i = 0; i < 5; i += 1) {
-      saveConversation({ id: `newer-${i}`, turns: [messageTurn("user", `newer ${i}`)] });
-    }
-    const all = loadConversations();
-    expect(all).toHaveLength(MAX_PERSISTED_CONVERSATIONS);
-    // The continued thread aged off like any old chat; the STALE one-turn blob
-    // does not reappear in its place.
-    expect(all.some((c) => c.title === "legacy request")).toBe(false);
-  });
-
-  it("keeps a CONTINUED legacy thread when a later save persists a different chat", () => {
-    // Upgrade path: load the v1 thread, continue it (send another message), then
-    // save a different chat later. The continued legacy thread must survive.
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
-    );
-    const legacy = loadConversations().find((c) => c.title === "legacy request");
-    expect(legacy).toBeDefined();
-    // Continue the migrated legacy thread (saved into v2 under its legacy id).
-    saveConversation({
-      id: legacy!.id,
-      turns: [messageTurn("user", "legacy request"), messageTurn("assistant", "a continued reply")],
-    });
-    // Save a DIFFERENT chat afterwards.
-    saveConversation({ id: "other", turns: [messageTurn("user", "other chat")] });
-
-    const all = loadConversations();
-    const continued = all.find((c) => c.id === legacy!.id);
-    expect(continued).toBeDefined();
-    // The continuation (the new assistant turn) is preserved, not the stale blob.
-    expect(continued?.turns).toHaveLength(2);
-    expect(all.some((c) => c.id === "other")).toBe(true);
-  });
-
-  it("keeps the v1 blob when the v2 write fails on a legacy save", () => {
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
-    );
-    const legacy = loadConversations().find((c) => c.title === "legacy request");
-    // Force the v2 write to fail (quota / private mode).
-    const original = window.localStorage.setItem.bind(window.localStorage);
-    const spy = vi
-      .spyOn(window.localStorage, "setItem")
-      .mockImplementation((key: string, value: string) => {
-        if (key === STORAGE_KEY) throw new DOMException("QuotaExceededError");
-        original(key, value);
-      });
-    try {
-      saveConversation({
-        id: legacy!.id,
-        turns: [messageTurn("user", "legacy request"), messageTurn("assistant", "reply")],
-      });
-    } finally {
-      spy.mockRestore();
-    }
-    // The v2 write failed, so the v1 blob is still the only copy and must remain.
-    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).not.toBeNull();
-    expect(loadConversations().some((c) => c.title === "legacy request")).toBe(true);
-  });
-
-  it("clears the v1 key when the migrated legacy thread is deleted so it cannot return", () => {
-    window.localStorage.setItem(
-      LEGACY_STORAGE_KEY,
-      JSON.stringify({ version: 1, turns: [messageTurn("user", "legacy request")], updatedAt: 500 }),
-    );
-    const legacy = loadConversations().find((c) => c.title === "legacy request");
-    expect(legacy).toBeDefined();
-
-    deleteConversation(legacy!.id);
-
-    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
-    expect(loadConversations().some((c) => c.title === "legacy request")).toBe(false);
-  });
-
   it("ignores a torn or malformed v2 blob and degrades to empty", () => {
     window.localStorage.setItem(STORAGE_KEY, "{ not json");
     expect(loadConversations()).toEqual([]);
@@ -329,14 +108,12 @@ describe("chatHistory last-5 persistence", () => {
     expect(all.map((c) => c.id)).toEqual(["keep"]);
   });
 
-  it("clears the entire history including the legacy key", () => {
-    window.localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ version: 1, turns: [] }));
+  it("clears the entire history", () => {
     saveConversation({ id: "x", turns: [messageTurn("user", "hi")] });
 
     clearConversations();
     expect(loadConversations()).toEqual([]);
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
-    expect(window.localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull();
   });
 
   it("does not persist an empty conversation", () => {

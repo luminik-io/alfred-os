@@ -10,7 +10,6 @@ import {
   ApiError,
   DEFAULT_BASE_URL,
   addTrustedSlackUser,
-  alternateDefaultBaseUrl,
   clientBaseUrl,
   composeDraft,
   conversationControl,
@@ -42,26 +41,25 @@ const ENDPOINTS = {
   schedule: "/api/schedule",
 } as const;
 
-describe("base URL fallback", () => {
+describe("base URL normalization", () => {
   afterEach(() => {
     window.localStorage.clear();
-  });
-
-  it("does not probe the legacy AirPlay port after the preferred port fails", () => {
-    expect(alternateDefaultBaseUrl("http://127.0.0.1:7010")).toBeNull();
-    expect(alternateDefaultBaseUrl("http://127.0.0.1:7000")).toBeNull();
-  });
-
-  it("recovers from stale localhost ports by trying the preferred Alfred serve port", () => {
-    expect(alternateDefaultBaseUrl("http://127.0.0.1:7011")).toBe("http://127.0.0.1:7010");
-    expect(alternateDefaultBaseUrl("http://localhost:7999/")).toBe("http://127.0.0.1:7010");
+    delete window.__TAURI_INTERNALS__;
   });
 
   it("normalizes saved local ports in browser preview because the Vite proxy owns the target", () => {
-    window.localStorage.setItem("alfred-desktop.base-url", "http://127.0.0.1:7000");
+    window.localStorage.setItem("alfred-desktop.base-url", "http://127.0.0.1:7999");
 
     expect(initialBaseUrl()).toBe("http://127.0.0.1:7010");
     expect(clientBaseUrl("http://localhost:7999")).toBe("http://127.0.0.1:7010");
+  });
+
+  it("keeps explicit custom local ports in the native app", () => {
+    window.__TAURI_INTERNALS__ = {};
+    const customUrl = "http://127.0.0.1:7123";
+
+    expect(clientBaseUrl(customUrl)).toBe(customUrl);
+    expect(clientBaseUrl("http://localhost:7999")).toBe("http://localhost:7999");
   });
 
   it("keeps remote base URLs for browser preview", () => {
@@ -69,10 +67,6 @@ describe("base URL fallback", () => {
 
     expect(initialBaseUrl()).toBe("https://alfred.example.com");
     expect(clientBaseUrl("https://alfred.example.com")).toBe("https://alfred.example.com");
-  });
-
-  it("does not redirect arbitrary remote URLs", () => {
-    expect(alternateDefaultBaseUrl("https://example.com")).toBeNull();
   });
 
   it("reports no stored base URL for a fresh, never-connected machine", () => {
@@ -219,24 +213,25 @@ afterEach(() => {
 });
 
 describe("loadSnapshot degradation", () => {
-  it("normalizes a legacy AirPlay port before native bridge requests", async () => {
+  it("keeps custom local ports before native bridge requests", async () => {
     window.__TAURI_INTERNALS__ = {};
+    const customUrl = "http://127.0.0.1:7123";
     invokeMock.mockImplementation(async (_command: string, args: { baseUrl: string; path: string }) => {
-      expect(args.baseUrl).toBe(DEFAULT_BASE_URL);
+      expect(args.baseUrl).toBe(customUrl);
       return JSON.stringify(jsonFor(args.path));
     });
 
-    const snap = await loadSnapshot("http://127.0.0.1:7000");
+    const snap = await loadSnapshot(customUrl);
 
     expect(snap.status.agents).toHaveLength(1);
     expect(invokeMock).toHaveBeenCalledWith(
       "fetch_alfred_json",
-      expect.objectContaining({ baseUrl: DEFAULT_BASE_URL, path: "/api/status" }),
+      expect.objectContaining({ baseUrl: customUrl, path: "/api/status" }),
     );
   });
 
   it("renders every section when all endpoints resolve", async () => {
-    const snap = await loadSnapshot("http://127.0.0.1:7000");
+    const snap = await loadSnapshot(DEFAULT_BASE_URL);
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.firings).toHaveLength(1);
     expect(snap.plans).toHaveLength(1);
@@ -255,9 +250,9 @@ describe("loadSnapshot degradation", () => {
 
   it("degrades the schedule lane to empty when /api/schedule fails", async () => {
     vi.stubGlobal("fetch", stubFetch({ schedule: 404 }));
-    const snap = await loadSnapshot("http://127.0.0.1:7000");
-    // A missing schedule route (older server) never blanks the view; the lane
-    // shows an honest empty state instead.
+    const snap = await loadSnapshot(DEFAULT_BASE_URL);
+    // A missing schedule route never blanks the view; the lane shows an honest
+    // empty state instead.
     expect(snap.schedule).toEqual([]);
     expect(snap.degraded?.schedule).toBeTruthy();
   });
@@ -285,7 +280,7 @@ describe("loadSnapshot degradation", () => {
         return new Response(JSON.stringify(jsonFor(path)), { status: 200 });
       }),
     );
-    const board = await loadShipped("http://127.0.0.1:7000");
+    const board = await loadShipped(DEFAULT_BASE_URL);
     expect(board.error).toBe("CalledProcessError: gh auth failed");
     expect(board.columns.shipped).toEqual([]);
   });
@@ -308,8 +303,8 @@ describe("loadSnapshot degradation", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await loadShipped("http://127.0.0.1:7000");
-    await loadShipped("http://127.0.0.1:7000", 14, { demo: true });
+    await loadShipped(DEFAULT_BASE_URL);
+    await loadShipped(DEFAULT_BASE_URL, 14, { demo: true });
 
     expect(String(fetchMock.mock.calls[0][0])).toContain("/api/shipped?days=14");
     expect(String(fetchMock.mock.calls[0][0])).not.toContain("demo=1");
@@ -337,7 +332,7 @@ describe("loadSnapshot degradation", () => {
         return new Response(JSON.stringify(jsonFor(path)), { status: 200 });
       }),
     );
-    const board = await loadShipped("http://127.0.0.1:7000");
+    const board = await loadShipped(DEFAULT_BASE_URL);
     expect(board.error).toContain("GitHub data unavailable");
     expect(board.error).toContain("example-org/alfred");
     expect(board.columns.shipped).toEqual([]);
@@ -364,14 +359,14 @@ describe("loadSnapshot degradation", () => {
         return new Response(JSON.stringify(jsonFor(path)), { status: 200 });
       }),
     );
-    const board = await loadShipped("http://127.0.0.1:7000");
+    const board = await loadShipped(DEFAULT_BASE_URL);
     expect(board.error).toBeUndefined();
     expect(board.errors).toEqual(["example-org/alfred"]);
   });
 
   it("keeps the dashboard when a non-spine endpoint fails", async () => {
     vi.stubGlobal("fetch", stubFetch({ plans: 500 }));
-    const snap = await loadSnapshot("http://127.0.0.1:7000");
+    const snap = await loadSnapshot(DEFAULT_BASE_URL);
     // status/actions/firings still rendered; only plans degraded.
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.firings).toHaveLength(1);
@@ -384,7 +379,7 @@ describe("loadSnapshot degradation", () => {
 
   it("keeps the dashboard when trusted Slack state is unavailable", async () => {
     vi.stubGlobal("fetch", stubFetch({ trustedSlack: 500 }));
-    const snap = await loadSnapshot("http://127.0.0.1:7000");
+    const snap = await loadSnapshot(DEFAULT_BASE_URL);
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.trustedSlack).toBeNull();
     expect(snap.degraded?.trustedSlack).toBeTruthy();
@@ -392,7 +387,7 @@ describe("loadSnapshot degradation", () => {
 
   it("keeps the dashboard when memory candidates are unavailable", async () => {
     vi.stubGlobal("fetch", stubFetch({ memoryCandidates: 404 }));
-    const snap = await loadSnapshot("http://127.0.0.1:7000");
+    const snap = await loadSnapshot(DEFAULT_BASE_URL);
     expect(snap.status.agents).toHaveLength(1);
     expect(snap.memoryCandidates.rows).toEqual([]);
     expect(snap.degraded?.memoryCandidates).toBeTruthy();
@@ -400,7 +395,7 @@ describe("loadSnapshot degradation", () => {
 
   it("throws when the spine /api/status fails", async () => {
     vi.stubGlobal("fetch", stubFetch({ status: 403 }));
-    await expect(loadSnapshot("http://127.0.0.1:7000")).rejects.toBeInstanceOf(ApiError);
+    await expect(loadSnapshot(DEFAULT_BASE_URL)).rejects.toBeInstanceOf(ApiError);
   });
 
   it("posts Slack collaborator changes through the local API", async () => {
@@ -420,7 +415,7 @@ describe("loadSnapshot degradation", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    const result = await addTrustedSlackUser("http://127.0.0.1:7000", "UTEAM1");
+    const result = await addTrustedSlackUser(DEFAULT_BASE_URL, "UTEAM1");
 
     expect(result.added).toBe(true);
     expect(result.users[0].user_id).toBe("UTEAM1");
@@ -441,7 +436,7 @@ describe("loadSnapshot degradation", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    const result = await promoteMemoryCandidate("http://127.0.0.1:7000", "mem:1");
+    const result = await promoteMemoryCandidate(DEFAULT_BASE_URL, "mem:1");
 
     expect(result.lesson_id).toBe("lesson-1");
   });
@@ -464,7 +459,7 @@ describe("loadSnapshot degradation", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    const result = await conversationControl("http://127.0.0.1:7000", {
+    const result = await conversationControl(DEFAULT_BASE_URL, {
       text: "run batman",
     });
 
@@ -490,7 +485,7 @@ describe("loadSnapshot degradation", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    const result = await decidePlan("http://127.0.0.1:7000", "13-plan", "approve");
+    const result = await decidePlan(DEFAULT_BASE_URL, "13-plan", "approve");
 
     expect(result.decision).toBe("approve");
     expect(result.issue_number).toBe(13);
@@ -517,7 +512,7 @@ describe("loadSnapshot degradation", () => {
     vi.stubGlobal("fetch", fetch);
 
     const result = await decidePlan(
-      "http://127.0.0.1:7000",
+      DEFAULT_BASE_URL,
       "21-plan",
       "decline",
       "scope too broad",
@@ -531,7 +526,7 @@ describe("error humanization", () => {
   it("maps browser 403s to desktop-token guidance and keeps the raw text in details", async () => {
     vi.stubGlobal("fetch", stubFetch({ status: 403 }));
     try {
-      await loadSnapshot("http://127.0.0.1:7000");
+      await loadSnapshot(DEFAULT_BASE_URL);
       throw new Error("expected loadSnapshot to throw");
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
@@ -550,7 +545,7 @@ describe("error humanization", () => {
       }),
     );
     try {
-      await loadSnapshot("http://127.0.0.1:7000");
+      await loadSnapshot(DEFAULT_BASE_URL);
       throw new Error("expected loadSnapshot to throw");
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
@@ -570,7 +565,7 @@ describe("error humanization", () => {
       }),
     );
     try {
-      await composeDraft("http://127.0.0.1:7000", { text: "" });
+      await composeDraft(DEFAULT_BASE_URL, { text: "" });
       throw new Error("expected composeDraft to throw");
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError);
@@ -625,7 +620,7 @@ describe("streamComposeConverse", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const reply = await streamComposeConverse(
-      "http://127.0.0.1:7000",
+      DEFAULT_BASE_URL,
       CONVERSE_REQUEST,
       () => {},
     );
@@ -676,7 +671,7 @@ describe("streamComposeConverse", () => {
     );
     const tokens: string[] = [];
     const reply = await streamComposeConverse(
-      "http://127.0.0.1:7000",
+      DEFAULT_BASE_URL,
       CONVERSE_REQUEST,
       (t) => tokens.push(t),
     );
@@ -696,7 +691,7 @@ describe("streamComposeConverse", () => {
       ),
     );
     await expect(
-      streamComposeConverse("http://127.0.0.1:7000", CONVERSE_REQUEST, () => {}),
+      streamComposeConverse(DEFAULT_BASE_URL, CONVERSE_REQUEST, () => {}),
     ).rejects.toMatchObject({ detail: "live_session_unavailable" });
   });
 
@@ -706,7 +701,7 @@ describe("streamComposeConverse", () => {
       vi.fn(async () => new Response('{"error": "live_session_unavailable"}', { status: 503 })),
     );
     await expect(
-      streamComposeConverse("http://127.0.0.1:7000", CONVERSE_REQUEST, () => {}),
+      streamComposeConverse(DEFAULT_BASE_URL, CONVERSE_REQUEST, () => {}),
     ).rejects.toBeInstanceOf(ApiError);
   });
 
@@ -716,7 +711,7 @@ describe("streamComposeConverse", () => {
       vi.fn(async () => sseResponse(['event: open\ndata: {}\n\n'])),
     );
     await expect(
-      streamComposeConverse("http://127.0.0.1:7000", CONVERSE_REQUEST, () => {}),
+      streamComposeConverse(DEFAULT_BASE_URL, CONVERSE_REQUEST, () => {}),
     ).rejects.toBeInstanceOf(ApiError);
   });
 });
@@ -753,7 +748,7 @@ describe("streamFiringTail", () => {
   it("appends streamed lines and closes on the done event", () => {
     const lines: string[] = [];
     let doneReason: string | null = null;
-    const dispose = streamFiringTail("http://127.0.0.1:7000", "fire-1", {
+    const dispose = streamFiringTail(DEFAULT_BASE_URL, "fire-1", {
       onLines: (batch) => lines.push(...batch),
       onDone: (reason) => {
         doneReason = reason;
@@ -772,7 +767,7 @@ describe("streamFiringTail", () => {
 
   it("reports a transport error so the caller falls back to its poll", () => {
     let errored = false;
-    streamFiringTail("http://127.0.0.1:7000", "fire-2", {
+    streamFiringTail(DEFAULT_BASE_URL, "fire-2", {
       onLines: () => {},
       onError: () => {
         errored = true;
@@ -787,7 +782,7 @@ describe("streamFiringTail", () => {
   it("degrades to a no-op when EventSource is unavailable", () => {
     vi.stubGlobal("EventSource", undefined);
     let errored = false;
-    const dispose = streamFiringTail("http://127.0.0.1:7000", "fire-3", {
+    const dispose = streamFiringTail(DEFAULT_BASE_URL, "fire-3", {
       onLines: () => {},
       onError: () => {
         errored = true;
@@ -815,7 +810,7 @@ describe("roster theme persistence", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    const result = await loadRosterTheme("http://127.0.0.1:7000");
+    const result = await loadRosterTheme(DEFAULT_BASE_URL);
 
     expect(result.theme).toBe("custom");
     expect(result.custom_names.batman).toBe("Sherlock");
@@ -845,7 +840,7 @@ describe("roster theme persistence", () => {
     });
     vi.stubGlobal("fetch", fetch);
 
-    const result = await saveRosterTheme("http://127.0.0.1:7000", {
+    const result = await saveRosterTheme(DEFAULT_BASE_URL, {
       theme: "custom",
       custom_names: { batman: "Sherlock" },
       custom_roles: {},
@@ -862,7 +857,7 @@ describe("roster theme persistence", () => {
     vi.stubGlobal("fetch", fetch);
 
     await expect(
-      saveRosterTheme("http://127.0.0.1:7000", { theme: "not-real" }),
+      saveRosterTheme(DEFAULT_BASE_URL, { theme: "not-real" }),
     ).rejects.toBeInstanceOf(ApiError);
   });
 });

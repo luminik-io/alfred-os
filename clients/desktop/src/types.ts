@@ -129,10 +129,10 @@ export type StatusResponse = {
     error?: string;
     errors?: Record<string, string>;
   };
-  // Today's aggregate spend + ok/fail counts. Optional: older servers omit it.
+  // Today's aggregate spend + ok/fail counts. Optional when local ledgers are unavailable.
   metrics?: FleetCostRollup;
   // The active server-side intake profile. "plain" makes Compose adapt its copy
-  // for non-developers. Optional + defaults to "technical" on older servers.
+  // for non-developers. Optional + defaults to "technical".
   intake_profile?: "plain" | "technical" | string;
   // Repositories selected in guided setup. Used as planning context so Compose
   // does not ask the operator to retype repo scope Alfred already knows.
@@ -199,8 +199,7 @@ export type PlansResponse = {
 };
 
 // GET /api/shipped (see lib/shipped_board.py). A kanban-shaped feed of what the
-// fleet is doing, for the Review board's "Shipped" + "Running" lanes. Optional:
-// older servers without the route degrade gracefully (shipped stays null).
+// fleet is doing, for the Review board's "Shipped" + "Running" lanes.
 export type ShippedCard = {
   repo: string;
   number: number | null;

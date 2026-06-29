@@ -22,14 +22,11 @@ vi.mock("../api", () => ({
 const composeDraftMock = vi.mocked(composeDraft);
 const conversationControlMock = vi.mocked(conversationControl);
 const filePlanIssueMock = vi.mocked(filePlanIssue);
+const BASE_URL = "http://127.0.0.1:7010";
 
 function renderComposeView(selectedRepos = ["your-org/frontend"]) {
   return render(
-    <ComposeView
-      baseUrl="http://127.0.0.1:7000"
-      selectedRepos={selectedRepos}
-      onSwitch={vi.fn()}
-    />,
+    <ComposeView baseUrl={BASE_URL} selectedRepos={selectedRepos} onSwitch={vi.fn()} />,
   );
 }
 
@@ -266,7 +263,7 @@ describe("ComposeView", () => {
 
     await waitFor(() => expect(filePlanIssueMock).toHaveBeenCalledTimes(1));
     expect(filePlanIssueMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:7000",
+      BASE_URL,
       "compose-20260530-120000-add-csv-export",
     );
     expect(await screen.findByText(/filed with agent:implement/i)).toBeInTheDocument();

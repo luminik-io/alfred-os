@@ -90,7 +90,7 @@ function humanizeFetchError(status: number, serverMessage?: string | null): stri
     return "Alfred serve is running but rejected this client (auth token mismatch). Restart the runtime or check your token.";
   }
   if (status === 404) {
-    return "Alfred serve answered, but this endpoint is missing. The runtime may be an older build than this client expects.";
+    return "Alfred serve answered, but this endpoint is missing. Restart the runtime and check the local server logs.";
   }
   if (status === 502 || status === 503 || status === 504) {
     return "Alfred serve is reachable but not ready yet. Give the runtime a moment, then refresh.";
@@ -143,9 +143,6 @@ function humanizeTransportError(err: unknown): string {
 
 export function clientBaseUrl(value?: string | null): string {
   const trimmed = value?.trim() || DEFAULT_BASE_URL;
-  if (isLegacyAirPlayPort(trimmed)) {
-    return DEFAULT_BASE_URL;
-  }
   if (shouldNormalizeDevPreviewBaseUrl(trimmed)) {
     return DEFAULT_BASE_URL;
   }
@@ -166,27 +163,6 @@ export function rememberBaseUrl(value: string): void {
 // first-run onboarding from re-firing on every cold start for established users.
 export function hasStoredBaseUrl(): boolean {
   return Boolean(window.localStorage.getItem(BASE_URL_KEY));
-}
-
-export function alternateDefaultBaseUrl(value: string): string | null {
-  try {
-    const normalized = normalizedBaseUrl(value);
-    if (normalized === `${DEFAULT_BASE_URL}/`) {
-      return null;
-    }
-    const parsed = new URL(normalized);
-    if (["127.0.0.1", "localhost", "::1"].includes(parsed.hostname)) {
-      return DEFAULT_BASE_URL;
-    }
-    return null;
-  } catch {
-    const trimmed = value.trim();
-    if (trimmed === DEFAULT_BASE_URL) return null;
-    if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?\/?$/i.test(trimmed)) {
-      return DEFAULT_BASE_URL;
-    }
-    return null;
-  }
 }
 
 // The dashboard reads several independent endpoints. A failure on any one of them
@@ -246,9 +222,8 @@ export async function loadSnapshot(baseUrl: string): Promise<Snapshot> {
     firings: firings.status === "fulfilled" ? firings.value.rows || [] : [],
     plans: plans.status === "fulfilled" ? plans.value.rows || [] : [],
     trustedSlack: trustedSlack.status === "fulfilled" ? trustedSlack.value : null,
-    // Upcoming scheduled runs (agents.conf). A rejection (older server without
-    // the route, or an unreadable conf) degrades to an empty lane, never a
-    // blanked view.
+    // Upcoming scheduled runs (agents.conf). A rejection degrades to an empty
+    // lane, never a blanked view.
     schedule: schedule.status === "fulfilled" ? schedule.value.runs || [] : [],
     // The Kanban board is fetched separately (loadShipped) so its slower
     // multi-repo gh scan never gates the core snapshot.
@@ -624,8 +599,8 @@ export function streamFiringTail(
   });
   source.onerror = () => {
     // EventSource auto-reconnects, but for a localhost runtime a hard error
-    // usually means the route is missing (older server) or the runtime is down.
-    // Close and let the caller fall back to its poll rather than spin.
+    // usually means the route is missing or the runtime is down. Close and let
+    // the caller fall back to its poll rather than spin.
     close();
     handlers.onError?.(new Error("log tail stream error"));
   };
@@ -929,7 +904,7 @@ async function browserFetch(
 }
 
 function normalizedBaseUrl(baseUrl: string): string {
-  const url = new URL(isLegacyAirPlayPort(baseUrl) ? DEFAULT_BASE_URL : baseUrl);
+  const url = new URL(baseUrl);
   url.pathname = "/";
   url.search = "";
   url.hash = "";
@@ -955,15 +930,6 @@ function shouldNormalizeDevPreviewBaseUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return isLocalAlfredUrl(url);
-  } catch {
-    return false;
-  }
-}
-
-function isLegacyAirPlayPort(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return isLocalAlfredUrl(url) && url.port === "7000";
   } catch {
     return false;
   }

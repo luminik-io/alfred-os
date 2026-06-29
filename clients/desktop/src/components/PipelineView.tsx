@@ -80,8 +80,8 @@ function cardKey(card: ShippedCard): string {
 // prefix and present the title as a sentence. A richer summary is a Phase 2
 // backend change (flagged in the spec).
 function cardOutcome(card: ShippedCard): string {
-  // Prefer the server-derived plain-language outcome when present (Phase 2);
-  // fall back to a cleaned title for older servers that omit the field.
+  // Prefer the server-derived plain-language outcome when present; fall back to
+  // a cleaned title when no outcome is present.
   const serverOutcome = (card.outcome || "").trim();
   if (serverOutcome) return serverOutcome;
   const title = (card.title || "").trim();

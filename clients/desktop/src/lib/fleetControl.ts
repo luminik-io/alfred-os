@@ -141,7 +141,7 @@ function toRow(
   // Paused/running state comes from the polled summary first. The server reads
   // the same pause marker the CLI writes, so the desktop client no longer needs
   // to shell `alfred status --json` for it. The CLI service map is a fallback
-  // for older servers (or browser/dev runs) whose /api/status omits the fields.
+  // for browser/dev runs whose /api/status omits the fields.
   const summaryHasService =
     summary != null &&
     (summary.paused !== undefined || summary.loaded !== undefined);

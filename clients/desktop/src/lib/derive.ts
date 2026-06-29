@@ -162,8 +162,8 @@ export function buildShippedDigest(board: ShippedBoard | null): ShippedDigestIte
   }));
 }
 
-// Plain words for what the PR did. Prefer the server-derived outcome sentence
-// (Phase 2); fall back to a cleaned title for older servers that omit it.
+// Plain words for what the PR did. Prefer the server-derived outcome sentence;
+// fall back to a cleaned title when no outcome is present.
 function shippedWhat(card: ShippedCard): string {
   const serverOutcome = (card.outcome || "").trim();
   if (serverOutcome) return serverOutcome;
@@ -226,7 +226,7 @@ export type CostHealth = {
   failed: number;
   // Today's aggregate spend, rolled up server-side from the per-agent spend
   // ledgers (status.metrics). null means "no cost data surfaced" (no ledger
-  // today, or an older server without the rollup), not $0.
+  // today), not $0.
   spendUsd: number | null;
   // True when spend came from the server's today rollup (real ledgers) rather
   // than the firings fallback, so the strip can label it precisely.
@@ -248,7 +248,7 @@ function firingCost(firing: FiringRecord): number | null {
 export function buildCostHealth(snapshot: Snapshot | null): CostHealth {
   const firings = snapshot?.firings || [];
   // Prefer the server's today rollup (real spend ledgers) when present; fall
-  // back to whatever cost the visible firings carry on older servers.
+  // back to whatever cost the visible firings carry.
   const rollup = snapshot?.status.metrics;
   let succeeded = 0;
   let failed = 0;
