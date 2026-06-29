@@ -929,6 +929,30 @@ def test_lucius_push_blocks_when_pre_push_fails(monkeypatch, tmp_path):
     assert posts and "Missing: niyora-sync" in posts[0]
 
 
+def test_lucius_dry_run_reports_pre_push_without_executing(monkeypatch, tmp_path):
+    lucius = load_bin_module("lucius.py", monkeypatch)
+    logs: list[tuple[str, str]] = []
+    monkeypatch.setattr(lucius, "is_dry_run", lambda: True)
+    monkeypatch.setattr(lucius, "PRE_PUSH", {"backend": "./gradlew check"})
+    monkeypatch.setattr(lucius, "dependency_lockfile_drift", lambda _wt: [])
+    monkeypatch.setattr(lucius, "dry_run_log", lambda step, message: logs.append((step, message)))
+    monkeypatch.setattr(
+        lucius,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("dry-run must not execute repo pre-push commands")
+        ),
+    )
+
+    result = lucius.run_pre_push_checks("backend", tmp_path)
+
+    assert result.ok is True
+    assert result.command == "./gradlew check"
+    assert logs == [
+        ("checks", "would run pre-push command for backend: `./gradlew check`; skipped")
+    ]
+
+
 def test_lucius_partial_salvage_push_skips_pre_push_but_runs_workflow_gate(monkeypatch, tmp_path):
     lucius = load_bin_module("lucius.py", monkeypatch)
     pushed: list[tuple[Path, str]] = []
