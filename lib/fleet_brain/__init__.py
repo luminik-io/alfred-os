@@ -420,6 +420,7 @@ class FleetBrain:
     * :meth:`upsert_github_item`: cache GitHub issue/PR state from a poller.
     * :meth:`upsert_worker_heartbeat`: record worker liveness.
     * :meth:`note_repo`: upsert a free-text repo summary.
+    * :meth:`health`: confirm the local ledger is reachable.
     * :meth:`forget`: remove a lesson by id.
     * :meth:`export`: JSON-serializable snapshot for backup or
       cross-host export (the operator must do the transfer; the
@@ -1894,6 +1895,22 @@ class FleetBrain:
 
     def stats(self) -> dict[str, int]:
         return self.store.stats()
+
+    def health(self) -> dict[str, Any]:
+        """Return a cheap liveness check for local API callers.
+
+        ``doctor`` is the deeper operational report and can legitimately
+        return warnings for a fresh install with no GitHub poll data or seed
+        memories yet. ``health`` only answers whether the local ledger is
+        reachable and schema-backed, which is what the native client's memory
+        API needs before listing empty candidates/lessons on first run.
+        """
+        return {
+            "ok": True,
+            "status": "ok",
+            "checked_at": datetime.now(UTC).isoformat(),
+            "stats": self.stats(),
+        }
 
     def doctor(self) -> dict[str, Any]:
         """Return a read-only health report for the memory store."""

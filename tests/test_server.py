@@ -3182,6 +3182,26 @@ def test_api_memory_brain_unavailable_returns_generic_error(
     _assert_no_exc_leak(body, marker)
 
 
+def test_api_memory_routes_work_with_empty_real_fleet_brain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A clean OSS install has an empty memory DB, not a broken memory panel."""
+    state = tmp_path / "state"
+    home = tmp_path / "alfred-home"
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_FLEET_BRAIN_DB", raising=False)
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    candidates = client.get("/api/memory/candidates")
+    lessons = client.get("/api/memory/lessons")
+
+    assert candidates.status_code == 200
+    assert candidates.json() == {"rows": []}
+    assert lessons.status_code == 200
+    assert lessons.json() == {"rows": []}
+
+
 def test_plain_compose_title_redos_input_is_bounded() -> None:
     """A whitespace-padded compose request must not hang the title heuristic.
 

@@ -1302,6 +1302,16 @@ def test_stats_reports_counts(brain: FleetBrain) -> None:
     assert s["repos"] == 2
 
 
+def test_health_reports_reachable_store(brain: FleetBrain) -> None:
+    brain.reflect(codename="lucius", repo="org/api", body="x")
+
+    report = brain.health()
+
+    assert report["ok"] is True
+    assert report["status"] == "ok"
+    assert report["stats"]["lessons"] == 1
+
+
 def test_failure_patterns_classify_repeated_setup_failures(brain: FleetBrain) -> None:
     now = datetime.now(UTC)
     for idx in range(2):
