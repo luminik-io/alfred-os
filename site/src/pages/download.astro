@@ -34,7 +34,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
   <Hero
     eyebrow="DOWNLOAD"
     headline="Download Alfred Desktop."
-    sub="Alfred Desktop is the recommended app for setting up and operating a local Alfred runtime. It connects to `alfred serve`; the core fleet still runs locally through the CLI and scheduler."
+    sub="Alfred Desktop is the recommended app for operating a local Alfred runtime. It connects to `alfred serve`; install the core CLI/runtime first unless you use the Homebrew cask, which depends on the formula."
     headlineSize="lg"
     primaryCta={{
       label: "Download Desktop for macOS",
@@ -67,9 +67,10 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           <p class="dl-card__body">
             Open the Apple silicon disk image, drag Alfred to Applications, and
             launch it beside your local <span class="m-mono">alfred serve</span>.
-            Install Alfred core first if you want real agents, schedules, and
-            local state. The app bundle inside the DMG is signed, notarized,
-            and stapled.
+            The DMG by itself does not install the CLI/runtime, so install
+            Alfred core first if you want real agents, schedules, and local
+            state. The app bundle inside the DMG is signed, notarized, and
+            stapled.
           </p>
           <div class="dl-card__actions">
             <a
@@ -106,7 +107,8 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           <p class="dl-card__body">
             Use the AppImage when you want a portable binary, or the
             <span class="m-mono">.deb</span> package on apt-based systems. Both
-            connect to the local Alfred core runtime over localhost.
+            connect to the local Alfred core runtime over localhost; install the
+            core runtime first.
           </p>
           <div class="dl-card__actions">
             <a
@@ -202,7 +204,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           <ul class="dl-reqs__list">
             <li>Drake plans, Batman coordinates approved multi-repo work, and Lucius builds</li>
             <li>Ra's al Ghul reviews, Bane adds tests, and Nightwing handles high-priority review fixes</li>
-            <li>Robin, cleanup, release, memory, code-map, and status jobs keep the loop inspectable</li>
+            <li>Robin, Huntress, Gordon, automerge, cleanup, memory, code-map, shipped-summary, and fleet-recap jobs keep the loop inspectable</li>
             <li>Scheduled runs continue while your chosen host is awake</li>
             <li>Open source, MIT licensed, yours to read and fork</li>
           </ul>

@@ -36,13 +36,14 @@ commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
 `alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
 want `main`, framework edits, or Linux.
 
-## Recommended: Install Alfred Desktop
+## Recommended: Install the runtime, then Alfred Desktop
 
 Alfred Desktop is the native Mac/Linux starting point for most local installs.
 It watches the fleet, reviews plans, checks memory candidates, runs safe local
 repairs, detects existing configuration, and starts or reconnects to the local
 runtime. It is a control surface over the local Alfred CLI/runtime, so install
-the runtime first.
+the runtime first. The direct Desktop package does not bundle `alfred`,
+`alfred-init`, or `alfred serve` yet.
 
 1. Install the Alfred CLI/runtime with the source or Homebrew path above.
 2. Download the signed Mac package or Linux build from [Download](/download/).
@@ -79,8 +80,9 @@ one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has
 completed, and `claude` has completed first-run auth. The repo owner must match
 `GH_ORG`; the runtime agents store the bare repo name in `~/.alfredrc` and build
 `GH_ORG/repo` at firing time. The command enables the full engineering fleet:
-Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing, Robin, release, cleanup,
-memory, code-map, and status jobs. It assigns the selected repo list to each
+Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing, Robin, Huntress, Gordon,
+automerge, cleanup, memory, code-map, morning-brief, fleet-doctor, fleet-recap,
+and shipped-summary jobs. It assigns the selected repo list to each
 repo-operating agent, skips Slack safely, seeds prompt templates into
 `~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
 writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
