@@ -1488,7 +1488,7 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
                 if _is_current_auxiliary_launchd_job(plist_args):
                     checked_labels.add(label)
                     continue
-                if _looks_like_alfred_launchd_label(
+                if _strong_alfred_scheduler_label(
                     label, legacy_prefixes
                 ) or _program_is_alfred_scheduler(plist_args, home, label, legacy_prefixes):
                     unreadable_labels.add(label)
@@ -1504,9 +1504,7 @@ def _unmanaged_alfred_launchd_jobs(env: Mapping[str, str], home: Path) -> list[s
             continue
         program_args = _launchctl_program_args(label, env)
         if program_args is None:
-            if label in unreadable_labels or _looks_like_alfred_launchd_label(
-                label, legacy_prefixes
-            ):
+            if label in unreadable_labels or _strong_alfred_scheduler_label(label, legacy_prefixes):
                 labels.append(_unreadable_launchd_label(label))
             continue
         if _is_current_auxiliary_launchd_job(program_args):
@@ -1533,13 +1531,11 @@ def _unmanaged_alfred_systemd_jobs(env: Mapping[str, str], home: Path) -> list[s
             continue
         service_label = _systemd_timer_service_label(label, env)
         if service_label is None:
-            if _looks_like_alfred_launchd_label(label, legacy_prefixes):
-                labels.append(_unreadable_launchd_label(label))
+            labels.append(_unreadable_launchd_label(label))
             continue
         program_args = _systemd_service_program_args(service_label, env, allow_disk_fallback=False)
         if program_args is None:
-            if _looks_like_alfred_launchd_label(label, legacy_prefixes):
-                labels.append(_unreadable_launchd_label(label))
+            labels.append(_unreadable_launchd_label(label))
             continue
         if _program_is_alfred_scheduler(program_args, home, label, legacy_prefixes):
             labels.append(label)
@@ -1686,6 +1682,20 @@ def _base_looks_like_alfred_launchd_label(normalized: str) -> bool:
         return True
     tokens = set(re.split(r"[^a-z0-9]+", normalized))
     return bool(tokens.intersection(_ALFRED_LAUNCHD_IDENTITY_TOKENS))
+
+
+def _strong_alfred_scheduler_label(label: str, legacy_prefixes: tuple[str, ...] = ()) -> bool:
+    normalized = label.strip().lower()
+    if not normalized:
+        return False
+    if legacy_prefixes and any(normalized.startswith(prefix) for prefix in legacy_prefixes):
+        return True
+    if normalized.startswith(("alfred.", "alfred-", "old.alfred", "old-alfred")):
+        return True
+    if any(phrase in normalized for phrase in _ALFRED_LAUNCHD_LABEL_PHRASES):
+        return True
+    tokens = set(re.split(r"[^a-z0-9]+", normalized))
+    return bool(tokens.intersection(_ALFRED_LAUNCHD_ROLE_TOKENS))
 
 
 def _has_alfred_prefix_inference_evidence(normalized: str) -> bool:
@@ -1961,7 +1971,7 @@ def _program_is_alfred_scheduler(
 ) -> bool:
     if _program_runs_from_alfred_home(program_args, home):
         return True
-    looks_like_alfred_label = _looks_like_alfred_launchd_label(label, legacy_prefixes)
+    looks_like_alfred_label = _strong_alfred_scheduler_label(label, legacy_prefixes)
     argument_paths = _program_argument_paths(program_args)
     if any(_path_is_external_alfred_scheduler_launcher(path) for path in argument_paths):
         return looks_like_alfred_label
