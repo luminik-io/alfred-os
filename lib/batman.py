@@ -339,10 +339,50 @@ def _append_repo_mention(
         explicit_repo_slugs[repo_key] = explicit_slug
 
 
-def _expand_rollout_repo_keys(rollout: list[str], affected: list[str]) -> list[str]:
+def _repo_aliases(repo_key: str, explicit_repo_slugs: dict[str, str]) -> set[str]:
+    aliases = {repo_key}
+    explicit_slug = explicit_repo_slugs.get(repo_key) or (repo_key if "/" in repo_key else "")
+    if explicit_slug:
+        repo_tail = explicit_slug.rsplit("/", 1)[-1]
+        aliases.add(repo_tail)
+        mapped = GH_REPO_TO_LOCAL.get(explicit_slug) or GH_REPO_TO_LOCAL.get(repo_tail)
+        if mapped:
+            aliases.add(mapped)
+    mapped = GH_REPO_TO_LOCAL.get(repo_key)
+    if mapped:
+        aliases.add(mapped)
+    return {alias.lower() for alias in aliases if alias}
+
+
+def _repo_keys_match(
+    rollout_key: str,
+    affected_key: str,
+    explicit_repo_slugs: dict[str, str],
+) -> bool:
+    rollout_slug = explicit_repo_slugs.get(rollout_key) or (
+        rollout_key if "/" in rollout_key else ""
+    )
+    affected_slug = explicit_repo_slugs.get(affected_key) or (
+        affected_key if "/" in affected_key else ""
+    )
+    if rollout_slug and affected_slug:
+        return rollout_slug == affected_slug
+    return bool(
+        _repo_aliases(rollout_key, explicit_repo_slugs)
+        & _repo_aliases(affected_key, explicit_repo_slugs)
+    )
+
+
+def _expand_rollout_repo_keys(
+    rollout: list[str],
+    affected: list[str],
+    explicit_repo_slugs: dict[str, str],
+) -> list[str]:
     out: list[str] = []
     for repo_key in rollout:
-        matches = [target for target in affected if target.split("/", 1)[-1] == repo_key]
+        matches = [
+            target for target in affected if _repo_keys_match(repo_key, target, explicit_repo_slugs)
+        ]
         expanded = matches if matches else [repo_key]
         for target in expanded:
             if target not in out:
@@ -358,9 +398,8 @@ def _promote_explicit_rollout_targets(
     for repo_key in rollout:
         if "/" not in repo_key:
             continue
-        tail = repo_key.rsplit("/", 1)[-1]
         for idx, target in enumerate(affected):
-            if "/" not in target and target == tail:
+            if "/" not in target and _repo_keys_match(repo_key, target, explicit_repo_slugs):
                 affected[idx] = repo_key
                 explicit_repo_slugs[repo_key] = repo_key
     deduped: list[str] = []
@@ -509,7 +548,9 @@ def parse_plan_from_issue(body: str) -> PlanShape:
     rollout_order = _rollout_order()
     if rollout_override:
         _promote_explicit_rollout_targets(rollout_override, affected, explicit_repo_slugs)
-        rollout_override = _expand_rollout_repo_keys(rollout_override, affected)
+        rollout_override = _expand_rollout_repo_keys(
+            rollout_override, affected, explicit_repo_slugs
+        )
         for r in rollout_override:
             if r not in affected:
                 affected.append(r)

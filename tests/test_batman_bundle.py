@@ -129,6 +129,18 @@ def test_parse_plan_bare_rollout_uses_explicit_affected_slug():
     assert plan.repo_slugs == {"acme/backend": "acme/backend"}
 
 
+def test_parse_plan_bare_rollout_uses_mapped_explicit_affected_slug(monkeypatch):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme/acme-backend": "backend"})
+
+    body = "## Affected Repos\n- acme/acme-backend\n\n## Rollout order\n- backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/acme-backend"]
+    assert plan.repo_slugs == {"acme/acme-backend": "acme/acme-backend"}
+
+
 def test_parse_plan_explicit_rollout_promotes_bare_affected_repo():
     import batman as bm
 
@@ -536,6 +548,34 @@ We want a cross-org billing worker rollout.
 
     assert [child.repo for child in plan.children] == ["acme/backend"]
     assert plan.affected_repos == ("acme/backend",)
+
+
+def test_parse_parent_issue_loose_shape_preserves_mapped_slug_with_bare_rollout(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "GH_REPO_TO_LOCAL", {"acme/acme-backend": "backend"})
+
+    body = """
+We want a cross-org billing worker rollout.
+
+## Affected Repos
+- acme/acme-backend
+
+## Rollout order
+- backend
+
+## Acceptance Criteria
+
+### backend
+- Add the billing worker behind the `billing-v2` flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/acme-backend"]
+    assert plan.affected_repos == ("acme/acme-backend",)
 
 
 def test_parse_parent_issue_loose_shape_preserves_duplicate_cross_org_tails():
