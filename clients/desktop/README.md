@@ -7,12 +7,13 @@ repair: what needs attention, which plans are waiting, which runs failed, which
 memory candidates need review, which Slack collaborators are trusted, and which
 local actions are safe to run next.
 
-The app is the friendly path into Alfred. The CLI remains fully supported for
-automation, debugging, and users who prefer a terminal.
+The app is the default friendly path into Alfred. The CLI remains fully
+supported for automation, debugging, servers, and users who prefer a terminal.
 
 ## Where this fits (layered install)
 
-Alfred installs in layers, and this client is the optional top one:
+Alfred installs in layers, and this client is the recommended local control
+plane:
 
 1. **`alfred` CLI + runtime**: the base. Schedules the fleet, runs agents, and
    owns all state under `$ALFRED_HOME` (`~/.alfred` by default). Required.
@@ -20,14 +21,15 @@ Alfred installs in layers, and this client is the optional top one:
    state. The desktop client uses `http://127.0.0.1:7010`. Legacy saved
    URLs on `http://127.0.0.1:7000` are normalized back to 7010 because
    macOS can reserve port 7000 for Control Center.
-3. **Alfred Desktop (this app)**: the optional native control plane: a menu-bar
+3. **Alfred Desktop (this app)**: the native control plane: a menu-bar
    tray, five primary destinations (Inbox, Ask, Work, Agents, Setup), a
    command palette, and a narrow set of safe local actions. It does not run
    agents itself; it reads `alfred serve` and shells a small allowlist of
    `alfred` CLI verbs.
 
-You can run the fleet headless with just the CLI. The desktop app is a
-convenience surface on top, not a dependency.
+You can run the fleet headless with just the CLI. For a normal Mac/Linux local
+install, install the CLI/runtime first, then use the desktop app as the friendly
+control plane while keeping the CLI visible for advanced inspection and repair.
 
 The app navigation is five primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
@@ -62,10 +64,11 @@ reviewable memory candidates with promote / reject and failure-pattern harvest.
 
 **Setup** is the client-owned, onboarding-first surface and the repair path: it
 detects installed engine CLIs, connects GitHub and picks repos, starts the local
-runtime, checks the optional code-memory graph layer, runs common Alfred checks
-in-app, adds or removes local trusted Slack collaborators, and keeps the
-underlying CLI commands visible as advanced detail. It also owns Appearance,
-including the Alfred and Linear Crisp themes plus dark/light mode.
+runtime, checks the optional code-memory graph layer, shows the current full
+fleet configuration, shows whether the deployed scheduler manifest exists, runs
+common Alfred checks in-app, adds or removes local trusted Slack collaborators,
+and keeps runtime state visible for CLI follow-up. It also owns Appearance,
+including roster themes, custom agent names, and dark/light mode.
 
 A command palette (Cmd+K) navigates anywhere, and the sidebar includes a fast
 dark/light mode toggle.

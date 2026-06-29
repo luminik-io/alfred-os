@@ -36,20 +36,22 @@ commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
 `alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
 want `main`, framework edits, or Linux.
 
-## Install Alfred Desktop
+## Recommended: Install the runtime, then Alfred Desktop
 
-The core fleet runs without a UI. Alfred Desktop is the native Mac/Linux app for
-watching the fleet, reviewing plans, checking memory candidates, and running safe
-local repairs.
+Alfred Desktop is the native Mac/Linux starting point for most local installs.
+It watches the fleet, reviews plans, checks memory candidates, runs safe local
+repairs, detects existing configuration, and starts or reconnects to the local
+runtime. It is a control surface over the local Alfred CLI/runtime, so install
+the runtime first. The direct Desktop package does not bundle `alfred`,
+`alfred-init`, or `alfred serve` yet.
 
-1. Finish the core install above.
-2. Start the local API:
+1. Install the Alfred CLI/runtime with the source or Homebrew path above.
+2. Download the signed Mac package or Linux build from [Download](/download/).
+3. Start or reconnect the local API from Setup, or run it directly:
 
    ```sh
    alfred serve --port 7010 --no-browser
    ```
-
-3. Download the signed Mac package or Linux build from [Download](/download/).
 
 For source builds:
 
@@ -60,7 +62,8 @@ npm run tauri dev
 ```
 
 The desktop app reads the same `$ALFRED_HOME` state and GitHub records as the
-CLI. You can keep using Alfred entirely from the terminal when you prefer.
+CLI. You can still run Alfred entirely from the terminal when you are setting up
+a server, CI-like host, or headless agent box.
 
 Full fleet for one repo or an explicit comma-separated repo list:
 
@@ -73,14 +76,30 @@ Full fleet for one repo or an explicit comma-separated repo list:
 ```
 
 This is the zero-guess path for a solo builder or an AI coding tool setting up
-one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has completed, and
-`claude` has completed first-run auth. The repo owner must match `GH_ORG`; the
-runtime agents store the bare repo name in `~/.alfredrc` and build
-`GH_ORG/repo` at firing time. The command enables the full engineering fleet,
-assigns the selected repo to each repo-operating agent, skips Slack safely,
-seeds prompt templates into `~/.alfred/prompts/`, creates standard GitHub labels
-on the selected repos, writes `launchd/agents.conf`, the shared scheduler
-manifest, updates `~/.alfredrc`, runs deploy, and runs doctor.
+one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has
+completed, and `claude` has completed first-run auth. The repo owner must match
+`GH_ORG`; the runtime agents store the bare repo name in `~/.alfredrc` and build
+`GH_ORG/repo` at firing time. The command enables the full engineering fleet
+using exact installer selectors: `drake`, `batman`, `lucius`, `rasalghul`,
+`bane`, `nightwing`, `robin`, `automerge`, `agent-cleanup`,
+`memory-harvest`, `memory-auto-promote`, `code-map-refresh`,
+`agent-morning-brief`, `fleet-doctor`, `fleet-recap-morning`,
+`fleet-recap-evening`, `shipped-summary-daily`, and
+`shipped-summary-weekly`. Huntress and Gordon are in the fleet catalog too, but
+their scheduler rows are generated only when
+`ALFRED_HUNTRESS_TARGET_URL` and `ALFRED_GORDON_ECS_CLUSTER` are present in the
+install config or runtime env files. If you add those settings later, rerun
+`alfred-init` and deploy the regenerated schedule. It assigns the selected repo
+list to each repo-operating agent, skips Slack safely, seeds prompt templates
+into `~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
+writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
+`~/.alfredrc`, runs deploy, and runs doctor.
+
+Batman is included in the full fleet. It only acts on approved
+`agent:large-feature` parent issues after `alfred batman setup` writes the
+parent planning repo, approval channel, trusted operator settings, and
+`BATMAN_AUTO_EXECUTE=approval-gate`; then explicitly arm the runner with
+`alfred enable batman`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
 bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
