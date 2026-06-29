@@ -23,7 +23,7 @@ flowchart LR
         prs["PRs<br/>(agent:authored)"]
     end
 
-    batman["batman<br/><i>architect · opt-in</i>"]
+    batman["batman<br/><i>architect · approval-gated</i>"]
     lucius["lucius<br/><i>feature-dev · every 20m</i>"]
     drake["drake<br/><i>planner · every 2h</i>"]
     damian["damian<br/><i>spec-bundle-planner · opt-in</i>"]
@@ -63,7 +63,7 @@ Batman is the architect agent that leads a whole feature across repos. Where Luc
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
 
-Batman runs every hour by default but is opt-in: a fresh install does not start it. Enable it once you have a recurring multi-repo or monorepo-package feature shape and want a coordination layer above the per-repo agents. Fresh installs halt after the plan by default. Set `BATMAN_AUTO_EXECUTE=approval-gate` after setup when you want Batman to file child issues only after Slack approval.
+Batman is part of the public fleet and runs on the same local schedule model as the other agents, but parent-plan execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`; with the default `BATMAN_AUTO_EXECUTE=0`, parent issues halt after the plan. Set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
 
 See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
@@ -78,14 +78,15 @@ full roster by default. Use `--agents starter` only when you deliberately want a
 small lab roster.
 
 Config-heavy agents are visible without being accidentally armed. Batman stays
-behind the runner gate until `alfred enable batman`; Huntress and Gordon stay as
-disabled scheduler rows until their staging or ECS settings exist.
+behind the runner gate until `alfred enable batman` and then still obeys
+`BATMAN_AUTO_EXECUTE`; Huntress and Gordon stay as disabled scheduler rows until
+their staging or ECS settings exist.
 
 ### Specialist agents
 
 | Codename | Role | Default schedule | What it does |
 |---|---|---|---|
-| **batman** | architect | every 1 h, opt-in | Leads multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
+| **batman** | architect | every 1 h, approval-gated | Leads multi-repo features. The parent-issue path can draft the rollout, wait for Slack approval, file child `agent:implement` issues, and report status so implementation can move in parallel. The legacy scan path drafts plans only. See [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md). |
 | **lucius** | feature-dev | every 20 min | Picks the oldest open `agent:implement` issue, claims it via the state machine, opens a worktree, runs the configured engine with the issue body + repo context, pushes a PR labelled `agent:authored`. |
 | **drake** | planner | every 2 h | Reads specs, roadmap, cross-repo open-issue list, and a code-reality grep. Files the next well-scoped `agent:implement` issue. Caps at 5 issues per firing, 20 in a rolling 24 h. |
 | **damian** | spec-bundle-planner | daily 09:00, opt-in | Walks `DAMIAN_SPEC_DIR`, identifies multi-repo features, and files `agent:bundle:<slug>` siblings across the affected repos. All-or-nothing per bundle. Caps at 3 bundles per firing. Single-repo work is left to drake. |

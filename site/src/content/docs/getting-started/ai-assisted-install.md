@@ -102,8 +102,8 @@ export REPOS="my-org/api,my-org/web,my-org/mobile"
 
 Public Batman is multi-repo aware. The parent-issue path posts a rollout plan to
 Slack, waits for approval when required, files scoped child issues, and reports
-status. The older scan path still drafts plans only. Set `BATMAN_AUTO_EXECUTE=0`
-to make every parent-issue plan wait for approval; the default
-`approval-gate` reads Slack reactions; set `1` to skip the gate entirely (not
-recommended for fresh installs). See
+status. The older scan path still drafts plans only. The default
+`BATMAN_AUTO_EXECUTE=0` halts after the plan for manual control. Set
+`approval-gate` when you want Slack-approved child issue filing; set `1` to
+skip the gate entirely (not recommended for fresh installs). See
 [docs/BATMAN.md](https://github.com/luminik-io/alfred-os/blob/main/docs/BATMAN.md).

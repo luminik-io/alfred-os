@@ -24,7 +24,7 @@ work unless you let it.
 - **Bane** adds the tests.
 - **Nightwing** clears the review comments.
 - **Batman** is the architect for multi-repo work: he plans large features, files
-  the child issues, and drives them through to merged PRs.
+  the child issues, and keeps the bundle moving through reviewed, gated PRs.
 
 **It runs on the Claude Max or Codex Pro subscription you already pay for. No API
 keys, no separate token bill.** Alfred shells out to your local `claude` and
@@ -33,12 +33,17 @@ key setup.
 
 ```mermaid
 flowchart LR
-    intake["Slack message<br/>GitHub issue<br/>rough plan"] --> drake["Drake<br/>scopes the work"]
-    drake --> lucius["Lucius<br/>writes code, opens PR"]
+    intake["Slack message<br/>GitHub issue<br/>rough plan"] --> route{"one repo<br/>or many?"}
+    route -->|single repo| drake["Drake<br/>scopes the work"]
+    route -->|multi-repo| batman["Batman<br/>architects rollout"]
+    batman --> children["child issues<br/>agent:implement"]
+    drake --> children
+    children --> lucius["Lucius<br/>writes code, opens PR"]
     lucius --> ras["Ra's al Ghul<br/>reviews the PR"]
     ras --> bane["Bane<br/>adds tests"]
     bane --> nightwing["Nightwing<br/>clears review comments"]
-    nightwing --> you["You<br/>approve and merge"]
+    nightwing --> gate["human or policy<br/>merge gate"]
+    gate --> done["merged PRs<br/>across repos"]
 ```
 
 ### Why Alfred
@@ -126,7 +131,7 @@ gaps, and multi-repo rollouts.
 
 - **Narrow, single-purpose roles.** Drake plans, Lucius implements, Ra's al
   Ghul reviews, Bane adds tests, Nightwing clears review comments, and Batman
-  ships multi-repo rollouts.
+  drives multi-repo rollouts into repo-sized PRs.
 - **Coordinate through ordinary repo primitives.** Issues, pull requests, labels,
   specs, isolated worktrees, commit trailers, and Slack summaries. The dashboard
   and desktop app read the same local state and GitHub records.
@@ -150,11 +155,16 @@ gaps, and multi-repo rollouts.
   single-repo issue waits behind an approval gate (`agent:plan-pending-approval`)
   until you approve it.
 
-Default flow: request, plan, spec, or issue -> Drake files scoped
+Default single-repo flow: request, plan, spec, or issue -> Drake files scoped
 `agent:implement` issues -> Lucius claims one and opens a worktree -> Claude Code
 or Codex implements -> a PR opens with `agent:authored` -> Ra's al Ghul reviews
 -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge lands the small
 safe PRs you allow -> Slack reports what changed.
+
+Default multi-repo flow: one `agent:large-feature` parent -> Batman drafts the
+rollout -> the approval gate captures the exact scope -> Batman files linked
+child `agent:implement` issues across repos -> Lucius, Bane, Nightwing, Ra's al
+Ghul, and the merge gate carry each child PR to completion.
 
 ## Quick start
 
@@ -246,10 +256,11 @@ prompt templates, creates the standard GitHub labels on selected repos, writes
 the scheduler manifest (`launchd/agents.conf`), updates `~/.alfredrc`, then runs
 deploy and doctor.
 
-Config-heavy agents are visible from the start without being accidentally
-armed. Batman stays behind the runner gate until `alfred enable batman`;
-Huntress and Gordon stay as disabled scheduler rows until their required staging
-or ECS settings exist.
+The full fleet is installed and visible from the start. High-impact lanes still
+have explicit gates: Batman is configured but waits behind the runner gate until
+`alfred enable batman`, and it still needs its approval mode before filing child
+issues. Huntress and Gordon stay as disabled scheduler rows until their required
+staging or ECS settings exist.
 
 For a framework-only install with no agents configured, use `bash deploy.sh &&
 bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See
@@ -380,7 +391,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
-| [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, and carries approved thread notes into child issues. |
+| [`bin/batman.py`](bin/batman.py) | Architect agent for cross-repo work. Picks `agent:large-feature` / `agent:bundle:<slug>` issues, posts a Slack plan, applies approved repo-scope amendments, files scoped child `agent:implement` issues, and carries approved thread notes into those issues. |
 | [`bin/fleet-doctor.py`](bin/fleet-doctor.py) | Daily fleet-health snapshot. Read-only checks (paused repos, global block, stale worktrees, runner gate list) → severity-stripe Slack thread. |
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
 | [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts aggregate counts to Alfred's hosted collector by default; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |
