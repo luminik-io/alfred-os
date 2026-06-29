@@ -398,10 +398,19 @@ def _promote_explicit_rollout_targets(
     for repo_key in rollout:
         if "/" not in repo_key:
             continue
-        for idx, target in enumerate(affected):
-            if "/" not in target and _repo_keys_match(repo_key, target, explicit_repo_slugs):
-                affected[idx] = repo_key
-                explicit_repo_slugs[repo_key] = repo_key
+        explicit_match_exists = any(
+            target == repo_key or explicit_repo_slugs.get(target) == repo_key for target in affected
+        )
+        if explicit_match_exists:
+            continue
+        bare_matches = [
+            idx
+            for idx, target in enumerate(affected)
+            if "/" not in target and _repo_keys_match(repo_key, target, explicit_repo_slugs)
+        ]
+        if len(bare_matches) == 1:
+            affected[bare_matches[0]] = repo_key
+            explicit_repo_slugs[repo_key] = repo_key
     deduped: list[str] = []
     for repo_key in affected:
         if repo_key not in deduped:

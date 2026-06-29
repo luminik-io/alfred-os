@@ -662,6 +662,29 @@ We want backend changes in the external app and the local app.
     assert set(plan.affected_repos) == {"acme/backend", "myorg/backend"}
 
 
+def test_parse_parent_issue_explicit_rollout_keeps_bare_same_tail_repo():
+    body = """
+We want backend changes in the external app and the local app.
+
+## Affected Repos
+- acme/backend
+- backend
+
+## Rollout order
+- acme/backend
+
+## Acceptance Criteria
+
+### backend
+- Add the shared worker behind the rollout flag.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "myorg/backend"]
+    assert plan.affected_repos == ("acme/backend", "myorg/backend")
+
+
 def test_parse_parent_issue_blocks_ambiguous_short_child_repo_key():
     body = """
 Bundle: shared backend rollout
