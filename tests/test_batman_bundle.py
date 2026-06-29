@@ -151,6 +151,21 @@ def test_parse_plan_explicit_rollout_promotes_bare_affected_repo():
     assert plan.repo_slugs == {"acme/backend": "acme/backend"}
 
 
+def test_parse_plan_default_rollout_orders_explicit_affected_slugs(monkeypatch):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "DEFAULT_ROLLOUT_ORDER", ["backend", "frontend", "mobile"])
+
+    body = "## Affected Repos\n- acme/frontend\n- acme/backend\n"
+    plan = bm.parse_plan_from_issue(body)
+
+    assert plan.affected_repos == ["acme/backend", "acme/frontend"]
+    assert plan.repo_slugs == {
+        "acme/frontend": "acme/frontend",
+        "acme/backend": "acme/backend",
+    }
+
+
 def test_parse_plan_h2_block_with_comma_separated_payload():
     """PR #121 fix: bare comma-separated payload after the H2 header
     must parse, not silently fall back to the default rollout."""
@@ -548,6 +563,35 @@ We want a cross-org billing worker rollout.
 
     assert [child.repo for child in plan.children] == ["acme/backend"]
     assert plan.affected_repos == ("acme/backend",)
+
+
+def test_parse_parent_issue_loose_shape_orders_explicit_slugs_by_default_rollout(
+    monkeypatch,
+):
+    import batman as bm
+
+    monkeypatch.setattr(bm, "DEFAULT_ROLLOUT_ORDER", ["backend", "frontend", "mobile"])
+
+    body = """
+We want a cross-org app rollout.
+
+## Affected Repos
+- acme/frontend
+- acme/backend
+
+## Acceptance Criteria
+
+### frontend
+- Wire the UI to the new API.
+
+### backend
+- Add the API.
+"""
+
+    plan = _parse_parent(body)
+
+    assert [child.repo for child in plan.children] == ["acme/backend", "acme/frontend"]
+    assert plan.affected_repos == ("acme/backend", "acme/frontend")
 
 
 def test_parse_parent_issue_loose_shape_preserves_mapped_slug_with_bare_rollout(

@@ -556,7 +556,8 @@ def parse_plan_from_issue(body: str) -> PlanShape:
                 affected.append(r)
         ordered = [r for r in rollout_override if r in affected]
     elif affected:
-        ordered = [r for r in rollout_order if r in affected]
+        expanded_rollout = _expand_rollout_repo_keys(rollout_order, affected, explicit_repo_slugs)
+        ordered = [r for r in expanded_rollout if r in affected]
         ordered += [r for r in affected if r not in ordered]
     else:
         ordered = list(rollout_order[:3])
