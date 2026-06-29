@@ -1136,8 +1136,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_dry_run(args: argparse.Namespace) -> int:
-    launcher_env = agent_runner.launcher_env()
+def cmd_dry_run(
+    args: argparse.Namespace, *, resolved_launcher_env: dict[str, str] | None = None
+) -> int:
+    launcher_env = (
+        dict(resolved_launcher_env)
+        if resolved_launcher_env is not None
+        else agent_runner.launcher_env()
+    )
     previous_env = os.environ.copy()
     os.environ.update(launcher_env)
     try:
@@ -1150,7 +1156,7 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
                     simulate=args.simulate,
                     json=False,
                 )
-                rc = cmd_dry_run(child_args) or rc
+                rc = cmd_dry_run(child_args, resolved_launcher_env=launcher_env) or rc
                 print("")
             return rc
         record = _resolve_agent_record(args.codename)

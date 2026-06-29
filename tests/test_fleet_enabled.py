@@ -257,6 +257,55 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
     assert "WORKSPACE_ROOT" not in os.environ
 
 
+def test_cli_native_dry_run_all_reuses_launcher_env(monkeypatch, tmp_path):
+    runtime = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (runtime / "launchd").mkdir(parents=True)
+    (runtime / "launchd" / "agents.conf").write_text(
+        "custom.fleet.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+
+    cli = _load_cli_module()
+    launcher_calls = 0
+    captured: list[dict[str, str]] = []
+
+    def fake_launcher_env():
+        nonlocal launcher_calls
+        launcher_calls += 1
+        if launcher_calls > 1:
+            raise AssertionError("dry-run all must reuse the parent launcher env")
+        return {
+            "ALFRED_HOME": str(runtime),
+            "WORKSPACE_ROOT": str(workspace),
+            "CUSTOM_FROM_LAUNCHER": "loaded-once",
+        }
+
+    def fake_run(cmd, **kwargs):
+        captured.append(kwargs["env"])
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(cli.agent_runner, "launcher_env", fake_launcher_env)
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    rc = cli.cmd_dry_run(
+        argparse.Namespace(codename="all", native=True, simulate=False, json=False)
+    )
+
+    assert rc == 0
+    assert launcher_calls == 1
+    assert len(captured) == 1
+    assert captured[0]["ALFRED_HOME"] == str(runtime)
+    assert captured[0]["WORKSPACE_ROOT"] == str(workspace)
+    assert captured[0]["CUSTOM_FROM_LAUNCHER"] == "loaded-once"
+    assert captured[0]["LAUNCHD_LABEL"] == "custom.fleet.lucius"
+    assert "ALFRED_HOME" not in os.environ
+    assert "WORKSPACE_ROOT" not in os.environ
+
+
 def test_cli_engine_set_supports_batman(tmp_path):
     env = {
         "ALFRED_HOME": str(tmp_path / "alfred"),
