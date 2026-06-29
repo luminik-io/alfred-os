@@ -206,21 +206,21 @@ read_env_key() {
 }
 
 rc_targets_effective_home() {
-  local selected_alfredrc="$1" direct_selected_alfredrc="$2" original_home rc_home
+  local selected_alfredrc="$1" direct_selected_alfredrc="$2" effective_home rc_home
   if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
     return 0
   fi
-  if ! original_env_has_key "ALFRED_HOME" || [ -z "${ALFRED_HOME:-}" ]; then
+  if [ -z "${ALFRED_HOME:-}" ]; then
     return 0
   fi
-  original_home="$(normalize_runtime_home "$ALFRED_HOME")"
+  effective_home="$(normalize_runtime_home "$ALFRED_HOME")"
   rc_home="$(read_env_key "$selected_alfredrc" "ALFRED_HOME")"
   if [ -n "$rc_home" ]; then
     rc_home="$(normalize_runtime_home "$rc_home")"
   else
     rc_home="$(normalize_runtime_home "$HOME/.alfred")"
   fi
-  [ "$original_home" = "$rc_home" ]
+  [ "$effective_home" = "$rc_home" ]
 }
 
 load_env_file() {

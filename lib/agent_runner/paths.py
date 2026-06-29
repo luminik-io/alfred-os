@@ -352,8 +352,6 @@ def _blocked_setup_runtime_keys_for_rc(
     direct_selected_alfredrc: bool,
     inherited_keys: set[str],
 ) -> set[str] | None:
-    if "ALFRED_HOME" not in inherited_keys:
-        return None
     process_home = env.get("ALFRED_HOME", "").strip()
     if not process_home or direct_selected_alfredrc:
         return None

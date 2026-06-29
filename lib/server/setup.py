@@ -360,6 +360,7 @@ def persist_selected_repos(
     repos: list[str],
     *,
     queue_repos: list[str] | None = None,
+    replace_queue_repos: bool = False,
 ) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
@@ -367,11 +368,16 @@ def persist_selected_repos(
     the change takes effect for this running server without a restart
     (``config_value`` prefers the process env, and a fresh board call then sees
     the new scope immediately). Queue mutation scope is only written when the
-    caller supplies ``queue_repos`` explicitly.
+    caller supplies ``queue_repos`` explicitly and there is no existing queue
+    scope. Existing queue scopes are only replaced by ``replace_queue_repos``.
     """
     clean = normalize_repo_slugs(repos)
     clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
-    values = _repo_scope_values_for_save(clean, queue_repos=clean_queue)
+    values = _repo_scope_values_for_save(
+        clean,
+        queue_repos=clean_queue,
+        replace_queue_repos=replace_queue_repos,
+    )
     env_path = write_env_values(values)
     for key in values:
         # Mirror into the live process so the new scope is effective now. An
@@ -392,13 +398,15 @@ def _repo_scope_values_for_save(
     repos: list[str],
     *,
     queue_repos: list[str] | None = None,
+    replace_queue_repos: bool = False,
 ) -> dict[str, str]:
     """Repo keys to persist for a setup repo save.
 
     The onboarding repo picker owns the board-visible scope. Queue scope is a
-    mutation boundary, so it only changes when the caller supplies
-    ``queue_repos`` explicitly. Without that, preserve any existing queue scope
-    and never widen an absent queue allowlist as a side effect of a board save.
+    mutation boundary, so guided saves can seed it on fresh installs but must
+    preserve any existing queue scope. Replacing an existing queue allowlist
+    requires ``replace_queue_repos`` so board visibility cannot widen mutation
+    permissions as a side effect.
     """
 
     value = _format_repo_value(repos)
@@ -406,11 +414,11 @@ def _repo_scope_values_for_save(
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
     }
-    if queue_repos is not None:
-        return {QUEUE_REPOS_ENV: _format_repo_value(queue_repos), **values}
-
     runtime_env = _runtime_config_env()
     queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
+    if queue_repos is not None and (replace_queue_repos or not queue_scope_present):
+        return {QUEUE_REPOS_ENV: _format_repo_value(queue_repos), **values}
+
     if queue_scope_present:
         values = {QUEUE_REPOS_ENV: _format_repo_value(existing_queue), **values}
     return values

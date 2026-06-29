@@ -190,8 +190,8 @@ def test_launcher_env_follows_alfredrc_pointer_without_retargeting_runtime(
 
     assert env["ALFREDRC"] == str(custom_rc)
     assert env["ALFRED_HOME"] == str(stale_runtime)
-    assert env["ALFRED_QUEUE_REPOS"] == "org/custom"
-    assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/custom-memory"
+    assert env["ALFRED_QUEUE_REPOS"] == "org/stale"
+    assert env["ALFRED_CODE_MEMORY_REPOS"] == "org/stale-memory"
 
 
 def test_launcher_env_pointed_alfredrc_overrides_prior_rc_non_setup_keys(

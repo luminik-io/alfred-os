@@ -646,7 +646,9 @@ def register_routes(app: FastAPI) -> None:
         Body: ``{"repos": ["owner/repo", ...], "queue_repos": [...]}``. Writes
         the board allowlist keys to ``$ALFRED_HOME/.env`` and mirrors them into
         the live process so the new scope is effective without a restart. The
-        queue mutation allowlist changes only when ``queue_repos`` is present.
+        queue mutation allowlist is initialized from ``queue_repos`` only when no
+        queue scope exists yet; replacing an existing queue scope requires the
+        dedicated ``replace_queue_repos`` flag.
         """
         if not _same_origin_post(request) or not _authorized_mutation(request):
             return JSONResponse({"error": "forbidden"}, status_code=403)
@@ -665,12 +667,19 @@ def register_routes(app: FastAPI) -> None:
                 {"error": "queue_repos must be a list of owner/repo slugs"},
                 status_code=400,
             )
+        replace_queue_repos = body.get("replace_queue_repos", False)
+        if not isinstance(replace_queue_repos, bool):
+            return JSONResponse(
+                {"error": "replace_queue_repos must be a boolean"},
+                status_code=400,
+            )
         from server import setup as setup_mod
 
         try:
             result = setup_mod.persist_selected_repos(
                 raw_repos,
                 queue_repos=raw_queue_repos,
+                replace_queue_repos=replace_queue_repos,
             )
         except (OSError, ValueError):
             logger.exception("api_setup_select_repos: failed to persist repo selection")

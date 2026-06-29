@@ -723,6 +723,50 @@ def test_agent_launch_indirect_pointed_rc_cannot_move_default_runtime(
     assert "org/pointed-env" not in proc.stdout
 
 
+def test_agent_launch_indirect_pointed_rc_cannot_import_setup_scope_without_default_env(
+    tmp_path: Path,
+) -> None:
+    home = tmp_path / "home"
+    default_runtime = home / ".alfred"
+    pointed_runtime = tmp_path / "pointed-runtime"
+    custom_rc = tmp_path / "custom.alfredrc"
+    home.mkdir()
+    default_runtime.mkdir()
+    pointed_runtime.mkdir()
+    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc}\n", encoding="utf-8")
+    custom_rc.write_text(
+        f"ALFRED_HOME={pointed_runtime}\nALFRED_QUEUE_REPOS=org/pointed\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "echo-indirect-scope.sh"
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        'echo "HOME_VAR=${ALFRED_HOME:-unset}"\n'
+        'echo "REPOS=${ALFRED_QUEUE_REPOS:-unset}"\n',
+        encoding="utf-8",
+    )
+    _make_executable(target)
+
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env.pop("ALFRED_HOME", None)
+    env.pop("ALFREDRC", None)
+    env.pop("ALFRED_QUEUE_REPOS", None)
+
+    proc = subprocess.run(
+        ["bash", str(AGENT_LAUNCH), str(target)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert f"HOME_VAR={default_runtime}" in proc.stdout
+    assert "REPOS=unset" in proc.stdout
+    assert "org/pointed" not in proc.stdout
+
+
 def test_agent_launch_direct_alfredrc_retargets_stale_process_runtime(
     tmp_path: Path,
 ) -> None:
