@@ -10,13 +10,13 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
 
 <MarketingLayout
   title="Planning across repos | Alfred"
-  description="Batman drafts one plan across the repos you choose, files scoped tasks in each repo, and the fleet picks them up through the normal queue."
+  description="Batman drafts one approved plan across the repos you choose, files scoped tasks in each repo, and the fleet carries them through the normal PR queue."
   path="/multi-repo/"
 >
   <Hero
     eyebrow="PLANNING ACROSS REPOS"
     headline="Plan once. Build across every repo."
-    sub="Batman drafts one plan across the repos you choose, files scoped tasks in each repo, and the fleet picks them up through the normal queue."
+    sub="Batman drafts one approved plan across the repos you choose, files scoped tasks in each repo, and the fleet carries them through the normal PR queue."
     headlineSize="lg"
     primaryCta={{ label: "Read the worked example", href: "/guides/specs-driven-development/" }}
 	    secondaryCta={{ label: "Install", href: "/getting-started/install/" }}
@@ -39,7 +39,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
       <SectionHeader
         eyebrow="HOW THE WORK SPLITS UP"
         title="One request becomes one pull request per repo."
-        lede="The diagram below shows what Batman keeps track of. Each repo gets its own task, Lucius picks it up on the next run, and each pull request merges on its own."
+        lede="The diagram below shows what Batman keeps track of. Each repo gets its own task, Lucius picks it up on the next run, and each pull request passes its own review, test, and merge gate."
       />
       <BatmanFanOut />
       <SlackProof
@@ -57,7 +57,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
       <SectionHeader
         eyebrow="WHAT BATMAN FILES"
         title="A plan, then a task per repo, then the work."
-        lede="Batman reads one big feature request, drafts the plan, and posts it to Slack for approval. You react with the agreed emoji. Batman then files scoped tasks in the right repos. Lucius and the rest of the fleet claim those tasks through the normal queue, with the same worktree, spend, review, and merge gates as any other run."
+        lede="Batman reads one parent-plan issue, drafts the rollout, and posts it to Slack for approval. You react with the agreed emoji. Batman then files scoped tasks in the right repos. Lucius and the rest of the fleet claim those tasks through the normal queue, with the same worktree, spend, review, and merge gates as any other run."
       />
       <div class="example-grid">
         <div>
@@ -123,7 +123,7 @@ import BatmanFanOut from "../components/marketing/BatmanFanOut.astro";
           <p>You add this to a feature request. Batman picks it up, drafts a plan, and posts it to Slack for approval.</p>
         </div>
         <div class="m-card states__row">
-          <code class="m-mono states__tag">bundle:&lt;slug&gt;</code>
+          <code class="m-mono states__tag">agent:bundle:&lt;slug&gt;</code>
           <p>Added to every task Batman files, so each one points back to the plan it belongs to.</p>
         </div>
         <div class="m-card states__row">

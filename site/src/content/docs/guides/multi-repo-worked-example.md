@@ -23,19 +23,28 @@ Fleet configuration for this example:
 ALFRED_DRAKE_REPOS=your-backend,your-frontend,your-mobile
 ALFRED_LUCIUS_REPOS=your-backend,your-frontend,your-mobile
 ALFRED_RASALGHUL_REPOS=your-backend,your-frontend,your-mobile
-BATMAN_SCAN_REPOS=your-backend,your-frontend,your-mobile
+BATMAN_PARENT_REPO=your-org/your-specs
+BATMAN_AUTO_EXECUTE=approval-gate
+```
+
+Because the parent issue lives in the specs repo while `--repos` usually names
+only code repos, bootstrap Alfred's labels there too:
+
+```sh
+alfred labels bootstrap your-org/your-specs
 ```
 
 ## Step 1: File one `agent:large-feature` issue
 
-Open the issue in the repo that owns the first decision. For a
-schema-shaped feature like this, that is the backend. The issue carries two
-labels: `agent:large-feature` and `agent:bundle:add-org-slug`.
+Open the issue in `BATMAN_PARENT_REPO`. For a product fleet that usually means
+the specs or planning repo, not one of the implementation repos. The issue
+carries `agent:large-feature`; Batman derives the bundle label for the child
+issues from the title.
 
 ```md
-Title: Add `org_slug` to account-scoped URLs
+Title: Bundle: add-org-slug - Add `org_slug` to account-scoped URLs
 
-Labels: agent:large-feature, agent:bundle:add-org-slug
+Labels: agent:large-feature
 
 ## What
 
@@ -52,22 +61,27 @@ addition to the numeric id, so:
 Numeric routes keep working. The slug is the new preferred form for new
 links shared by the product.
 
-## Acceptance criteria
+Repos:
 
-- [ ] Backend: `Account` has a unique non-null `slug` column with a
-      lower-snake-case constraint; a new slug-resolver endpoint exists;
-      existing id-keyed routes still work.
-- [ ] Frontend: any new internal link uses the slug; account switcher writes
-      the slug into the URL; loading by slug works on cold load.
-- [ ] Mobile: deep links match `/<slug>/...` and `/accounts/<id>/...`.
-- [ ] One end-to-end test that creates an account, reads it by slug, and
-      reads it by id.
+- your-org/your-backend
+- your-org/your-frontend
+- your-org/your-mobile
 
-## Repos this touches
+Children:
 
-  - your-backend (first; schema + endpoint)
-  - your-frontend (after backend ships staging)
-  - your-mobile (after backend ships staging)
+- your-backend: Add `org_slug` column and resolver endpoint for accounts
+- your-frontend: Route account-scoped pages by `org_slug`
+- your-mobile: Support `org_slug` deep links
+
+Done when:
+
+- Backend: `Account` has a unique non-null `slug` column with a
+  lower-snake-case constraint; a new slug-resolver endpoint exists; existing
+  id-keyed routes still work.
+- Frontend: any new internal link uses the slug; account switcher writes the
+  slug into the URL; loading by slug works on cold load.
+- Mobile: deep links match `/<slug>/...` and `/accounts/<id>/...`.
+- One end-to-end test creates an account, reads it by slug, and reads it by id.
 
 ## Out of scope
 
@@ -89,15 +103,14 @@ fall back to id-keyed routes automatically.
 
 ## Step 2: Batman picks the issue up
 
-Batman fires once per hour. On the next firing it scans `BATMAN_SCAN_REPOS`,
-finds the `agent:large-feature` issue, resolves the bundle from the
-`agent:bundle:add-org-slug` label (one issue at this point, the trigger
-itself), and posts a plan summary.
+Batman fires once per hour. On the next firing it reads `BATMAN_PARENT_REPO`,
+finds the `agent:large-feature` issue, parses the `Repos:` and `Children:`
+blocks, and posts a plan summary.
 
 ```
 [15:04:11] batman  preflight ok                        ● green
-[15:04:12] batman  scanning 3 repos for agent:large-feature
-[15:04:14] batman  found 1 issue, 1 bundle: add-org-slug
+[15:04:12] batman  reading your-org/your-specs for agent:large-feature
+[15:04:14] batman  parsed 3 repos, 3 children: add-org-slug
 [15:04:14] batman  plan drafted                        ● green
 [15:04:15] batman  posted plan to #your-fleet-channel
 ```
@@ -107,7 +120,7 @@ The post Batman emits in Slack (rendered shape):
 ```
 batman · plan drafted
 
-Issue:        your-backend#247: Add `org_slug` to account-scoped URLs
+Issue:        your-specs#247: Bundle: add-org-slug - Add `org_slug` to account-scoped URLs
 Bundle:       add-org-slug
 Affected:     your-backend, your-frontend, your-mobile
 Rollout:      your-backend → your-frontend → your-mobile
@@ -127,8 +140,8 @@ through the same label, lock, spend, review, and merge gates as any other work.
 In the public package, approved Batman plans can file the three child issues.
 Each inherits `agent:bundle:add-org-slug` so the bundle stays trackable, and
 each is labelled `agent:implement` so Lucius can claim it. Operators who prefer
-a stricter manual process can keep Batman in plan-only mode and file the same
-children by hand.
+a stricter manual process can keep `BATMAN_AUTO_EXECUTE=0` and file the same
+children by hand after reviewing the plan.
 
 ### Child issue 1 (backend)
 

@@ -91,10 +91,11 @@ How to revert or disable the change if it breaks.
    bundle: if any sibling-create fails, the previously-created siblings are
    rolled back so Batman never picks up a half-filed bundle. Damian is
    opt-in and capped at three bundles per firing.
-3. **Batman plans multi-repo work.** A labelled `agent:large-feature` issue,
-   optionally grouped with `agent:bundle:<slug>`, becomes a rollout plan across
-   the configured repos. The plan is visible in Slack and in `alfred serve`
-   under Plans.
+3. **Batman plans multi-repo work.** In the scan path, labelled
+   `agent:large-feature` issues become rollout plans across the configured
+   repos. In the `BATMAN_PARENT_REPO` path, the approved parent plan can also
+   file child `agent:implement` issues. Plans are visible in Slack and in
+   `alfred serve` under Plans.
 4. **Lucius implements one repo at a time.** It claims a single
    `agent:implement` issue, opens an isolated worktree, invokes Claude Code or
    Codex, pushes a branch, and opens a PR.
@@ -205,18 +206,20 @@ The issue body should name:
 - known risks
 - human approval checklist
 
-Batman scans `BATMAN_SCAN_REPOS`, drafts the rollout plan, posts it to Slack or
-local logs, and saves the draft under `$ALFRED_HOME/batman-plans`. Treat the
-Slack thread as the place to change the plan before approval. Plain-English
-feedback is enough: "remove mobile", "make this read-only", "add an empty
-state", or "split this into two PRs".
+Batman has two public paths. The legacy `BATMAN_SCAN_REPOS` path drafts the
+rollout plan and stops before child issue filing. The `BATMAN_PARENT_REPO`
+path parses `Repos:`, `Children:`, and `Done when:` blocks, posts the plan to
+Slack or local logs, and can file child issues only when `BATMAN_AUTO_EXECUTE`
+allows it. Treat the Slack thread as the place to change the plan before
+approval. Plain-English feedback is enough: "remove mobile", "make this
+read-only", "add an empty state", or "split this into two PRs".
 
-When the bot has thread-history access, Alfred acknowledges newly captured
-plan replies in-thread with the execution scope if approved now, so the
-operator can keep refining before approval. Trusted feedback users can amend
-plans without approval authority. The final approval reaction is still the
-execution gate, and explicit `question:` replies keep the plan from executing
-until the question is resolved.
+When the bot has thread-history access on the parent-plan path, Alfred
+acknowledges newly captured plan replies in-thread with the execution scope if
+approved now, so the operator can keep refining before approval. Trusted
+feedback users can amend plans without approval authority. The final approval
+reaction is still the execution gate, and explicit `question:` replies keep the
+plan from executing until the question is resolved.
 
 Poorly scoped parent issues should not go straight to implementation. If the
 issue does not name repos, acceptance criteria, and done-when checks, keep it

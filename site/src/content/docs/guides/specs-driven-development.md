@@ -80,10 +80,11 @@ How to revert or disable the change if it breaks.
 1. **Drake reads specs and roadmap context.** It files scoped
    `agent:implement` issues only when the acceptance criteria are concrete and
    testable.
-2. **Batman plans multi-repo work.** A labelled `agent:large-feature` issue,
-   optionally grouped with `agent:bundle:<slug>`, becomes a rollout plan across
-   the configured repos. The plan is visible in Slack and in `alfred serve`
-   under Plans.
+2. **Batman plans multi-repo work.** In the scan path, labelled
+   `agent:large-feature` issues become rollout plans across the configured
+   repos. In the `BATMAN_PARENT_REPO` path, the approved parent plan can also
+   file child `agent:implement` issues. Plans are visible in Slack and in
+   `alfred serve` under Plans.
 3. **Lucius implements one repo at a time.** It claims a single
    `agent:implement` issue, opens an isolated worktree, invokes Claude Code or
    Codex, pushes a branch, and opens a PR.
@@ -137,17 +138,19 @@ agent:large-feature
 agent:bundle:<short-slug>   # optional when several issues belong together
 ```
 
-Batman scans `BATMAN_SCAN_REPOS`, drafts the rollout plan, posts it to Slack or
-local logs, and saves the draft under `$ALFRED_HOME/batman-plans`. Treat the
-Slack thread as the place to change the plan before approval. Plain-English
-feedback is enough: "remove mobile", "make this read-only", "add an empty
-state", or "split this into two PRs". Alfred acknowledges newly captured plan
-replies in-thread with the execution scope if approved now, and when the
-configured approver approves with a reaction, Alfred passes those replies along
-as approval amendments. Trusted feedback users can amend the plan without
-approval authority. Repo add/remove replies update execution scope before
-implementation starts, and `question:` replies keep the plan paused until they
-are resolved.
+Batman has two public paths. The legacy `BATMAN_SCAN_REPOS` path drafts the
+rollout plan and stops before child issue filing. The `BATMAN_PARENT_REPO`
+path parses `Repos:`, `Children:`, and `Done when:` blocks, posts the plan to
+Slack or local logs, and can file child issues only when `BATMAN_AUTO_EXECUTE`
+allows it. Treat the Slack thread as the place to change the plan before
+approval. Plain-English feedback is enough: "remove mobile", "make this
+read-only", "add an empty state", or "split this into two PRs". On the
+parent-plan path, Alfred acknowledges newly captured plan replies in-thread
+with the execution scope if approved now, and when the configured approver
+approves with a reaction, Alfred passes those replies along as approval
+amendments. Trusted feedback users can amend the plan without approval
+authority. Repo add/remove replies update execution scope before implementation
+starts, and `question:` replies keep the plan paused until they are resolved.
 
 The local Planning tab in `alfred serve` uses the same command vocabulary:
 

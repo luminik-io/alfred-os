@@ -774,14 +774,16 @@ def main() -> int:
         f"*Scope:* {', '.join(plan.affected_repos) or '(none)'}\n"
         f"*Rollout:* {' -> '.join(plan.affected_repos) or '(default)'}\n"
         f"*Engine:* `{BATMAN_ENGINE}`\n\n"
-        f"*Next step:* reply in this thread to steer the plan, or approve only if it is right.\n"
+        f"*Next step:* reply in this thread to steer the plan. This legacy scan "
+        f"path is plan-only; move the scope to a `BATMAN_PARENT_REPO` parent "
+        f"issue when you want approval and child issue filing.\n"
         f"*Replies Alfred understands:*\n"
         f"- `change:` adjust behavior or scope\n"
         f"- `acceptance:` add a done condition\n"
         f"- `test:` require a verification step\n"
         f"- `add repo:` or `remove repo:` change execution scope\n"
-        f"- `question:` blocks execution until answered\n\n"
-        f"*Approval gate:* :white_check_mark: starts this exact scope; :x: stops it.\n"
+        f"- `question:` records an open decision for the parent-plan issue\n\n"
+        f"*Execution:* no child issues are filed from `BATMAN_SCAN_REPOS`.\n"
     )
     # Try the bot-token thread root first; fall back to the
     # webhook surface so the operator gets *some* visibility on

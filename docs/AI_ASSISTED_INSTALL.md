@@ -275,8 +275,8 @@ and supports two public paths:
   and stop before child issue filing.
 
 Batman owns the feature shape above the repo-local work. It plans the rollout
-and files scoped child issues for the normal fleet queue when the gate allows
-it.
+in both modes, and the parent-plan path files scoped child issues for the normal
+fleet queue when the gate allows it.
 
 For an explicit multi-repo setup:
 
@@ -294,7 +294,9 @@ runner gate until you arm it:
 
 ```sh
 alfred enable batman
-# Ensure ~/.alfredrc has BATMAN_SCAN_REPOS=api,web,mobile, then redeploy.
+# For executable parent plans, set BATMAN_PARENT_REPO=my-org/specs.
+# Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
+alfred labels bootstrap my-org/specs
 bash deploy.sh
 bash bin/doctor.sh
 ```

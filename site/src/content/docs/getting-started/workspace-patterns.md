@@ -87,8 +87,8 @@ public paths:
   before child issue filing.
 
 Batman owns the feature shape above the repo-local work. It plans the rollout
-and files scoped child issues for the normal fleet queue when the gate allows
-it.
+in both modes, and the parent-plan path files scoped child issues for the normal
+fleet queue when the gate allows it.
 
 Configure it with the rest of the fleet:
 
@@ -100,5 +100,7 @@ Configure it with the rest of the fleet:
   --slack-webhook skip
 ```
 
-Then arm the runner gate with `alfred enable batman` when parent-plan work is
-ready.
+Then set `BATMAN_PARENT_REPO`, choose `BATMAN_AUTO_EXECUTE=approval-gate` when
+you want approved child filing, run `alfred labels bootstrap my-org/specs` for
+the parent repo if it sits outside `--repos`, and arm the runner gate with
+`alfred enable batman` when parent-plan work is ready.

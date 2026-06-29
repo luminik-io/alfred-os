@@ -75,11 +75,13 @@ status/set` persists per-agent engine choices under
 | `BATMAN_REPORT_FEEDBACK_TIMEOUT_S` | `lib/batman.py` post-report Slack follow-up capture | `60` |
 | `BATMAN_SLACK_CHANNEL` | `lib/batman.py` plan and report channel | (blank, falls back to Slack home channel) |
 
-Batman is opt-in. The newer `BATMAN_PARENT_REPO` path reads parent issues,
-waits for approval when required, files child `agent:implement` issues, and
-reports status. The legacy `BATMAN_SCAN_REPOS` path scans configured repos,
-groups `agent:bundle:<slug>` siblings, posts a rollout plan, and stops before
-child issue filing.
+Batman is included in the public fleet, but execution is gated. The newer
+`BATMAN_PARENT_REPO` path reads parent issues, waits for approval when required,
+files child `agent:implement` issues, and reports status. With the default
+`BATMAN_AUTO_EXECUTE=0`, parent issues halt after the plan; set
+`approval-gate` when you want approved child filing. The legacy
+`BATMAN_SCAN_REPOS` path scans configured repos, groups `agent:bundle:<slug>`
+siblings, posts a rollout plan, and stops before child issue filing.
 
 ## Claude auth
 

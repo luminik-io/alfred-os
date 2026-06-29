@@ -163,9 +163,9 @@ work. It has two public paths:
   `agent:bundle:<slug>` siblings, draft a rollout plan, and stop before child
   issue filing.
 
-Batman owns the feature shape above the repo-local work. It plans the rollout,
-files scoped child issues when the gate allows it, and keeps the implementation
-queue clear for Lucius and the rest of the fleet.
+Batman owns the feature shape above the repo-local work. It plans the rollout
+in both modes, and the parent-plan path files scoped child issues when the gate
+allows it so Lucius and the rest of the fleet get clear implementation work.
 
 The full-fleet setup configures it from the start:
 
@@ -181,7 +181,9 @@ For parent-plan execution, set the runner gate explicitly and redeploy:
 
 ```sh
 alfred enable batman
-# Add or verify BATMAN_SCAN_REPOS=api,web,mobile in ~/.alfredrc.
+# Add or verify BATMAN_PARENT_REPO=my-org/specs in ~/.alfredrc.
+# Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
+alfred labels bootstrap my-org/specs
 bash deploy.sh
 bash bin/doctor.sh
 ```

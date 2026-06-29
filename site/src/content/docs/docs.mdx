@@ -73,7 +73,7 @@ flowchart TB
     Route builders and reviewers separately across Claude Code, Codex, or hybrid fallback.
   </Card>
   <Card title="Batman: architect agent" icon="puzzle">
-    Batman leads the feature above the repo-local work. It reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, posts the plan to Slack for approval, and files scoped child issues so Lucius can pick them up in parallel.
+    Batman leads the feature above the repo-local work. The parent-plan path reads one `agent:large-feature` issue, drafts a rollout across every affected repo or monorepo package, waits for approval, and then files scoped child issues so Lucius can pick them up in parallel.
   </Card>
   <Card title="Local memory with an LLM judge" icon="puzzle">
     Fleet-brain recalls repo lessons, file touches, failure patterns, and memory candidates. Structural gates and the judge decide what is safe to promote, while the operator can still inspect or override.

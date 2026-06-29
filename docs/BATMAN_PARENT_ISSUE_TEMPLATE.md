@@ -65,13 +65,7 @@ Two gotchas:
 
 1. **Bundle label must be ~50 chars or less** (GitHub validation HTTP 422). Long bundle slugs combined with the `agent:bundle:` prefix overflow. Keep slugs short: `auth-v2`, not `migrate-authentication-from-jwt-to-oauth-across-all-services`.
 
-2. **Bundle label is not auto-created on target repos** (per #117). When Batman tries to file children with the bundle label, `gh issue create --label agent:bundle:<slug>` fails because the label doesn't exist on the target repo. Workaround until #117 lands:
-   ```sh
-   for repo in <r1> <r2> <r3>; do
-     gh label create "agent:bundle:<slug>" --color 5319e7 \
-       --description "Batman bundle" -R "$repo"
-   done
-   ```
+2. Batman now auto-creates per-bundle labels on target repos before filing child issues. If a target repo forbids label creation for your token, execution will report that repo as failed instead of silently continuing.
 
 ## Optional sections (parser ignores unknown sections gracefully)
 
@@ -195,7 +189,7 @@ If `children: 0`, the body shape doesn't match: fix and re-run before filing the
 - #107: silent `children=0` when body shape doesn't match (this template is the documented mitigation).
 - #115: Batman re-drafts plans on every firing while approval is pending. Combines with body-shape bugs to produce N broken plan posts in a row.
 - #116: lifecycle parser rejects bare repo names. This template tells you to use full slugs.
-- #117: bundle label not auto-created on target repos + ~50-char label-length limit. This template warns about both.
+- #117: bundle label auto-creation on target repos + ~50-char label-length limit.
 - #118: meta-tracker for the broader lifecycle hardening backlog.
 - #119: `bin/doctor.sh --lifecycle` synthetic-fire validator.
 - #121: `alfred-batman-setup` wizard (would walk operators through this body shape interactively).

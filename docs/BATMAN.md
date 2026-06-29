@@ -277,6 +277,14 @@ alfred batman setup --mode approval-gate --approval-mode file
 alfred setup-batman --check-only
 ```
 
+If `BATMAN_PARENT_REPO` is a specs or planning repo outside the repos passed to
+`alfred-init.py --repos`, bootstrap Alfred's labels there before filing parent
+issues:
+
+```sh
+alfred labels bootstrap my-org/specs
+```
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `BATMAN_AUTO_EXECUTE` | `0` | Controls the gate. Values: `0` (halt after plan, the safe default), `approval-gate` (require approval), `1` (execute without a gate). |
@@ -303,11 +311,10 @@ The Slack approval gate also reads these (from `slack_approval`):
 | `approval-gate` | yes | yes, according to `BATMAN_APPROVAL_MODE` | only after approval |
 | `1` | yes | no | yes, immediately |
 
-Fresh installs should use `approval-gate` when Batman is enabled: Batman drafts
-the rollout, waits for the configured approval surface, and then files the child
-issues. `0` is the manual safety mode for teams that want Batman to stop after
-the plan. `1` files immediately and should be reserved for trusted parent
-issues.
+Fresh installs default to `0`, so Batman drafts the rollout and stops after the
+plan. Switch to `approval-gate` when you are ready for Batman to wait on the
+configured approval surface and then file child issues. `1` files immediately
+and should be reserved for trusted parent issues.
 
 ## Safety story
 
