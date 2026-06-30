@@ -1163,20 +1163,11 @@ fn run_native_command_blocking(
             }
             Ok(None) if started.elapsed() >= timeout => {
                 terminate_child_tree(&mut child);
-                let (stdout, stderr) = read_child_output(&mut child);
                 let timeout_msg = format!("command timed out after {}", duration_label(timeout));
-                let stderr = if stderr.is_empty() {
-                    timeout_msg.clone().into_bytes()
-                } else {
-                    let mut combined = stderr;
-                    combined.extend_from_slice(b"\n");
-                    combined.extend_from_slice(timeout_msg.as_bytes());
-                    combined
-                };
                 return Ok(NativeCommandResult {
                     command: preview,
-                    stdout: trim_output(&stdout),
-                    stderr: trim_output(&stderr),
+                    stdout: String::new(),
+                    stderr: timeout_msg.clone(),
                     status: Some(124),
                     success: false,
                     pid: None,
