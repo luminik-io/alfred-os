@@ -9,14 +9,15 @@ import {
   type RosterThemeId,
 } from "./agentThemes";
 
-// The roster theme is the named cast applied to the agent roster (Batman by
-// default, plus Transformers, Justice League, and the operator's own Custom
-// cast). It is independent of the visual theme (useTheme: palette + light/dark).
+// The roster theme is the named display-name set applied to the agent roster:
+// Batman by default, plus Transformers, Justice League, and the operator's own
+// custom roster. It is independent of the visual theme (useTheme: palette +
+// light/dark).
 //
 // Persistence is server-first, localStorage-fallback: when connected, the
 // runtime's `/api/roster-theme` is the source of truth so the choice (and any
 // custom names) are shared with the Slack message path; the same value is
-// mirrored to localStorage so the picker shows the right cast instantly on the
+// mirrored to localStorage so the picker shows the right roster instantly on the
 // next launch and still works when the runtime is unreachable.
 const ROSTER_THEME_KEY = "alfred.rosterTheme";
 const CUSTOM_NAMES_KEY = "alfred.rosterCustomNames";
@@ -44,7 +45,7 @@ function readStoredCustom(): CustomRosterNames {
       };
     }
   } catch {
-    // Corrupt or missing: start from an empty custom cast.
+    // Corrupt or missing: start from an empty custom roster.
   }
   return EMPTY_CUSTOM_NAMES;
 }
@@ -74,7 +75,7 @@ export type UseRosterTheme = {
   setCustomNames: (next: CustomRosterNames) => void;
   // Non-null when the most recent save did not reach the server (no token, 403,
   // offline). The local picker still reflects the choice, but Slack and a fresh
-  // reload keep the old persisted cast until a save succeeds, so the UI must be
+  // reload keep the old persisted roster until a save succeeds, so the UI must be
   // able to tell the operator the change is local-only.
   saveError: string | null;
 };
@@ -119,7 +120,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   const saveErrorUrlRef = useRef<string | null>(null);
 
   // On connect, read the server's persisted choice so the picker reflects the
-  // cast the runtime (and Slack) already use. A failed read keeps the
+  // roster the runtime (and Slack) already use. A failed read keeps the
   // localStorage value, so an offline desktop still works.
   useEffect(() => {
     if (!baseUrl || hydratedUrlRef.current === baseUrl) {
@@ -161,10 +162,10 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
   // written via the effect above, so a failed POST still keeps the local choice.
   const runSave = useCallback(
     (url: string, theme: RosterThemeId, custom: CustomRosterNames, seq: number) => {
-      // Only a custom save carries the cast. A preset switch must omit both
-      // maps so the server retains the authored custom cast (it replaces the
+      // Only a custom save carries the roster. A preset switch must omit both
+      // maps so the server retains the authored custom roster (it replaces the
       // retained maps only when an explicit payload is present); sending empty
-      // objects here would wipe the cast and lose it when switching back.
+      // objects here would wipe the roster and lose it when switching back.
       const body =
         theme === "custom"
           ? { theme, custom_names: custom.names, custom_roles: custom.roles }
@@ -198,7 +199,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           // newer one reports its own outcome.
           if (seq !== latestSeqByUrlRef.current.get(url)) return;
           // The optimistic hydration recorded in persist() assumed this save
-          // would land. It did not, so the server still holds the old cast.
+          // would land. It did not, so the server still holds the old roster.
           // Clear the marker for this runtime (if it is still ours) so an
           // in-flight or later GET re-reads the server instead of trusting the
           // unsaved local value forever, including across a reconnect.
@@ -209,7 +210,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
           setSaveError(
             err instanceof Error && err.message
               ? `Could not save to Alfred: ${err.message}`
-              : "Could not save to Alfred. The cast is local-only until a save succeeds.",
+              : "Could not save to Alfred. The roster is local-only until a save succeeds.",
           );
         })
         .finally(() => {
@@ -234,10 +235,10 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
       if (!baseUrl) {
         // Offline change: keep it in memory/localStorage but do NOT mark the
         // hook hydrated. When the runtime later connects, the hydration effect
-        // must still read the server's persisted cast rather than skip it.
+        // must still read the server's persisted roster rather than skip it.
         // A connection-level error is not tied to a specific synced runtime.
         saveErrorUrlRef.current = null;
-        setSaveError("Not connected: this cast is local-only until Alfred is reachable.");
+        setSaveError("Not connected: this roster is local-only until Alfred is reachable.");
         return;
       }
       // The operator's change now owns this runtime's state locally. Record the
@@ -273,7 +274,7 @@ export function useRosterTheme(baseUrl?: string): UseRosterTheme {
 
   const setCustomNames = useCallback(
     (next: CustomRosterNames) => {
-      // Editing the custom cast also selects it, so the change is visible.
+      // Editing the custom roster also selects it, so the change is visible.
       setCustomNamesState(next);
       setRosterThemeState("custom");
       persist("custom", next);

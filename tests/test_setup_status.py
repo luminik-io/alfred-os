@@ -462,7 +462,7 @@ def test_install_inventory_reports_roster_theme_and_repo_local_map(
             {"repo": "acme/site", "path": "../marketing/site"},
         ],
     }
-    assert by_key["cast"]["detail"] == "Custom cast active with 2 names and 1 role label."
+    assert by_key["roster-theme"]["detail"] == "Custom roster active with 2 names and 1 role label."
     assert by_key["repo-map"]["detail"] == "2 repo local path mappings configured."
 
 

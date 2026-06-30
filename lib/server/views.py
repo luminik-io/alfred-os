@@ -791,7 +791,7 @@ def register_routes(app: FastAPI) -> None:
 
     @app.get("/api/roster-theme", response_class=JSONResponse)
     async def api_roster_theme(request: Request) -> JSONResponse:
-        # The active roster theme (the named agent cast) plus any operator-
+        # The active roster theme plus any operator-
         # authored custom names. Read-only and unauthenticated like the other
         # GETs: it carries no secret and lets any surface read the same choice.
         store = RosterThemeStore.from_state_root(_state_root(request))
@@ -800,7 +800,7 @@ def register_routes(app: FastAPI) -> None:
     @app.post("/api/roster-theme", response_class=JSONResponse)
     async def api_set_roster_theme(request: Request) -> JSONResponse:
         # Persist the chosen theme + custom name/role maps so the desktop and the
-        # Slack message path honor the same cast. Token-gated like every other
+        # Slack message path honor the same roster. Token-gated like every other
         # state-mutating POST so a drive-by same-origin page cannot rename agents.
         if not _same_origin_post(request) or not _authorized_mutation(request):
             return JSONResponse({"error": "forbidden"}, status_code=403)

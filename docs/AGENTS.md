@@ -95,9 +95,9 @@ Two reasons:
 1. **Operational legibility.** A coherent fictional cast makes scanning the Slack channel faster than `agent-1 / agent-2 / agent-3` or `feature-dev / test-coverage / review`. Once you've worked with Lucius for a week, "Lucius failed on #303" is instantly readable.
 2. **Design forcing function.** "What does *Bane* do?" is a sharper question than "what does the test agent do?". Naming the role after a *character* (who has a personality, a domain, a relationship to other characters) forces narrow scope per codename.
 
-### Picking your own visible cast
+### Picking your own visible roster
 
-If you want a different visible cast, use Alfred Desktop's Team step or Agents roster picker. Pick something coherent. Some examples:
+If you want a different visible roster, use Alfred Desktop's Team step or Agents roster picker. Pick something coherent. Some examples:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
@@ -120,7 +120,7 @@ flowchart TB
     conf["agents.conf<br/><code>my.fleet.lucius  lucius.py  interval:1200</code>"]
     unit["my.fleet.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
-    theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>display cast</i>"]
+    theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>display roster</i>"]
     output["Desktop / Slack: 'Ironhide shipped: ...'<br/>PR title and worktree keep <code>lucius</code>"]
 
     init --> conf

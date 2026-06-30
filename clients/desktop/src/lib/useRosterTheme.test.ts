@@ -38,7 +38,7 @@ describe("useRosterTheme", () => {
 
   // Thread: "Offline Change Blocks Hydration". A change made while baseUrl is
   // absent must not mark the hook hydrated, so the later server read still runs
-  // and the desktop converges on the server (and Slack) cast.
+  // and the desktop converges on the server (and Slack) roster.
   it("still hydrates from the server after an offline change", async () => {
     loadRosterTheme.mockResolvedValue(serverState({ theme: "justice-league" }));
 
@@ -55,7 +55,7 @@ describe("useRosterTheme", () => {
     expect(result.current.saveError).not.toBeNull();
     expect(saveRosterTheme).not.toHaveBeenCalled();
 
-    // The runtime connects: the hook must read the server's persisted cast
+    // The runtime connects: the hook must read the server's persisted roster
     // rather than skip the read because of the offline change.
     rerender({ baseUrl: "http://127.0.0.1:7010" });
     await waitFor(() => {
@@ -117,8 +117,8 @@ describe("useRosterTheme", () => {
     expect(result.current.rosterTheme).toBe("transformers");
   });
 
-  // Thread: "Preset switch clears cast". Switching to a preset must omit the
-  // custom maps so the server retains the authored custom cast; sending empty
+  // Thread: "Preset switch clears roster". Switching to a preset must omit the
+  // custom maps so the server retains the authored custom roster; sending empty
   // objects would wipe it.
   it("omits the custom maps when switching to a preset", async () => {
     loadRosterTheme.mockResolvedValue(serverState());
@@ -136,8 +136,8 @@ describe("useRosterTheme", () => {
     });
   });
 
-  // A custom save still carries the cast so the operator's names/roles persist.
-  it("sends the custom maps when saving the custom cast", async () => {
+  // A custom save still carries the roster so the operator's names/roles persist.
+  it("sends the custom maps when saving the custom roster", async () => {
     loadRosterTheme.mockResolvedValue(serverState());
     saveRosterTheme.mockResolvedValue(
       serverState({ theme: "custom", custom_names: { batman: "Sherlock" } }),

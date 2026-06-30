@@ -702,7 +702,7 @@ describe("OnboardingView seven-step takeover", () => {
     expect(
       within(stepper).getByLabelText("3 of 7 onboarding steps complete"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/active cast/i)).toBeInTheDocument();
+    expect(screen.getByText(/active roster/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /transformers/i })).toBeInTheDocument();
     expect(screen.getByText("Optimus Prime")).toBeInTheDocument();
     expect(

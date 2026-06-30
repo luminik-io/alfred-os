@@ -3458,7 +3458,7 @@ def test_roster_theme_set_custom_names_and_roles_persist(tmp_path: Path) -> None
     assert stored["custom_names"]["batman"] == "Sherlock"
 
 
-def test_roster_theme_switch_to_preset_retains_custom_cast(tmp_path: Path) -> None:
+def test_roster_theme_switch_to_preset_retains_custom_roster(tmp_path: Path) -> None:
     state = tmp_path / "state"
     client = TestClient(create_app(FilesystemReader(state_root=state)))
 
@@ -3475,7 +3475,7 @@ def test_roster_theme_switch_to_preset_retains_custom_cast(tmp_path: Path) -> No
     assert resp.status_code == 200
     body = resp.json()
     assert body["theme"] == "transformers"
-    # Switching to a preset does NOT delete the authored cast: it is retained so
+    # Switching to a preset does NOT delete the authored roster: it is retained so
     # a later switch back to custom (or a restart) restores it.
     assert body["custom_names"] == {"batman": "Sherlock"}
 

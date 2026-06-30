@@ -14,8 +14,8 @@ import {
   SelectValue,
 } from "./ui/select";
 
-// A compact named-preset picker for the roster theme (the agent cast: Batman,
-// Transformers, Justice League, plus the operator's own Custom cast). It
+// A compact named-preset picker for the roster theme (Batman, Transformers,
+// Justice League, plus the operator's own custom roster). It
 // re-skins the display names + role labels only; the canonical roles and the
 // live status data are unchanged. Sits in the Agents view header next to the
 // workflow/list toggle. The Edit button opens the custom-name editor.
@@ -29,7 +29,7 @@ export function RosterThemePicker({
   onChange: (next: RosterThemeId) => void;
   onEditCustom?: () => void;
   // When the last save did not reach the runtime, the choice is local-only and
-  // Slack keeps the old cast; show that so the picker never looks successful.
+  // Slack keeps the old roster; show that so the picker never looks successful.
   saveError?: string | null;
 }) {
   return (

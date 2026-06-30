@@ -56,9 +56,9 @@ If your cast is "agent-1 / agent-2 / agent-3" or "feature-dev / test-coverage / 
 
 Without the codename, "the test agent" tends to creep: "well, while it's there, it could also lint... and run a security scan...". With the codename, the answer is "no, that's not Bane. Bane writes tests."
 
-## Pick your own cast
+## Pick your own roster theme
 
-The default install ships the Batman cast, and Alfred Desktop can re-skin the
+The default install ships the Batman roster, and Alfred Desktop can re-skin the
 visible roster with preset themes or custom display names without changing the
 underlying role codenames, scheduler labels, or GitHub state machine. If you are
 authoring a new fleet configuration or naming custom agents, pick anything
@@ -93,7 +93,7 @@ flowchart TB
     conf["agents.conf<br/><code>my.fleet.lucius  lucius.py  interval:1200</code>"]
     unit["my.fleet.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
-    theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>visible cast</i>"]
+    theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>visible roster</i>"]
     output["Desktop / Slack: 'Ironhide shipped: ...'<br/>PR title and worktree keep <code>lucius</code>"]
 
     init --> conf
@@ -110,7 +110,7 @@ contract. When you add a new agent script and schedule row later, Alfred Desktop
 can include that live agent in the custom roster editor and give it a visible
 name too.
 
-[Tutorial](/getting-started/tutorial/) for an end-to-end build of one codename. The [agent fleet](/concepts/fleet/) page maps the default cast and how the roles hand work to each other.
+[Tutorial](/getting-started/tutorial/) for an end-to-end build of one codename. The [agent fleet](/concepts/fleet/) page maps the default roster and how the roles hand work to each other.
 
 ## Anti-patterns
 
