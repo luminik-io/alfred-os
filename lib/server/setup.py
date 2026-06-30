@@ -1006,10 +1006,11 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
 
 
 def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
+    repo_map = _code_memory_repo_map(env)
     return [
         name
         for name in configured
-        if _is_code_memory_git_repo(_code_memory_configured_repo_path(env, name))
+        if _is_code_memory_git_repo(_code_memory_configured_repo_path(env, name, repo_map))
     ]
 
 
@@ -1027,8 +1028,10 @@ def _code_memory_repo_map(env: dict[str, str]) -> dict[str, str]:
     return out
 
 
-def _code_memory_configured_repo_path(env: dict[str, str], name: str) -> Path:
-    mapped = _code_memory_repo_map(env).get(name, name)
+def _code_memory_configured_repo_path(
+    env: dict[str, str], name: str, repo_map: dict[str, str] | None = None
+) -> Path:
+    mapped = (repo_map if repo_map is not None else _code_memory_repo_map(env)).get(name, name)
     path = Path(mapped)
     if path.is_absolute():
         return path
