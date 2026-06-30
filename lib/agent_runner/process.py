@@ -188,9 +188,15 @@ def _agent_settings_args() -> list[str]:
 MEMORY_MCP_SERVER = "alfred_memory"
 _MEMORY_RECALL_TOOLS = (
     "alfred_memory_recall",
+    "alfred_memory_candidates",
     "alfred_recent_file_touches",
     "alfred_failure_patterns",
     "alfred_brain_status",
+    "alfred_who_owns",
+    "alfred_recent_changes_near",
+    "alfred_prs_touching",
+    "alfred_code_graph_summary",
+    "alfred_code_impact",
 )
 
 

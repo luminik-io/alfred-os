@@ -105,12 +105,19 @@ def test_mcp_graph_tools_are_listed(tmp_path: Path) -> None:
     sys.path.insert(0, str(repo / "lib"))
     mod = _load("alfred_mcp_cli_graph_list", repo / "bin" / "alfred-mcp.py")
     names = {tool["name"] for tool in mod.TOOLS}
-    assert {"alfred_who_owns", "alfred_recent_changes_near", "alfred_prs_touching"} <= names
+    assert {
+        "alfred_who_owns",
+        "alfred_recent_changes_near",
+        "alfred_prs_touching",
+        "alfred_code_graph_summary",
+        "alfred_code_impact",
+    } <= names
     for tool in mod.TOOLS:
         if tool["name"] in {
             "alfred_who_owns",
             "alfred_recent_changes_near",
             "alfred_prs_touching",
+            "alfred_code_impact",
         }:
             assert tool["inputSchema"]["required"] == ["repo", "path"]
 
@@ -172,3 +179,56 @@ def test_mcp_graph_tools_require_repo_and_path(tmp_path: Path) -> None:
     )
     assert response["error"]["code"] == -32000
     assert "repo and a path" in response["error"]["message"]
+
+
+def test_mcp_code_graph_tools_read_local_code_map(tmp_path: Path, monkeypatch) -> None:
+    repo = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(repo / "lib"))
+    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "code-map.json").write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-06-30T20:00:00Z",
+                "repos": {
+                    "web": {
+                        "head_sha": "abc123",
+                        "graph_summary": {
+                            "files": 2,
+                            "symbols": 2,
+                            "imports": 1,
+                            "languages": {"typescript": 2},
+                            "truncated": False,
+                        },
+                        "files": [
+                            {
+                                "path": "src/App.tsx",
+                                "language": "typescript",
+                                "symbols": [{"name": "App", "line": 1}],
+                                "imports": ["./Widget"],
+                            },
+                            {
+                                "path": "src/Widget.tsx",
+                                "language": "typescript",
+                                "symbols": [{"name": "Widget", "line": 2}],
+                                "imports": [],
+                            },
+                        ],
+                        "edges": [{"from": "src/App.tsx", "to": "./Widget", "kind": "import"}],
+                    }
+                },
+                "contract_drift": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    mod = _load("alfred_mcp_cli_code_graph", repo / "bin" / "alfred-mcp.py")
+
+    summary = mod.call_tool("alfred_code_graph_summary", {"repo": "web"})
+    assert summary["repos"][0]["summary"]["files"] == 2
+
+    impact = mod.call_tool("alfred_code_impact", {"repo": "web", "path": "src/Widget.tsx"})
+    assert impact["matched_file"] == "src/Widget.tsx"
+    assert impact["imported_by"][0]["from"] == "src/App.tsx"
+    assert not (tmp_path / "fleet-brain.db").exists()

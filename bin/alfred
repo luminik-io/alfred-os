@@ -65,6 +65,8 @@ Subcommands today:
                               `forget`, `export`).
   alfred code-memory ...      Inspect, index, or serve the optional
                               code-structure memory MCP layer.
+  alfred code-map ...         Export/query Alfred's local JSON code graph
+                              using the stable alfred-codegraph@1 contract.
   alfred capabilities         Inspect local code graph, token, and skill
                               capabilities Alfred can use during setup.
   alfred serve                Open the read-only localhost dashboard over
@@ -1573,6 +1575,80 @@ def cmd_code_memory(args: argparse.Namespace) -> int:
     return subprocess.run([str(script), *forwarded], check=False).returncode
 
 
+def cmd_code_map(args: argparse.Namespace) -> int:
+    from code_graph import (
+        CODEGRAPH_SCHEMA,
+        export_codegraph,
+        impact_for_path,
+        load_code_map,
+        summarize_codegraph,
+    )
+
+    map_path = Path(args.map_path).expanduser() if getattr(args, "map_path", None) else None
+    command = getattr(args, "code_map_command", "export") or "export"
+    if command == "export":
+        requested = getattr(args, "format", CODEGRAPH_SCHEMA)
+        if requested != CODEGRAPH_SCHEMA:
+            print(f"unsupported code-map export format: {requested}", file=sys.stderr)
+            return 2
+        payload = export_codegraph(
+            path=map_path,
+            include_files=not bool(getattr(args, "summary_only", False)),
+        )
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+
+    code_map = load_code_map(map_path)
+    if command == "summary":
+        payload = summarize_codegraph(
+            code_map,
+            repo=args.repo,
+            path=map_path,
+            limit=args.limit,
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        print(
+            f"code graph: {payload['repo_count']} repo(s), drift={payload['contract_drift_count']}"
+        )
+        for repo in payload["repos"]:
+            summary = repo["summary"]
+            langs = ", ".join(f"{k}:{v}" for k, v in summary["languages"].items()) or "none"
+            print(
+                f"- {repo['name']}: {summary['files']} files, "
+                f"{summary['symbols']} symbols, {summary['imports']} imports, "
+                f"endpoints={repo['endpoint_count']}, routes={repo['route_count']}, "
+                f"api_calls={repo['api_call_count']}, languages={langs}"
+            )
+        return 0
+
+    if command == "impact":
+        payload = impact_for_path(
+            code_map,
+            repo=args.repo,
+            path=args.path,
+            code_map_path=map_path,
+            limit=args.limit,
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        print(f"{payload['repo']}:{payload['matched_file'] or payload['path']}")
+        print(
+            f"symbols={len(payload['symbols'])}, imports={len(payload['imports'])}, "
+            f"imported_by={len(payload['imported_by'])}, drift={len(payload['contract_drift'])}"
+        )
+        if payload["imported_by"]:
+            print("imported by:")
+            for row in payload["imported_by"]:
+                print(f"- {row['from']} -> {row['to']}")
+        return 0
+
+    print("Usage: alfred code-map {export|summary|impact}", file=sys.stderr)
+    return 2
+
+
 def cmd_capabilities(args: argparse.Namespace) -> int:
     from server.setup import capability_status
 
@@ -2670,6 +2746,43 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
     )
     p_code_memory.add_argument("code_memory_args", nargs=argparse.REMAINDER)
     p_code_memory.set_defaults(func=cmd_code_memory)
+
+    p_code_map = sub.add_parser(
+        "code-map",
+        help="export or query Alfred's local JSON code graph",
+    )
+    p_code_map_sub = p_code_map.add_subparsers(dest="code_map_command")
+    p_code_map_export = p_code_map_sub.add_parser("export", help="emit alfred-codegraph@1 JSON")
+    p_code_map_export.add_argument(
+        "--format",
+        default="alfred-codegraph@1",
+        help="export format; currently only alfred-codegraph@1",
+    )
+    p_code_map_export.add_argument("--map", dest="map_path", help="code-map.json path")
+    p_code_map_export.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="omit raw files and edges from the export",
+    )
+    p_code_map_export.set_defaults(func=cmd_code_map)
+
+    p_code_map_summary = p_code_map_sub.add_parser("summary", help="summarize mapped repos")
+    p_code_map_summary.add_argument("repo", nargs="?")
+    p_code_map_summary.add_argument("--map", dest="map_path", help="code-map.json path")
+    p_code_map_summary.add_argument("--limit", type=int, default=25)
+    p_code_map_summary.add_argument("--json", action="store_true")
+    p_code_map_summary.set_defaults(func=cmd_code_map)
+
+    p_code_map_impact = p_code_map_sub.add_parser(
+        "impact", help="show local import and contract impact for a repo path"
+    )
+    p_code_map_impact.add_argument("repo")
+    p_code_map_impact.add_argument("path")
+    p_code_map_impact.add_argument("--map", dest="map_path", help="code-map.json path")
+    p_code_map_impact.add_argument("--limit", type=int, default=50)
+    p_code_map_impact.add_argument("--json", action="store_true")
+    p_code_map_impact.set_defaults(func=cmd_code_map)
+    p_code_map.set_defaults(func=cmd_code_map, code_map_command="export")
 
     p_capabilities = sub.add_parser(
         "capabilities",
