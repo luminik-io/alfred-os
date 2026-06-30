@@ -52,6 +52,8 @@ def test_operator_cli_exposes_claude_wrapper():
 
     assert "claude" in result.stdout
     assert "manage Claude Code account routing" in result.stdout
+    assert "doctor" in result.stdout
+    assert "run host preflight checks for the configured fleet" in result.stdout
 
 
 def test_operator_cli_owns_claude_probe():

@@ -89,7 +89,7 @@ class HandoffTable:
     Intentionally minimal: just a triple-keyed dict and validation
     helpers. The actual routing happens via GitHub labels and state,
     not in-process calls; this struct is documentation plus a shape
-    ``doctor.sh`` can inspect.
+    ``alfred doctor`` can inspect.
     """
 
     edges: dict[tuple[str, str], str] = field(default_factory=dict)

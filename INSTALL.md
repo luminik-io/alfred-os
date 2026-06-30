@@ -40,7 +40,7 @@ alfred-init                       # choose agents, repos, codenames, Slack
 
 The Homebrew formula installs the latest tagged release and puts the operator
 commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
-`alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
+`alfred-deploy`, and `alfred doctor`. Use the source checkout path when you
 want to work from `main`, edit the framework, or install on Linux.
 
 Full fleet for one repo or an explicit comma-separated repo list, suitable
@@ -189,7 +189,7 @@ silently assigns every repo to every agent.
 - Creates the standard GitHub labels on the selected repos, including
   `agent:implement`, `agent:authored`, lifecycle labels, bug-triage labels, and
   Batman's `agent:large-feature` label.
-- Runs `bash deploy.sh`, then `bash bin/doctor.sh`.
+- Runs `bash deploy.sh`, then `alfred doctor`.
 
 Batman is included in the full fleet as the architect for cross-repo work. The
 default mode posts a bundle plan and stops. `BATMAN_AUTO_EXECUTE=approval-gate`
@@ -220,7 +220,7 @@ If you want to install the framework without enabling any agents yet:
 
 ```sh
 bash deploy.sh
-bash bin/doctor.sh
+./bin/alfred doctor
 ```
 
 `deploy.sh` copies `lib/` and `bin/` into `$ALFRED_HOME`. In a fresh checkout
@@ -229,7 +229,7 @@ fires. After `alfred-init.py` creates `launchd/agents.conf`, deploy renders
 host scheduler units: launchd plists on macOS, systemd user services/timers on
 Linux.
 
-`doctor.sh` runs every agent's preflight under `ALFRED_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
+`alfred doctor` runs every agent's preflight under `ALFRED_DOCTOR=1` to confirm env vars, CLI binaries, and auth chains resolve before any real firing burns Claude turns. On a clean install with the default `agents.conf` you should see `0 passed, 0 failed`.
 
 ### 8. Your first custom agent
 
@@ -239,7 +239,7 @@ Read `examples/bin/hello.py`, the smallest possible codename agent. Copy it to `
 my.fleet.your-codename	your-codename.py	interval:3600	no	my.fleet.your-codename	Custom agent
 ```
 
-`bash deploy.sh` again. `bash bin/doctor.sh` again. Should show `1 passed, 0 failed`.
+`bash deploy.sh` again. `./bin/alfred doctor` again. Should show `1 passed, 0 failed`.
 
 Then [`BOOTSTRAP.md`](BOOTSTRAP.md) for the full pattern: per-agent IAM, Slack reporting, `agent_runner` primitives, label state machine, prompt engineering.
 

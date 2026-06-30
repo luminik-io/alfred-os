@@ -19,7 +19,7 @@ Alfred version or commit SHA, and whether the failure happens in dry-run mode.
 Priority order:
 
 - **Security issues**: use the private disclosure path in [`SECURITY.md`](SECURITY.md).
-- **Install and setup regressions**: include `bash bin/doctor.sh` output.
+- **Install and setup regressions**: include `alfred doctor` output.
 - **Runtime bugs with a reproducer**: include the affected agent, labels, repo, and log excerpt.
 - **Feature requests**: tie the request to the design boundaries in [`ROADMAP.md`](ROADMAP.md) and [`CONTRIBUTING.md`](CONTRIBUTING.md).
 - **Questions**: start with the docs and open a focused issue when the docs leave a real gap.
@@ -36,7 +36,7 @@ Priority order:
 
 Fastest path:
 
-1. **`bash bin/doctor.sh`**: preflight every agent. Most config issues surface here.
+1. **`alfred doctor`**: preflight every agent. Most config issues surface here.
 2. **`tail -f /tmp/<your-fleet>.<agent>.std{out,err}`**: per-agent logs from launchd.
 3. **`cat $ALFRED_HOME/state/<agent>/spend-$(date +%Y-%m-%d).json`**: current-day spend + last error subtype.
 4. **`gh issue view <N> -R <repo> --json comments`**: claim/release comment trail. Often reveals "why didn't my agent pick this up".

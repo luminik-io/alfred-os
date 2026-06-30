@@ -284,6 +284,21 @@ def test_code_memory_command_defaults_to_doctor(
     assert calls == [[str(REPO_ROOT / "bin" / "code-memory-mcp"), "doctor"]]
 
 
+def test_doctor_command_forwards_to_doctor_script(
+    cli_module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+
+    assert cli_module.main(["doctor", "--dev", "--lifecycle"]) == 0
+    assert calls == [["bash", str(REPO_ROOT / "bin" / "doctor.sh"), "--dev", "--lifecycle"]]
+
+
 def test_capabilities_command_emits_json(
     cli_module, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:

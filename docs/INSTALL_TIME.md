@@ -7,7 +7,7 @@ two hours.
 ## If you already have the prerequisites
 
 If all of the following are already true on the machine you are installing on,
-expect 30 minutes from `git clone` to a green `doctor.sh`:
+expect 30 minutes from `git clone` to a green `alfred doctor`:
 
 - macOS with Homebrew installed and on PATH.
 - `gh auth login` already done; `gh auth status` reports a token with `repo`
@@ -20,7 +20,7 @@ expect 30 minutes from `git clone` to a green `doctor.sh`:
 
 In that case the actual work is small: clone the repo, run
 `./bin/alfred-init.py --non-interactive --agents all --repos my-org/my-app
---slack-webhook skip`, run `bash deploy.sh`, run `bash bin/doctor.sh`.
+--slack-webhook skip`, run `bash deploy.sh`, run `./bin/alfred doctor`.
 
 ## If you are setting up a fresh machine
 
@@ -82,7 +82,7 @@ itself.
 
 ## What happens after install
 
-Once `doctor.sh` is green, the host scheduler starts the firing cadence
+Once `alfred doctor` is green, the host scheduler starts the firing cadence
 immediately. The first Drake firing will happen within the configured
 interval (default every 2 hours). If you want a faster first signal, file one
 `agent:implement` issue manually and wait 20 minutes for Lucius's next firing,

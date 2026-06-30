@@ -73,8 +73,8 @@ Every firing prints exactly one sentinel string on its way out. The scheduler lo
 | `[PARTIAL]` | Hit `error_max_turns` mid-work. Worktree left for the next firing. | Nothing. The next firing retries. If you see two in a row on the same issue, the issue may be too large; consider splitting it. |
 | `[BLOCKED]` | Engine could not resolve an error. Slack posts the reason at `warn`. | Read the Slack post. Common causes: missing dep, failing test the agent could not fix, repo convention the agent does not know. |
 | `[<AGENT>-LOCKED]` | A previous firing of this codename is still running. | Nothing, unless you see it for hours; then run `alfred clear-lock <codename> --check`. Cleanup preserves dirty or ahead worktrees and creates local `recovery/*` refs when commits need a handle. |
-| `[<AGENT>-PREFLIGHT-FAILED]` | A required CLI is missing, `gh` auth expired, or a watched repo is gone. | Run `bash bin/doctor.sh`. It names the missing piece. |
-| `[<AGENT>-DOCTOR-OK]` | `ALFRED_DOCTOR=1` was set; the firing verified preflight and exited. | Nothing. This is how `doctor.sh` validates each agent. |
+| `[<AGENT>-PREFLIGHT-FAILED]` | A required CLI is missing, `gh` auth expired, or a watched repo is gone. | Run `alfred doctor`. It names the missing piece. |
+| `[<AGENT>-DOCTOR-OK]` | `ALFRED_DOCTOR=1` was set; the firing verified preflight and exited. | Nothing. This is how `alfred doctor` validates each agent. |
 | `[<AGENT>-GLOBAL-BLOCKED]` | A Claude provider limit is in effect; this firing exited silently. | Nothing for ~1 hour; the block clears automatically. Hybrid agents are unaffected and keep going via Codex. |
 | `[<AGENT>-DEDUP-SKIP]` | Another firing already claimed this issue, or the repo is paused. | Nothing. Cooperative behavior. |
 | `[<AGENT>-NO-COMMIT]` | The engine reported success but no commit landed. | Inspect the salvage draft PR (if one was opened) or check the firing log to learn why. |
@@ -146,7 +146,7 @@ launchctl list | grep my.fleet      # macOS
 systemctl --user list-timers        # Linux
 ```
 
-If the unit is not loaded, the host scheduler will never fire it. Common after a `deploy.sh` that did not complete cleanly. Re-run `bash deploy.sh && bash bin/doctor.sh`.
+If the unit is not loaded, the host scheduler will never fire it. Common after a `deploy.sh` that did not complete cleanly. Re-run `bash deploy.sh && alfred doctor`.
 
 ### 6. launchd plist load failure (macOS)
 
@@ -168,7 +168,7 @@ There are two distinct notification sources, and only one is code-controllable:
 Block thirty minutes once a week. The fleet does most of its own housekeeping via `agent-cleanup` (daily 03:00), but a human pass catches drift the daily cleanup will not.
 
 - `alfred shipped --period weekly`: read the digest. Anything missing from what you expected? Anything that landed and you did not notice?
-- `bash bin/doctor.sh`: confirm preflight still passes for every configured agent.
+- `alfred doctor`: confirm preflight still passes for every configured agent.
 - `bash bin/scrub-check.sh`: if you contribute to Alfred itself, run this before pushing.
 - `ls $ALFRED_HOME/state/claims/` if it exists: stale claims should be empty after the daily sweep, but inspect anything older than 24h.
 - Rotate `/tmp/my.fleet.*` logs if `/tmp` is filling up. macOS clears them on reboot, but a host that stays up for weeks accumulates a lot.

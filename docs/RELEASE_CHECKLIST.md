@@ -21,7 +21,7 @@ Use this before tagging a public Alfred release.
   uv run --with 'ruff>=0.6' ruff format --check .
   uv run --with 'mypy>=1.10' mypy lib/
   bash bin/scrub-check.sh
-  bash bin/doctor.sh
+  ./bin/alfred doctor
   ```
 
 - If shell scripts changed, run `shellcheck` on the changed files.
