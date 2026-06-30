@@ -623,6 +623,11 @@ def test_executing_fanout_marker_recovers_when_all_children_exist(monkeypatch, c
         assert "agent:bundle:ready-plan" in cmd
         return [
             {
+                "body": (
+                    "## Parent\n\n"
+                    "- Parent issue: [myorg/parent#83]"
+                    "(https://github.com/myorg/parent/issues/83)\n"
+                ),
                 "title": "Implement backend slice",
                 "url": "https://github.com/myorg/backend/issues/44",
             }
@@ -642,6 +647,68 @@ def test_executing_fanout_marker_recovers_when_all_children_exist(monkeypatch, c
     assert finalize_calls == [("myorg/parent", 83)]
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
     assert "[BATMAN-PARENT-FINALIZE-RECOVER]" in captured.out
+
+
+def test_executing_fanout_marker_does_not_recover_from_old_child(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+        children=[
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/backend",
+                "title": "Implement backend slice",
+            }
+        ],
+    )
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        if repo == "myorg/parent":
+            return rows
+        assert repo == "myorg/backend"
+        return [
+            {
+                "body": (
+                    "## Parent\n\n"
+                    "- Parent issue: [myorg/parent#12]"
+                    "(https://github.com/myorg/parent/issues/12)\n"
+                ),
+                "title": "Implement backend slice",
+                "url": "https://github.com/myorg/backend/issues/44",
+            }
+        ]
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or True,
+    )
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == []
+    assert finalize_calls == []
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "state=executing; skipping re-fanout" in captured.err
 
 
 def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch):
@@ -745,7 +812,7 @@ def test_lifecycle_aborts_before_fanout_when_marker_save_fails(monkeypatch):
     assert reports == ["failure-parent-fanout-marker-failed"]
 
 
-def test_lifecycle_clears_executing_marker_when_fanout_raises(monkeypatch):
+def test_lifecycle_preserves_executing_marker_when_fanout_raises(monkeypatch, capsys):
     runner = _load_runner()
     reports = []
     plan = SimpleNamespace(
@@ -789,7 +856,9 @@ def test_lifecycle_clears_executing_marker_when_fanout_raises(monkeypatch):
         )
 
     assert reports == []
-    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    captured = capsys.readouterr()
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "[BATMAN-FANOUT-CRASH-MARKER-KEPT]" in captured.err
 
 
 def test_lifecycle_executing_marker_uses_execution_plan(monkeypatch):

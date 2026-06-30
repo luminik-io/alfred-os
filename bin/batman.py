@@ -441,8 +441,10 @@ def _run_lifecycle_body(
     try:
         result = lifecycle.execute(execution_plan)
     except Exception:
-        with suppress(Exception):
-            _clear_completed_fanout_marker(parent_repo, parent_issue_number)
+        print(
+            f"[BATMAN-FANOUT-CRASH-MARKER-KEPT] parent={parent_repo}#{parent_issue_number}",
+            file=sys.stderr,
+        )
         raise
     print(
         f"[BATMAN-EXECUTE-DONE] reason={result.reason} "
@@ -621,7 +623,13 @@ def _executing_fanout_marker_completed_remotely(parent_repo: str, parent_issue_n
         labels = [str(label).strip() for label in (child.get("labels") or []) if str(label).strip()]
         if not repo or not title:
             return False
-        if not _child_issue_exists(repo, title=title, labels=labels):
+        if not _child_issue_exists(
+            repo,
+            title=title,
+            labels=labels,
+            parent_repo=parent_repo,
+            parent_issue_number=parent_issue_number,
+        ):
             return False
     return True
 
@@ -653,7 +661,14 @@ def _executing_fanout_stale_after_s() -> int:
         return DEFAULT_EXECUTING_FANOUT_STALE_AFTER_S
 
 
-def _child_issue_exists(repo: str, *, title: str, labels: list[str]) -> bool:
+def _child_issue_exists(
+    repo: str,
+    *,
+    title: str,
+    labels: list[str],
+    parent_repo: str,
+    parent_issue_number: int,
+) -> bool:
     bundle_labels = [label for label in labels if label.startswith("agent:bundle:")]
     if not bundle_labels:
         return False
@@ -668,7 +683,7 @@ def _child_issue_exists(repo: str, *, title: str, labels: list[str]) -> bool:
         "--search",
         f'"{title}" in:title',
         "--json",
-        "title,url",
+        "title,url,body",
         "--limit",
         "20",
     ]
@@ -677,7 +692,30 @@ def _child_issue_exists(repo: str, *, title: str, labels: list[str]) -> bool:
     rows = gh_json(cmd, default=[])
     if not isinstance(rows, list):
         return False
-    return any(isinstance(row, dict) and row.get("title") == title for row in rows)
+    return any(
+        isinstance(row, dict)
+        and row.get("title") == title
+        and _child_issue_body_matches_parent(
+            row.get("body"),
+            parent_repo=parent_repo,
+            parent_issue_number=parent_issue_number,
+        )
+        for row in rows
+    )
+
+
+def _child_issue_body_matches_parent(
+    body: object,
+    *,
+    parent_repo: str,
+    parent_issue_number: int,
+) -> bool:
+    text = str(body or "")
+    if not text:
+        return False
+    parent_url = f"https://github.com/{parent_repo}/issues/{parent_issue_number}"
+    parent_ref = f"{parent_repo}#{parent_issue_number}"
+    return parent_url in text or parent_ref in text
 
 
 def _clear_completed_fanout_marker(parent_repo: str, parent_issue_number: int) -> None:
