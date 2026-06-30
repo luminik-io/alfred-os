@@ -490,10 +490,11 @@ def test_roster_theme_inventory_coerces_updated_at_to_string(
     import roster_theme_store
 
     class FakeState:
-        theme = "custom"
-        custom_names = {"batman": "Sherlock"}
-        custom_roles = {}
-        updated_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
+        def __init__(self) -> None:
+            self.theme = "custom"
+            self.custom_names = {"batman": "Sherlock"}
+            self.custom_roles = {}
+            self.updated_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
 
     class FakeStore:
         def load(self) -> FakeState:
