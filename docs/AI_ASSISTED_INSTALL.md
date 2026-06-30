@@ -70,9 +70,10 @@ Rules:
 - Keep AWS optional; do not create IAM users or profiles during this install.
 - Keep ANTHROPIC_API_KEY and OPENAI_API_KEY unset unless I explicitly ask for API billing.
 - Use the full engineering fleet: Drake, Batman, Lucius, Ra's al Ghul, Bane,
-  Nightwing, Robin, Huntress, Gordon, automerge, cleanup, memory harvest,
-  memory auto-promote, code-map refresh, briefs, recaps, shipped summaries, and
-  fleet doctor where available.
+  Nightwing, Robin, Huntress, Gordon, automerge, agent-cleanup,
+  memory-harvest, memory-auto-promote, code-map-refresh,
+  agent-morning-brief, fleet recaps, shipped summaries, and fleet doctor where
+  available.
 - Keep Batman configured even for a one-repo install. It will only act when
   cross-repo or parent-plan work exists and remains runner-gated until
   `alfred enable batman`.
