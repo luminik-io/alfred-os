@@ -294,7 +294,9 @@ ALFRED_ENV_BANNER = "# alfred-init, generated below this line. Safe to re-run."
 # "alfred-init" and "generated" (older releases used an em-dash, current
 # uses a comma). upsert_env_file relies on this so an upgrade rewrites the
 # existing managed block in place instead of appending a duplicate.
-ALFRED_ENV_BANNER_RE = re.compile(r"# alfred-init.{1,4}generated below this line\. Safe to re-run\.")
+ALFRED_ENV_BANNER_RE = re.compile(
+    r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
+)
 
 
 # ---------------------------------------------------------------------------

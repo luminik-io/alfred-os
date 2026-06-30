@@ -52,6 +52,7 @@ from pathlib import Path
 
 TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
 
+
 def _alfred_home() -> Path:
     return Path(os.environ.get("ALFRED_HOME") or str(Path.home() / ".alfred"))
 
@@ -179,6 +180,7 @@ def write_token(token: str) -> None:
         path.chmod(0o600)
     except OSError as exc:
         warn(f"could not chmod 0600 {path}: {exc}")
+
 
 def run_setup_token() -> str:
     """Spawn ``claude setup-token``, return the parsed token.

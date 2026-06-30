@@ -110,9 +110,7 @@ def test_launcher_env_treats_empty_process_home_as_absent(
     assert env["ALFRED_QUEUE_REPOS"] == "org/default"
 
 
-def test_launcher_env_ignores_legacy_alfredrc_file(
-    fresh_agent_runner, monkeypatch, tmp_path
-):
+def test_launcher_env_ignores_legacy_alfredrc_file(fresh_agent_runner, monkeypatch, tmp_path):
     import agent_runner.paths as paths_mod
 
     home = tmp_path / "home"
@@ -152,9 +150,7 @@ def test_launcher_env_ignores_legacy_alfredrc_pointer_env(
     assert "ALFRED_QUEUE_REPOS" not in env
 
 
-def test_launcher_env_strips_inline_comments_and_quotes(
-    fresh_agent_runner, monkeypatch, tmp_path
-):
+def test_launcher_env_strips_inline_comments_and_quotes(fresh_agent_runner, monkeypatch, tmp_path):
     import agent_runner.paths as paths_mod
 
     runtime = tmp_path / "runtime"
@@ -201,8 +197,7 @@ def test_launcher_env_loads_code_memory_settings_when_process_absent(
     memory_home = tmp_path / "memory"
     runtime.mkdir()
     (runtime / ".env").write_text(
-        f"ALFRED_CODE_MEMORY_HOME={memory_home}\n"
-        "ALFRED_CODE_MEMORY_DISCOVERY_LIMIT=9\n",
+        f"ALFRED_CODE_MEMORY_HOME={memory_home}\nALFRED_CODE_MEMORY_DISCOVERY_LIMIT=9\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(tmp_path))

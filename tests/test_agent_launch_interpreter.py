@@ -147,9 +147,7 @@ def test_agent_launch_loads_token_from_env_file(tmp_path: Path, alfred_home: Pat
     assert "TOKEN=sk-ant-oat01-fromdotenv" in proc.stdout
 
 
-def test_agent_launch_env_file_does_not_clobber_real_env(
-    tmp_path: Path, alfred_home: Path
-) -> None:
+def test_agent_launch_env_file_does_not_clobber_real_env(tmp_path: Path, alfred_home: Path) -> None:
     (alfred_home / ".env").write_text(
         "CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-fromdotenv\n", encoding="utf-8"
     )
@@ -245,9 +243,7 @@ def test_env_file_stop_controls_override_stale_process_env(
     tmp_path: Path, alfred_home: Path
 ) -> None:
     (alfred_home / ".env").write_text(
-        "ALFRED_AUTO_PROMOTE=0\n"
-        "ALFRED_AUTO_PROMOTE_KILL=1\n"
-        "ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
+        "ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\nALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n",
         encoding="utf-8",
     )
     target = tmp_path / "echo-memory-stop.sh"

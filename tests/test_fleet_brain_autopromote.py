@@ -234,7 +234,6 @@ def test_auto_promote_uses_constructor_env_when_env_arg_is_absent(tmp_path: Path
     assert _status(brain, c.id) == "candidate"
 
 
-
 def test_direct_auto_promote_runtime_judge_stop_overrides_stale_process_env(
     brain: FleetBrain,
     tmp_path: Path,

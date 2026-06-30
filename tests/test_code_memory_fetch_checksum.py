@@ -660,8 +660,7 @@ def test_launcher_strips_env_file_comments_before_code_memory_filter(
     home.mkdir()
     runtime.mkdir()
     (runtime / ".env").write_text(
-        "ALFRED_CODE_MEMORY_AUTOFETCH=0\n"
-        "ALFRED_CODE_MEMORY_REPOS=org/commented\n",
+        "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/commented\n",
         encoding="utf-8",
     )
     env = os.environ.copy()

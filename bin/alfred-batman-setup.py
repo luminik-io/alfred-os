@@ -219,9 +219,7 @@ def normalize_channel(channel: str) -> str:
     return channel.strip().lstrip("#")
 
 
-def env_or_config(
-    env: dict[str, str], config: dict[str, str], key: str, default: str = ""
-) -> str:
+def env_or_config(env: dict[str, str], config: dict[str, str], key: str, default: str = "") -> str:
     return (env.get(key) or config.get(key) or default).strip()
 
 
