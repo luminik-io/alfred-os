@@ -13,8 +13,7 @@ Wizard order (each step is idempotent, re-running won't duplicate):
     2. GitHub:         `gh auth status` + cache `gh repo list <GH_ORG>`.
     3. Slack webhook:  guide the operator, validate, test-post, store
                          (env or AWS Secrets Manager).
-    4. AWS (optional) , per-agent IAM profiles for Huntress / Gordon if
-                         the operator wants them.
+    4. AWS (optional):  per-agent IAM profiles for agents that use cloud APIs.
     5. Pick agents:    multi-select discovered from bin/*.py.
     6. Codenames:      per-role codename (default = canonical Batman name).
     7. Repos:          per-agent repo selection out of `gh repo list`.
@@ -184,10 +183,6 @@ STARTER_ROLES = (
     "memory_auto_promote",
 )
 OPT_IN_ROLES = {"cross_repo_coordinator"}
-CONFIG_GATED_ROLE_ENVS = {
-    "smoke_runner": ("ALFRED_HUNTRESS_TARGET_URL",),
-    "ops_morning": ("ALFRED_GORDON_ECS_CLUSTER",),
-}
 ROLE_REPO_ENV_KEYS = {
     "agent_cleanup": ("ALFRED_CLAIM_SWEEP_REPOS",),
     "automerge": ("ALFRED_AUTOMERGE_REPOS",),
@@ -843,39 +838,6 @@ def write_opt_in_gate(state: WizardState) -> list[str]:
     return []
 
 
-def _configured_env_values(state: WizardState) -> dict[str, str]:
-    """Return env values scheduled agents will actually receive.
-
-    ``agent-launch`` reads ``~/.alfredrc`` and ``$ALFRED_HOME/.env`` at firing
-    time. Transient values in the installer shell do not count unless this
-    wizard is also about to write them through ``role_to_extras`` to the same
-    launch rc file the scheduled wrappers read.
-    """
-    values: dict[str, str] = {}
-    launch_rc = Path.home() / ".alfredrc"
-    with contextlib.suppress(OSError):
-        values.update(read_unmanaged_alfredrc(launch_rc))
-    with contextlib.suppress(OSError):
-        for key, value in read_alfredrc(state.alfred_home / ".env").items():
-            values.setdefault(key, value)
-    if _same_path(state.alfredrc, launch_rc):
-        values.update(env_assignments_for(state))
-    return values
-
-
-def _same_path(left: Path, right: Path) -> bool:
-    return left.expanduser().resolve() == right.expanduser().resolve()
-
-
-def schedule_blockers_for_role(state: WizardState, role: str) -> list[str]:
-    """Return required runtime env vars missing for an agent schedule row."""
-    required = CONFIG_GATED_ROLE_ENVS.get(role, ())
-    if not required:
-        return []
-    values = _configured_env_values(state)
-    return [name for name in required if not values.get(name, "").strip()]
-
-
 # ---------------------------------------------------------------------------
 # agents.conf renderer.
 # ---------------------------------------------------------------------------
@@ -914,16 +876,7 @@ def render_agents_conf(state: WizardState) -> str:
         label = f"alfred.{codename}"
         role_text = desc.split(" (", 1)[0]
         row = f"{label}\t{script}\t{schedule}\tno\t{log_stem}\t{role_text}"
-        blockers = schedule_blockers_for_role(state, role)
-        if blockers:
-            lines.append(
-                "# gated until configured: "
-                f"{codename} needs {', '.join(blockers)} in ~/.alfredrc, "
-                "$ALFRED_HOME/.env, or --config role_extras"
-            )
-            lines.append(f"#{row}")
-        else:
-            lines.append(row)
+        lines.append(row)
     # Proof-telemetry is not an AGENT_CATALOG role, so it is not in
     # enabled_roles. Emit its scheduler row only when an ingest URL exists.
     # Without a URL, the reporter is a clean no-op and scheduling it would only
@@ -1370,12 +1323,12 @@ def step_5_pick_agents(
     print("  Available agents (Enter = full fleet):")
     print("    [full]     enabled by the default full-fleet setup")
     print("    [starter]  explicit small setup for lab installs only")
-    print("    (gated)    selected by full fleet, but still protected by a runner or config gate")
+    print("    (gated)    selected by full fleet, but still protected by an approval gate")
     starter = set(starter_roles(available))
     for role in available:
         codename, desc, _, _ = AGENT_CATALOG[role]
         marker = "[starter]" if role in starter else "[full]   "
-        suffix = " (gated)" if role in OPT_IN_ROLES or role in CONFIG_GATED_ROLE_ENVS else ""
+        suffix = " (gated)" if role in OPT_IN_ROLES else ""
         print(f"    {marker} {codename:<20s}{suffix:<10s} {desc}")
     print()
     if non_interactive:

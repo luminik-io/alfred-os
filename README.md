@@ -259,20 +259,19 @@ prompts or labels, pass one repo or an explicit comma-separated repo list:
 ```
 
 The full fleet includes Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing,
-Robin, automerge, `agent-cleanup`, memory harvest, memory auto-promotion,
-`code-map-refresh`, morning briefs, recaps, shipped summaries, and fleet doctor.
-Huntress and Gordon are included when their target URL and ECS cluster settings
-exist. Slack is optional. The `--repos` owner must match `GH_ORG`; the runtime
-agents store the bare repo name in `~/.alfredrc` and build `GH_ORG/repo` at
-firing time. `alfred-init.py` seeds prompt templates, creates the standard
-GitHub labels on selected repos, writes the scheduler manifest
+Robin, Huntress, Gordon, automerge, `agent-cleanup`, memory harvest, memory
+auto-promotion, `code-map-refresh`, morning briefs, recaps, shipped summaries,
+and fleet doctor. Slack is optional. The `--repos` owner must match `GH_ORG`;
+the runtime agents store the bare repo name in `~/.alfredrc` and build
+`GH_ORG/repo` at firing time. `alfred-init.py` seeds prompt templates, creates
+the standard GitHub labels on selected repos, writes the scheduler manifest
 (`launchd/agents.conf`), updates `~/.alfredrc`, then runs deploy and doctor.
 
 The full fleet is installed and visible from the start. High-impact lanes still
 have explicit gates: Batman is configured but waits behind the runner gate until
 `alfred enable batman`, and it still needs its approval mode before filing child
-issues. Huntress and Gordon stay as disabled scheduler rows until their required
-staging or ECS settings exist.
+issues. Huntress and Gordon also load from day one; without a target URL or ECS
+cluster they self-idle instead of failing doctor.
 
 For a framework-only install with no agents configured, use `bash deploy.sh &&
 ./bin/alfred doctor`; doctor reports `0 passed, 0 failed`. See

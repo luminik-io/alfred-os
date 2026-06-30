@@ -208,11 +208,9 @@ them immediately for teams that want that level of automation.
 Batman is present in the full-fleet config from the start and stays protected by
 the runner gate until you arm it with `alfred enable batman`.
 
-Huntress and Gordon are also present in the full-fleet config, but their
-schedule rows stay disabled until their required runtime settings exist.
-Configure `ALFRED_HUNTRESS_TARGET_URL` for staging smoke tests and
-`ALFRED_GORDON_ECS_CLUSTER` for deployment-health checks, then rerun
-`alfred-init.py` or provide them through `--config role_extras`.
+Huntress and Gordon are present in the full-fleet config too. They load with the
+rest of the scheduler and self-idle until `ALFRED_HUNTRESS_TARGET_URL` or
+`ALFRED_GORDON_ECS_CLUSTER` is configured.
 
 ### 7. Framework-only deploy + verify
 

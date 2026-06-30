@@ -81,17 +81,14 @@ completed, and `claude` has completed first-run auth. The repo owner must match
 `GH_ORG`; the runtime agents store the bare repo name in `~/.alfredrc` and build
 `GH_ORG/repo` at firing time. The command enables the full engineering fleet
 using exact installer selectors: `drake`, `batman`, `lucius`, `rasalghul`,
-`bane`, `nightwing`, `robin`, `automerge`, `agent-cleanup`,
-`memory-harvest`, `memory-auto-promote`, `code-map-refresh`,
+`bane`, `nightwing`, `robin`, `huntress`, `gordon`, `automerge`,
+`agent-cleanup`, `memory-harvest`, `memory-auto-promote`, `code-map-refresh`,
 `agent-morning-brief`, `fleet-doctor`, `fleet-recap-morning`,
-`fleet-recap-evening`, `shipped-summary-daily`, and
-`shipped-summary-weekly`. Huntress and Gordon are in the fleet catalog too, but
-their scheduler rows are generated only when
-`ALFRED_HUNTRESS_TARGET_URL` and `ALFRED_GORDON_ECS_CLUSTER` are present in the
-install config or runtime env files. If you add those settings later, rerun
-`alfred-init` and deploy the regenerated schedule. It assigns the selected repo
-list to each repo-operating agent, skips Slack safely, seeds prompt templates
-into `~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
+`fleet-recap-evening`, `shipped-summary-daily`, and `shipped-summary-weekly`.
+Huntress and Gordon self-idle until their target URL or ECS cluster settings
+exist. It assigns the selected repo list to each repo-operating agent, skips
+Slack safely, seeds prompt templates into
+`~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
 writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
 `~/.alfredrc`, runs deploy, and runs doctor.
 

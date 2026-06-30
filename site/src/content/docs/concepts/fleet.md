@@ -77,10 +77,10 @@ and Drake scopes smaller single-repo requests. A fresh install configures the
 full roster by default. Use `--agents starter` only when you deliberately want a
 small lab roster.
 
-Config-heavy agents are visible without being accidentally armed. Batman stays
+High-impact agents are visible without being accidentally armed. Batman stays
 behind the runner gate until `alfred enable batman` and then still obeys
-`BATMAN_AUTO_EXECUTE`; Huntress and Gordon stay as disabled scheduler rows until
-their staging or ECS settings exist.
+`BATMAN_AUTO_EXECUTE`. Huntress and Gordon load with the fleet and self-idle
+until their staging target URL or ECS cluster exists.
 
 ### Specialist agents
 

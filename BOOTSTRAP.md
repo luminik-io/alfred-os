@@ -140,10 +140,10 @@ This configures the full engineering fleet, seeds prompts into
 Slack later by re-running the wizard or setting `SLACK_WEBHOOK_URL` in
 `~/.alfredrc`.
 
-The full fleet does not mean every config-heavy job is armed immediately.
-Batman is present but runner-gated. Huntress and Gordon are rendered as disabled
-scheduler rows until `ALFRED_HUNTRESS_TARGET_URL` and
-`ALFRED_GORDON_ECS_CLUSTER` are configured.
+The full fleet is installed up front, but high-impact work still has explicit
+gates. Batman is present, visible, and runner-gated until `alfred enable batman`
+and its approval mode are configured. Huntress and Gordon load with the rest of
+the fleet; they self-idle until a staging target URL or ECS cluster is present.
 
 The repo owner must match `GH_ORG`; the runtime stores bare repo names and
 builds `GH_ORG/repo` during agent firings.
