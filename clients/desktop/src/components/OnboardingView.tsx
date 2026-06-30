@@ -17,6 +17,7 @@ import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
 import {
   type CustomRosterNames,
+  editableAgents,
   resolveThemedIdentity,
   rosterThemeBlurb,
   rosterThemeLabel,
@@ -92,6 +93,18 @@ const IDLE_GITHUB_AUTH_FLOW: GithubAuthFlow = {
   message: null,
   detail: null,
 };
+
+const ROSTER_PREVIEW_AGENTS = (() => {
+  const seenRoles = new Set<string>();
+  const agents: ReturnType<typeof editableAgents> = [];
+  for (const agent of editableAgents()) {
+    if (seenRoles.has(agent.role)) continue;
+    seenRoles.add(agent.role);
+    agents.push(agent);
+    if (agents.length === 4) break;
+  }
+  return agents;
+})();
 
 const GITHUB_DEVICE_URL = "https://github.com/login/device";
 
@@ -491,10 +504,9 @@ export function OnboardingView({
         case "repos":
           return reposSelected;
         case "team":
-          // The shipped Batman cast is already valid. Reaching the Team step
-          // means the operator has seen the cast choice; keeping the default is
-          // a deliberate, complete state.
-          return reachedIndex >= ONBOARDING_STEP_ORDER.indexOf("team");
+          // The shipped Batman cast is already valid. Keeping the default is a
+          // complete state only after the operator continues past Team.
+          return reachedIndex > ONBOARDING_STEP_ORDER.indexOf("team");
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -835,7 +847,7 @@ function RosterThemeStep({
 }) {
   const preview = useMemo(
     () =>
-      ["batman", "lucius", "rasalghul", "bane"].map((codename) => ({
+      ROSTER_PREVIEW_AGENTS.map(({ codename }) => ({
         codename,
         identity: resolveThemedIdentity({ codename }, rosterTheme, customNames),
       })),

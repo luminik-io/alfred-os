@@ -695,6 +695,13 @@ describe("OnboardingView seven-step takeover", () => {
     const user = userEvent.setup();
     await gotoStep(user, /^team$/i);
 
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /^team$/i,
+    );
+    expect(
+      within(stepper).getByLabelText("3 of 7 onboarding steps complete"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/active cast/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /transformers/i })).toBeInTheDocument();
     expect(screen.getByText("Optimus Prime")).toBeInTheDocument();
