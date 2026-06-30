@@ -150,7 +150,8 @@ scheduler = _LazyModule("scheduler")
 
 OPT_IN_AGENTS = {"batman"}
 ENGINE_AGENTS = ("bane", "batman", "drake", "lucius", "nightwing", "rasalghul", "robin")
-ENGINE_SCRIPTS = tuple(f"{agent}.py" for agent in ENGINE_AGENTS)
+CUSTOM_AGENT_SCRIPT = "custom-agent.py"
+ENGINE_SCRIPTS = (*(f"{agent}.py" for agent in ENGINE_AGENTS), CUSTOM_AGENT_SCRIPT)
 NATIVE_DRY_RUN_SCRIPTS = {"lucius.py", "hello.py", "echo_summarise.py"}
 
 
@@ -312,14 +313,14 @@ def _agents_conf_path() -> Path:
 def _parse_agents_conf(path: Path) -> list[dict[str, str]]:
     """Return the list of agent records from ``agents.conf``.
 
-    Each record is a dict with keys ``label, script, schedule,
-    needs_java, log_stem, role, disabled``. ``disabled`` is True when
-    the conf line is commented out (``#my.fleet.batman ...``).
+    Each record is a dict with keys ``label, script, schedule, needs_java,
+    log_stem, role, disabled``. Custom-agent manifest rows also include
+    ``engine``. ``disabled`` is True when the conf line is commented out
+    (``#my.fleet.batman ...``).
     """
-    if not path.exists():
-        return []
     out: list[dict[str, str]] = []
-    for raw in path.read_text().splitlines():
+    lines = path.read_text().splitlines() if path.exists() else []
+    for raw in lines:
         line = raw.rstrip("\n")
         stripped = line.lstrip()
         if not stripped:
@@ -351,7 +352,34 @@ def _parse_agents_conf(path: Path) -> list[dict[str, str]]:
                 "disabled": "yes" if disabled else "no",
             }
         )
+    out.extend(_custom_agent_records())
     return out
+
+
+def _custom_agent_records() -> list[dict[str, str]]:
+    try:
+        from custom_agents import CustomAgentStore
+    except Exception:
+        return []
+    try:
+        agents = CustomAgentStore.from_env().load()
+    except Exception:
+        return []
+    records: list[dict[str, str]] = []
+    for agent in agents:
+        records.append(
+            {
+                "label": agent.label,
+                "script": CUSTOM_AGENT_SCRIPT,
+                "schedule": agent.schedule,
+                "needs_java": "no",
+                "log_stem": agent.log_stem,
+                "role": agent.role_title,
+                "disabled": "no" if agent.enabled else "yes",
+                "engine": agent.engine,
+            }
+        )
+    return records
 
 
 def _codename_from_label(label: str) -> str:
@@ -435,6 +463,104 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
         return 0
     for c in enabled:
         print(c)
+    return 0
+
+
+def cmd_agent_list(args: argparse.Namespace) -> int:
+    try:
+        from custom_agents import CustomAgentStore
+    except Exception as exc:
+        print(f"alfred agent: custom-agent store unavailable: {exc}", file=sys.stderr)
+        return 1
+    snapshot = CustomAgentStore.from_env().snapshot()
+    if args.json:
+        print(json.dumps(snapshot, indent=2, sort_keys=True))
+        return 0
+    agents = snapshot["agents"]
+    if not agents:
+        print("alfred: no custom runtime agents configured")
+        return 0
+    for agent in agents:
+        status = "enabled" if agent.get("enabled") else "disabled"
+        repos = ", ".join(agent.get("repos") or []) or "-"
+        print(
+            f"{agent['codename']:<28} {status:<8} "
+            f"{agent['engine']:<6} {agent['schedule']:<14} "
+            f"{agent['role_title']}  repos={repos}"
+        )
+    return 0
+
+
+def cmd_agent_add(args: argparse.Namespace) -> int:
+    try:
+        from custom_agents import CustomAgentError, CustomAgentStore
+    except Exception as exc:
+        print(f"alfred agent: custom-agent store unavailable: {exc}", file=sys.stderr)
+        return 1
+    prompt = args.prompt or ""
+    if args.prompt_file:
+        try:
+            prompt = Path(args.prompt_file).expanduser().read_text(encoding="utf-8")
+        except OSError as exc:
+            print(f"alfred agent add: could not read prompt file: {exc}", file=sys.stderr)
+            return 2
+    payload = {
+        "codename": args.codename,
+        "display_name": args.display_name,
+        "role_title": args.role_title,
+        "purpose": args.purpose or args.role_title,
+        "prompt": prompt,
+        "engine": args.engine,
+        "schedule": args.schedule,
+        "repos": args.repo or [],
+        "enabled": not args.disabled,
+    }
+    try:
+        agent = CustomAgentStore.from_env().upsert(payload)
+    except CustomAgentError as exc:
+        print(f"alfred agent add: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(
+            json.dumps(
+                {"ok": True, "agent": agent.to_dict(), "deploy_required": True},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    print(f"alfred: saved custom agent {agent.codename} ({agent.display_name})")
+    print(
+        "alfred: run `bash deploy.sh` from the source checkout to render or reload the scheduler job"
+    )
+    return 0
+
+
+def cmd_agent_remove(args: argparse.Namespace) -> int:
+    try:
+        from custom_agents import CustomAgentError, CustomAgentStore
+    except Exception as exc:
+        print(f"alfred agent: custom-agent store unavailable: {exc}", file=sys.stderr)
+        return 1
+    try:
+        removed = CustomAgentStore.from_env().delete(args.codename)
+    except CustomAgentError as exc:
+        print(f"alfred agent remove: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(
+            json.dumps(
+                {"ok": True, "removed": removed, "deploy_required": removed},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    if removed:
+        print(f"alfred: removed custom agent {args.codename}")
+        print("alfred: run `bash deploy.sh` from the source checkout to remove the scheduler job")
+    else:
+        print(f"alfred: no custom agent named {args.codename}")
     return 0
 
 
@@ -1346,6 +1472,15 @@ def _engine_agent_codenames() -> tuple[str, ...]:
     return tuple(seen)
 
 
+def _engine_default(agent: str) -> str:
+    for record in _parse_agents_conf(_agents_conf_path()):
+        if Path(record["script"]).name != CUSTOM_AGENT_SCRIPT:
+            continue
+        if _codename_from_label(record["label"]) == agent:
+            return agent_runner.normalize_engine(record.get("engine"), default="hybrid")
+    return "hybrid"
+
+
 def _engine_behavior(mode: str) -> str:
     resolved = agent_runner.normalize_engine(mode)
     if resolved == "claude":
@@ -1371,7 +1506,7 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
         except ValueError as e:
             print(f"alfred engine: {e}", file=sys.stderr)
             return 2
-        mode = agent_runner.agent_engine(agent)
+        mode = agent_runner.agent_engine(agent, default=_engine_default(agent))
         print(f"{agent} engine: {mode}")
         print(f"state file: {_engine_state_file(agent)}")
         print(f"behavior: {_engine_behavior(mode)}")
@@ -1380,7 +1515,7 @@ def cmd_engine_status(args: argparse.Namespace) -> int:
     headers = ("agent", "engine", "behavior")
     rows = []
     for agent in _engine_agent_codenames():
-        mode = agent_runner.agent_engine(agent)
+        mode = agent_runner.agent_engine(agent, default=_engine_default(agent))
         rows.append((agent, mode, _engine_behavior(mode)))
     widths = [max(len(h), max((len(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)]
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
@@ -1408,7 +1543,7 @@ def cmd_engine_set(args: argparse.Namespace) -> int:
 
 def _print_engine_roster() -> None:
     for agent in _engine_agent_codenames():
-        mode = agent_runner.agent_engine(agent)
+        mode = agent_runner.agent_engine(agent, default=_engine_default(agent))
         print(f"engine {agent}: {mode} ({_engine_behavior(mode)})")
 
 
@@ -2440,6 +2575,29 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
 
     p_enabled = sub.add_parser("enabled-agents", help="print the list of enabled codenames")
     p_enabled.set_defaults(func=cmd_enabled_agents)
+
+    p_agent = sub.add_parser("agent", help="manage operator-defined runtime agents")
+    agent_sub = p_agent.add_subparsers(dest="agent_command", required=True)
+    p_agent_list = agent_sub.add_parser("list", help="list custom runtime agents")
+    p_agent_list.add_argument("--json", action="store_true")
+    p_agent_list.set_defaults(func=cmd_agent_list)
+    p_agent_add = agent_sub.add_parser("add", help="add or update a custom runtime agent")
+    p_agent_add.add_argument("codename")
+    p_agent_add.add_argument("--display-name", required=True)
+    p_agent_add.add_argument("--role-title", required=True)
+    p_agent_add.add_argument("--purpose", default="")
+    p_agent_add.add_argument("--prompt", default="")
+    p_agent_add.add_argument("--prompt-file")
+    p_agent_add.add_argument("--engine", choices=("claude", "codex", "hybrid"), default="hybrid")
+    p_agent_add.add_argument("--schedule", default="1h")
+    p_agent_add.add_argument("--repo", action="append", default=[])
+    p_agent_add.add_argument("--disabled", action="store_true")
+    p_agent_add.add_argument("--json", action="store_true")
+    p_agent_add.set_defaults(func=cmd_agent_add)
+    p_agent_remove = agent_sub.add_parser("remove", help="remove a custom runtime agent")
+    p_agent_remove.add_argument("codename")
+    p_agent_remove.add_argument("--json", action="store_true")
+    p_agent_remove.set_defaults(func=cmd_agent_remove)
 
     p_telemetry = sub.add_parser("telemetry", help="manage anonymous usage totals")
     telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)

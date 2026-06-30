@@ -137,6 +137,9 @@ gaps, and multi-repo rollouts.
 - **Coordinate through ordinary repo primitives.** Issues, pull requests, labels,
   specs, isolated worktrees, commit trailers, and Slack summaries. The dashboard
   and desktop app read the same local state and GitHub records.
+- **Add your own scheduled roles.** `alfred agent add` creates
+  operator-defined runtime agents with custom names, prompts, engines, schedules,
+  and repo scope; deploy renders them into the same launchd/systemd fleet.
 - **Treat Slack as the planning surface.** Teammates reply in a plan thread with
   scope changes, questions, and acceptance criteria while you keep approval
   authority. Replies after a PR link are captured as context, never as merge
@@ -271,6 +274,20 @@ have explicit gates: Batman is configured but waits behind the runner gate until
 issues. Huntress and Gordon also load from day one; without a target URL or ECS
 cluster they self-idle instead of failing doctor.
 
+You can add a local role without writing a new runner:
+
+```sh
+alfred agent add release-captain \
+  --display-name "Release Captain" \
+  --role-title "Release coordinator" \
+  --prompt "Review release readiness and summarize blockers for the operator." \
+  --engine hybrid \
+  --schedule 30m \
+  --repo your-org/api
+
+bash deploy.sh
+```
+
 For a framework-only install with no agents configured, use `bash deploy.sh &&
 ./bin/alfred doctor`; doctor reports `0 passed, 0 failed`. See
 [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the
@@ -396,6 +413,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
 | [`bin/alfred`](bin/alfred) | Alfred CLI: `alfred agents`, `alfred status`, `alfred doctor`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred code-map export/summary/impact`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
+| [`bin/custom-agent.py`](bin/custom-agent.py), [`lib/custom_agents.py`](lib/custom_agents.py) | Operator-defined runtime agents from `$ALFRED_HOME/state/custom-agents/custom-agents.json`. `alfred agent add` writes the manifest; deploy renders enabled rows into launchd/systemd; the read-only default runner uses normal Alfred locks, preflight, events, spend, memory, and engine routing. |
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |

@@ -129,6 +129,69 @@ def test_install_inventory_uses_active_serve_home_for_agents_conf(
     assert inventory["scheduled_runs"] == 1
 
 
+def test_install_inventory_reports_custom_runtime_agents(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from custom_agents import CustomAgentStore
+
+    home = tmp_path / "active-runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+
+    CustomAgentStore.from_state_root(home / "state").upsert(
+        {
+            "codename": "release-captain",
+            "display_name": "Release Captain",
+            "role_title": "Release coordinator",
+            "purpose": "Checks release readiness before handoff.",
+            "prompt": "Review release readiness and summarize blockers for the operator.",
+            "engine": "codex",
+            "schedule": "30m",
+            "repos": ["acme/api"],
+        }
+    )
+
+    inventory = setup_mod.install_inventory()
+    custom = inventory["custom_agents"]
+    by_key = {item["key"]: item for item in inventory["items"]}
+
+    assert custom["count"] == 1
+    assert custom["enabled_count"] == 1
+    assert custom["agents"][0]["codename"] == "release-captain"
+    assert by_key["custom-agents"]["ok"] is True
+    assert "1 custom runtime agent" in by_key["custom-agents"]["detail"]
+
+
+def test_install_inventory_uses_prompt_free_custom_agent_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from custom_agents import CustomAgentStore
+
+    seen: dict[str, bool] = {}
+
+    class Store:
+        def snapshot(self, *, include_prompt: bool = True) -> dict[str, object]:
+            seen["include_prompt"] = include_prompt
+            return {
+                "path": str(tmp_path / "custom-agents.json"),
+                "count": 0,
+                "enabled_count": 0,
+                "disabled_count": 0,
+                "agents": [],
+            }
+
+    monkeypatch.setattr(CustomAgentStore, "from_state_root", lambda _state: Store())
+
+    payload = setup_mod._install_custom_agents(tmp_path)
+
+    assert seen["include_prompt"] is False
+    assert payload["agents"] == []
+
+
 def test_install_inventory_does_not_reuse_checkout_agents_conf_for_runtime_home(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

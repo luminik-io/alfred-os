@@ -29,6 +29,7 @@ for candidate in (
         sys.path.insert(0, str(candidate))
 
 import agent_runner  # noqa: E402
+from custom_agents import CustomAgentStore  # noqa: E402
 
 ALFRED_HOME = agent_runner.ALFRED_HOME
 STATE_ROOT = agent_runner.STATE_ROOT
@@ -79,6 +80,7 @@ class AgentRecord:
     log_stem: str
     role: str
     disabled: bool
+    engine_default: str | None = None
 
 
 @dataclass
@@ -190,10 +192,9 @@ def _agents_conf_candidates() -> list[Path]:
 
 
 def _parse_agents_conf(path: Path) -> list[AgentRecord]:
-    if not path.exists():
-        return []
     out: list[AgentRecord] = []
-    for raw in path.read_text().splitlines():
+    lines = path.read_text().splitlines() if path.exists() else []
+    for raw in lines:
         stripped = raw.lstrip()
         if not stripped:
             continue
@@ -225,23 +226,55 @@ def _parse_agents_conf(path: Path) -> list[AgentRecord]:
     return out
 
 
-def configured_agents() -> list[AgentRecord]:
-    for path in _agents_conf_candidates():
-        records = _parse_agents_conf(path)
-        if records:
-            return records
+def _custom_agent_records() -> list[AgentRecord]:
+    try:
+        agents = CustomAgentStore.from_env().load()
+    except Exception:
+        return []
     return [
         AgentRecord(
-            label=f"alfred.{name}",
-            codename=name,
-            script=f"{name}.py",
-            schedule="-",
-            log_stem=f"alfred.{name}",
-            role="-",
-            disabled=False,
+            label=agent.label,
+            codename=agent.codename,
+            script="custom-agent.py",
+            schedule=agent.schedule,
+            log_stem=agent.log_stem,
+            role=agent.role_title,
+            disabled=not agent.enabled,
+            engine_default=agent.engine,
         )
-        for name in DEFAULT_AGENT_NAMES
+        for agent in agents
     ]
+
+
+def _with_custom_agent_records(records: list[AgentRecord]) -> list[AgentRecord]:
+    seen = {record.codename for record in records}
+    custom = [record for record in _custom_agent_records() if record.codename not in seen]
+    return [*records, *custom]
+
+
+def configured_agents() -> list[AgentRecord]:
+    candidates = _agents_conf_candidates()
+    runtime_conf = candidates[0]
+    for path in candidates:
+        if not path.exists():
+            continue
+        records = _parse_agents_conf(path)
+        if records or path == runtime_conf:
+            return _with_custom_agent_records(records)
+    return _with_custom_agent_records(
+        [
+            AgentRecord(
+                label=f"alfred.{name}",
+                codename=name,
+                script=f"{name}.py",
+                schedule="-",
+                log_stem=f"alfred.{name}",
+                role="-",
+                disabled=False,
+            )
+            for name in DEFAULT_AGENT_NAMES
+        ]
+    )
 
 
 def _loaded_label_set() -> set[str]:
@@ -398,10 +431,15 @@ def _approval_wait_status(agent: str) -> dict[str, Any]:
     }
 
 
-def _engine(agent: str) -> str | None:
-    if agent not in ENGINE_AWARE_AGENTS:
+def _record_engine(record: AgentRecord) -> str | None:
+    if record.script == "custom-agent.py":
+        return agent_runner.agent_engine(
+            record.codename,
+            default=record.engine_default or "hybrid",
+        )
+    if record.codename not in ENGINE_AWARE_AGENTS:
         return None
-    return agent_runner.agent_engine(agent)
+    return agent_runner.agent_engine(record.codename)
 
 
 def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnapshot:
@@ -451,7 +489,7 @@ def snapshot_agent(record: AgentRecord, *, loaded_labels: set[str]) -> AgentSnap
         schedule=record.schedule,
         loaded=record.label in loaded_labels,
         disabled=record.disabled,
-        engine=_engine(record.codename),
+        engine=_record_engine(record),
         locked=locked,
         stale_lock=stale_lock,
         lock_pid=lock_pid,

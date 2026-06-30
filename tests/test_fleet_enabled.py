@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import importlib.machinery
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -330,6 +331,51 @@ def test_cli_engine_status_lists_known_agents(tmp_path):
     assert "auth/limit/budget" not in res.stdout
 
 
+def test_cli_engine_status_uses_custom_agent_manifest_default(tmp_path):
+    alfred = tmp_path / "alfred"
+    custom_dir = alfred / "state" / "custom-agents"
+    custom_dir.mkdir(parents=True)
+    (custom_dir / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "ALFRED_ENGINE": "",
+    }
+
+    res = _run_cli("engine", "status", "release-captain", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    assert "release-captain engine: codex" in res.stdout
+    assert f"state file: {alfred / 'state' / 'engines' / 'release-captain'}" in res.stdout
+
+    engine_state = alfred / "state" / "engines"
+    engine_state.mkdir(parents=True)
+    (engine_state / "release-captain").write_text("claude\n", encoding="utf-8")
+    overridden = _run_cli("engine", "status", "release-captain", env_extra=env)
+    assert overridden.returncode == 0, overridden.stderr
+    assert "release-captain engine: claude" in overridden.stdout
+
+
 def test_cli_codex_status_reports_binary_and_engines(tmp_path):
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -473,6 +519,97 @@ def test_cli_status_reports_local_snapshot(tmp_path):
     assert "approval wait dead #504" in res.stdout
     batman_row = next(line for line in res.stdout.splitlines() if line.startswith("batman"))
     assert " 1     0   0" in batman_row
+
+
+def test_cli_status_uses_custom_agent_manifest_engine_default(tmp_path):
+    alfred = tmp_path / "alfred"
+    custom_dir = alfred / "state" / "custom-agents"
+    custom_dir.mkdir(parents=True)
+    (custom_dir / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    env = {
+        "ALFRED_HOME": str(alfred),
+        "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        "ALFRED_ENGINE": "",
+    }
+
+    res = _run_cli("status", env_extra=env)
+
+    assert res.returncode == 0, res.stderr
+    row = next(line for line in res.stdout.splitlines() if line.startswith("release-captain"))
+    assert row.split()[2] == "codex"
+    assert any(line.startswith("batman") for line in res.stdout.splitlines())
+
+    engine_state = alfred / "state" / "engines"
+    engine_state.mkdir(parents=True)
+    (engine_state / "release-captain").write_text("claude\n", encoding="utf-8")
+    overridden = _run_cli("status", env_extra=env)
+    row = next(
+        line for line in overridden.stdout.splitlines() if line.startswith("release-captain")
+    )
+    assert row.split()[2] == "claude"
+
+
+def test_cli_status_treats_empty_runtime_conf_as_authoritative(tmp_path):
+    alfred = tmp_path / "alfred"
+    launchd = alfred / "launchd"
+    custom_dir = alfred / "state" / "custom-agents"
+    launchd.mkdir(parents=True)
+    custom_dir.mkdir(parents=True)
+    (launchd / "agents.conf").write_text("", encoding="utf-8")
+    (custom_dir / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    res = _run_cli(
+        "status",
+        env_extra={
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "workspace"),
+        },
+    )
+
+    assert res.returncode == 0, res.stderr
+    rows = res.stdout.splitlines()
+    assert any(line.startswith("release-captain") for line in rows)
+    assert not any(line.startswith("batman") for line in rows)
 
 
 def test_cli_engine_set_accepts_configured_runtime_codename(tmp_path):

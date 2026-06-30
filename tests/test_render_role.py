@@ -8,6 +8,7 @@ resulting plist.
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
 import shutil
@@ -89,6 +90,128 @@ def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
     env = plist_data["EnvironmentVariables"]
     assert env["AGENT_CODENAME"] == "marshall"
     assert env["LAUNCHD_LABEL"] == "my.fleet.marshall"
+
+
+def test_render_appends_enabled_custom_agents_from_manifest(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers for the operator.",
+                        "engine": "hybrid",
+                        "schedule": "interval:1800",
+                        "repos": ["acme/api"],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
+
+    plist_data = plistlib.loads((out_dir / "alfred.release-captain.plist").read_bytes())
+    assert plist_data["ProgramArguments"][1] == "custom-agent.py"
+    env = plist_data["EnvironmentVariables"]
+    assert env["AGENT_CODENAME"] == "release-captain"
+    assert env["ALFRED_RELEASE_CAPTAIN_ROLE"] == "Release coordinator"
+
+
+def test_render_skips_custom_agent_rows_that_collide_with_base_conf(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers for the operator.",
+                        "engine": "hybrid",
+                        "schedule": "interval:1800",
+                        "repos": ["acme/api"],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    conf = "alfred.release-captain\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
+
+    plist_data = plistlib.loads((out_dir / "alfred.release-captain.plist").read_bytes())
+    assert plist_data["ProgramArguments"][1] == "lucius.py"
+    assert len(list(out_dir.glob("alfred.release-captain.plist"))) == 1
+
+
+def test_render_supports_custom_agents_without_base_agents_conf(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers for the operator.",
+                        "engine": "hybrid",
+                        "schedule": "interval:1800",
+                        "repos": ["acme/api"],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    work = tmp_path / "launchd"
+    work.mkdir()
+    shutil.copy(RENDER_SH, work / "render.sh")
+    shutil.copy(TEMPLATE, work / "_template.plist")
+    out_dir = tmp_path / "out"
+
+    res = subprocess.run(
+        ["bash", str(work / "render.sh"), str(out_dir)],
+        capture_output=True,
+        text=True,
+        env={**os.environ.copy(), "ALFRED_HOME": str(runtime)},
+    )
+
+    assert res.returncode == 0, res.stderr
+    plist_data = plistlib.loads((out_dir / "alfred.release-captain.plist").read_bytes())
+    assert plist_data["ProgramArguments"][1] == "custom-agent.py"
 
 
 def test_render_ignores_legacy_alfredrc_environment(tmp_path):

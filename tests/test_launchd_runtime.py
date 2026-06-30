@@ -218,6 +218,60 @@ def test_doctor_accepts_no_url_telemetry_sentinel(tmp_path):
     assert "unexpected output" not in res.stdout
 
 
+def test_doctor_includes_custom_agents_when_runtime_conf_is_empty(tmp_path):
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    workspace = tmp_path / "workspace"
+    fakebin = tmp_path / "fakebin"
+    (alfred / "launchd").mkdir(parents=True)
+    (alfred / "state" / "custom-agents").mkdir(parents=True)
+    workspace.mkdir()
+    fakebin.mkdir()
+    (alfred / "launchd" / "agents.conf").write_text("", encoding="utf-8")
+    (alfred / "state" / "custom-agents" / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (fakebin / "codex").write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    (fakebin / "git").write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    (fakebin / "codex").chmod(0o755)
+    (fakebin / "git").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(REPO / "bin" / "doctor.sh"), "--dev"],
+        env=_clean_env(
+            HOME=str(home),
+            ALFRED_HOME=str(alfred),
+            WORKSPACE_ROOT=str(workspace),
+            PATH=f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        ),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "custom-agent" in res.stdout
+    assert "doctor: 1 passed, 0 failed" in res.stdout
+
+
 def test_deploy_removes_stale_managed_plists(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"
@@ -283,6 +337,397 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     assert "alfred.old.plist" in log
     assert "alfred.personal.plist" not in log
     assert "alfred.new.plist" in log
+
+
+def test_deploy_launchd_reaps_previous_custom_only_when_last_agent_removed(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "launchd" / "render.sh", src / "launchd" / "render.sh")
+    shutil.copy(REPO / "launchd" / "_template.plist", src / "launchd" / "_template.plist")
+    shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+
+    managed = alfred / "launchd" / "managed-labels.txt"
+    managed.parent.mkdir(parents=True)
+    managed.write_text("alfred.release-captain\n", encoding="utf-8")
+    launch_agents = home / "Library" / "LaunchAgents"
+    launch_agents.mkdir(parents=True)
+    (launch_agents / "alfred.release-captain.plist").write_text(
+        "<plist><dict></dict></plist>\n",
+        encoding="utf-8",
+    )
+    (launch_agents / "unrelated.keep.plist").write_text(
+        "<plist><dict></dict></plist>\n",
+        encoding="utf-8",
+    )
+    launchctl_log = tmp_path / "launchctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
+    (fakebin / "launchctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(launchctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "launchctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "framework-only deploy complete" not in res.stdout
+    assert not (launch_agents / "alfred.release-captain.plist").exists()
+    assert (launch_agents / "unrelated.keep.plist").exists()
+    assert managed.read_text(encoding="utf-8") == ""
+    log = launchctl_log.read_text(encoding="utf-8")
+    assert "alfred.release-captain.plist" in log
+    assert "unrelated.keep.plist" not in log
+
+
+def test_deploy_linux_stays_framework_only_without_conf_or_custom_agents(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    systemd_user = tmp_path / "systemd-user"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    systemd_user.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    (src / "systemd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "systemd" / "render.sh", src / "systemd" / "render.sh")
+    shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
+    shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
+    (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+
+    (systemd_user / "alfred.old.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "alfred.old.service").write_text("[Service]\n", encoding="utf-8")
+    (systemd_user / "backup.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "backup.service").write_text("[Service]\n", encoding="utf-8")
+
+    systemctl_log = tmp_path / "systemctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Linux\n")
+    (fakebin / "systemctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(systemctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "systemctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "ALFRED_SYSTEMD_USER_DIR": str(systemd_user),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "framework-only deploy complete" in res.stdout
+    assert (systemd_user / "alfred.old.timer").exists()
+    assert (systemd_user / "alfred.old.service").exists()
+    assert (systemd_user / "backup.timer").exists()
+    assert (systemd_user / "backup.service").exists()
+    assert not (alfred / "systemd" / "managed-labels.txt").exists()
+    log = systemctl_log.read_text(encoding="utf-8")
+    assert "alfred.old.timer" not in log
+    assert "backup.timer" not in log
+
+
+def test_deploy_linux_reaps_previous_custom_only_when_last_agent_removed(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    systemd_user = tmp_path / "systemd-user"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    systemd_user.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    (src / "systemd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "systemd" / "render.sh", src / "systemd" / "render.sh")
+    shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
+    shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+
+    managed = alfred / "systemd" / "managed-labels.txt"
+    managed.parent.mkdir(parents=True)
+    managed.write_text("alfred.release-captain\n", encoding="utf-8")
+    (systemd_user / "alfred.release-captain.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "alfred.release-captain.service").write_text(
+        "[Service]\n",
+        encoding="utf-8",
+    )
+    (systemd_user / "backup.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "backup.service").write_text("[Service]\n", encoding="utf-8")
+
+    systemctl_log = tmp_path / "systemctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Linux\n")
+    (fakebin / "systemctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(systemctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "systemctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "ALFRED_SYSTEMD_USER_DIR": str(systemd_user),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "framework-only deploy complete" not in res.stdout
+    assert not (systemd_user / "alfred.release-captain.timer").exists()
+    assert not (systemd_user / "alfred.release-captain.service").exists()
+    assert (systemd_user / "backup.timer").exists()
+    assert (systemd_user / "backup.service").exists()
+    assert managed.read_text(encoding="utf-8") == ""
+    log = systemctl_log.read_text(encoding="utf-8")
+    assert "alfred.release-captain.timer" in log
+    assert "backup.timer" not in log
+
+
+def test_deploy_linux_custom_only_reaps_only_previous_managed_units(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    systemd_user = tmp_path / "systemd-user"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    systemd_user.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    (src / "systemd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "systemd" / "render.sh", src / "systemd" / "render.sh")
+    shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
+    shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
+    shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
+    shutil.copy(REPO / "bin" / "custom-agent.py", src / "bin" / "custom-agent.py")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+
+    store = alfred / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    managed = alfred / "systemd" / "managed-labels.txt"
+    managed.parent.mkdir(parents=True)
+    managed.write_text("alfred.old\n", encoding="utf-8")
+    (systemd_user / "alfred.old.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "alfred.old.service").write_text("[Service]\n", encoding="utf-8")
+    (systemd_user / "backup.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "backup.service").write_text("[Service]\n", encoding="utf-8")
+
+    systemctl_log = tmp_path / "systemctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Linux\n")
+    (fakebin / "systemctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(systemctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "systemctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "ALFRED_SYSTEMD_USER_DIR": str(systemd_user),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not (systemd_user / "alfred.old.timer").exists()
+    assert not (systemd_user / "alfred.old.service").exists()
+    assert (systemd_user / "backup.timer").exists()
+    assert (systemd_user / "backup.service").exists()
+    assert (systemd_user / "alfred.release-captain.timer").exists()
+    assert (systemd_user / "alfred.release-captain.service").exists()
+    assert managed.read_text(encoding="utf-8").strip() == "alfred.release-captain"
+    log = systemctl_log.read_text(encoding="utf-8")
+    assert "alfred.old.timer" in log
+    assert "alfred.release-captain.timer" in log
+    assert "backup.timer" not in log
+
+
+def test_deploy_linux_migrates_existing_alfred_units_without_ledger(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    systemd_user = tmp_path / "systemd-user"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    systemd_user.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    (src / "systemd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "systemd" / "render.sh", src / "systemd" / "render.sh")
+    shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
+    shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
+    shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
+    shutil.copy(REPO / "bin" / "custom-agent.py", src / "bin" / "custom-agent.py")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+
+    store = alfred / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (systemd_user / "alfred.old.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "alfred.old.service").write_text(
+        "[Unit]\nDescription=alfred-os alfred.old\n[Service]\n",
+        encoding="utf-8",
+    )
+    (systemd_user / "backup.timer").write_text("[Timer]\n", encoding="utf-8")
+    (systemd_user / "backup.service").write_text(
+        "[Unit]\nDescription=nightly backup\n[Service]\nEnvironment=ALFRED_HOME=/tmp/alfred\n",
+        encoding="utf-8",
+    )
+
+    systemctl_log = tmp_path / "systemctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Linux\n")
+    (fakebin / "systemctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(systemctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "systemctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "ALFRED_SYSTEMD_USER_DIR": str(systemd_user),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "framework-only deploy complete" not in res.stdout
+    assert not (systemd_user / "alfred.old.timer").exists()
+    assert not (systemd_user / "alfred.old.service").exists()
+    assert (systemd_user / "backup.timer").exists()
+    assert (systemd_user / "backup.service").exists()
+    assert (systemd_user / "alfred.release-captain.timer").exists()
+    assert (systemd_user / "alfred.release-captain.service").exists()
+    managed = alfred / "systemd" / "managed-labels.txt"
+    assert managed.read_text(encoding="utf-8").strip() == "alfred.release-captain"
+    log = systemctl_log.read_text(encoding="utf-8")
+    assert "alfred.old.timer" in log
+    assert "alfred.release-captain.timer" in log
+    assert "backup.timer" not in log
 
 
 def test_deploy_defers_reload_for_running_jobs(tmp_path):

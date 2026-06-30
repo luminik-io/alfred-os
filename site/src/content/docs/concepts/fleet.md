@@ -112,19 +112,33 @@ These ship with plain-English names because they are fleet infrastructure, not r
 
 ## Adding a codename for your own role
 
-To add a role not in the default set (for example `arsenal`, a deploy-time security scanner):
+Use `alfred agent add` for a prompted custom runtime agent:
 
-1. Write `bin/arsenal.py` following the pattern in `bin/lucius.py`. Import from `agent_runner`. Set `AGENT = os.environ.get("AGENT_CODENAME", "arsenal")`.
-2. Append a row to `launchd/agents.conf`:
+```sh
+alfred agent add release-captain \
+  --display-name "Release Captain" \
+  --role-title "Release coordinator" \
+  --prompt "Review release readiness and summarize blockers for the operator." \
+  --engine hybrid \
+  --schedule 30m \
+  --repo acme/api
 
-   ```
-   my.fleet.arsenal	arsenal.py	interval:3600	no	my.fleet.arsenal	Deploy-time security scanner
-   ```
+bash deploy.sh
+```
 
-3. Run `bash deploy.sh`.
-4. Run `./bin/alfred doctor` to confirm preflight passes.
+Alfred stores custom runtime agents in
+`$ALFRED_HOME/state/custom-agents/custom-agents.json`, renders enabled rows into
+the host scheduler, and runs them through `bin/custom-agent.py` with normal
+locks, preflight, event logs, spend, runtime memory, and engine routing. The
+generic runner is read-only by default.
 
-The primitives in the `agent_runner` package cover the common patterns: lock, preflight, spend, gh, slack, claim/release, `claude_invoke`, event log. Read the [state machine](/concepts/state-machine/) and the [tutorial](/getting-started/tutorial/) before writing the script.
+For deterministic roles that need dedicated code or PR creation, write
+`bin/arsenal.py`
+following the pattern in `bin/lucius.py`, append a row to `launchd/agents.conf`,
+and run `bash deploy.sh`. The primitives in the `agent_runner` package cover the
+common patterns: lock, preflight, spend, gh, slack, claim/release, engine
+invocation, and event logs. Read the [state machine](/concepts/state-machine/)
+and the [tutorial](/getting-started/tutorial/) before writing bespoke runners.
 
 ## Roadmap categories
 

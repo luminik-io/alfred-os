@@ -140,21 +140,47 @@ The agent script lives at `bin/<role>.py` (e.g. `bin/lucius.py` is the feature-d
 
 The bin script filename stays `lucius.py` because it is the role implementation. Custom roster names change what humans see, not the role implementation or the scheduler contract.
 
-## Adding a brand-new codename for your own role
+## Adding a custom runtime agent
 
-To add a role not in the default set (e.g., `arsenal` for "deploy-time security scanner"):
+Use `alfred agent add` when you want an extra local role without writing a new
+Python runner. Alfred stores the role in
+`$ALFRED_HOME/state/custom-agents/custom-agents.json`, renders it into the same
+launchd/systemd scheduler path as the built-in fleet, and runs it through
+`bin/custom-agent.py`. The custom runner uses the normal Alfred lifecycle:
+locks, preflight, event logs, spend ledgers, runtime memory, engine routing, and
+Slack summaries. It is read-only by default; use a bespoke runner for roles
+that need deterministic PR creation.
 
-1. Write `bin/arsenal.py` following the pattern in `bin/lucius.py`. Import from `agent_runner`. Set `AGENT = os.environ.get("AGENT_CODENAME", "arsenal")`.
-2. Add a row to `launchd/agents.conf`:
+```sh
+alfred agent add release-captain \
+  --display-name "Release Captain" \
+  --role-title "Release coordinator" \
+  --purpose "Checks release readiness before handoff." \
+  --prompt "Review release readiness and summarize blockers for the operator." \
+  --engine hybrid \
+  --schedule 30m \
+  --repo acme/api
 
-   ```
-   my.fleet.arsenal	arsenal.py	interval:3600	no	my.fleet.arsenal	Deploy-time security scanner
-   ```
+bash deploy.sh
+alfred status
+```
 
-3. Run `bash deploy.sh`.
-4. Run `./bin/alfred doctor` to confirm preflight passes.
+The runtime codename must be new, lowercase, and hyphenated
+(`release-captain`, not `Lucius`). Built-in codenames such as `lucius`,
+`batman`, and `nightwing` are reserved. Use `alfred agent list --json` to inspect
+the manifest and `alfred agent remove <codename>` to delete one. Run
+`bash deploy.sh` after add, update, or remove so the host scheduler is rendered
+from the current manifest.
 
-The existing primitives in `lib/agent_runner/` cover the common patterns: lock, preflight, spend, gh, slack, claim/release, claude_invoke, event log. Read [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md) before writing the script. Once the agent appears in the runtime status or schedule, Alfred Desktop includes it in the custom roster editor so you can give it a visible name. A future native flow can generate this script and schedule row from an engine, role, and prompt, but the current OSS path keeps the code explicit and reviewable.
+### Bespoke script path
+
+If the role needs special deterministic code, write a dedicated
+`bin/<role>.py` following the pattern in `bin/lucius.py`, then add a row to
+`launchd/agents.conf` and run `bash deploy.sh`. The existing primitives in
+`lib/agent_runner/` cover the common patterns: lock, preflight, spend, gh,
+slack, claim/release, engine invocation, and event logs. Read
+[`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md)
+before writing the script.
 
 ## Roadmap categories (post-v0.2)
 
@@ -177,6 +203,9 @@ alfred clear-lock <codename>  # clear a stale /tmp lock after safety checks
 alfred enable <codename>      # add codename to the runner gate
 alfred disable <codename>     # remove codename from the runner gate
 alfred enabled-agents         # print the current runner-gate list
+alfred agent list             # list operator-defined runtime agents
+alfred agent add ...          # create or update a custom runtime agent
+alfred agent remove <name>    # remove a custom runtime agent
 alfred labels check --all     # report missing lifecycle/approval labels
 alfred labels bootstrap --all # create missing lifecycle/approval labels
 alfred shipped --period weekly # summarize merged PRs, issues, LOC, config changes

@@ -198,14 +198,14 @@ class FilesystemReader:
     # -- public API ---------------------------------------------------------
 
     def list_agents(self) -> list[AgentSummary]:
-        codenames = sort_codenames(list(self._iter_codenames()))
+        codenames = sort_codenames(list(self._iter_codenames()), state_root=self.state_root)
         out: list[AgentSummary] = []
         for codename in codenames:
             firings = self._iter_firings_for(codename, limit=1)
             last = firings[0] if firings else None
             firings_today = self._firings_today(codename)
             paused, paused_since = self._pause_state(codename)
-            profile = profile_payload(codename)
+            profile = profile_payload(codename, state_root=self.state_root)
             if last is None:
                 out.append(
                     AgentSummary(
@@ -382,11 +382,21 @@ class FilesystemReader:
         """Return codenames from the deployed scheduler config beside state."""
         conf = _runtime_agents_conf(self.state_root)
         if conf is None:
-            return []
+            try:
+                from custom_agents import CustomAgentStore
+
+                return [
+                    agent.codename
+                    for agent in CustomAgentStore.from_state_root(self.state_root).load()
+                    if agent.enabled
+                ]
+            except Exception as exc:  # pragma: no cover - defensive UI path
+                logger.debug("read custom scheduled codenames %s: %s", self.state_root, exc)
+                return []
         try:
             from .schedule import scheduled_codenames
 
-            return scheduled_codenames(conf_path=conf)
+            return scheduled_codenames(conf_path=conf, state_root=self.state_root)
         except Exception as exc:  # pragma: no cover - defensive UI path
             logger.debug("read scheduled codenames %s: %s", conf, exc)
             return []

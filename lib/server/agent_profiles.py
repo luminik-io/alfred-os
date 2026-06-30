@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
+
+from custom_agents import CustomAgentStore
 
 
 @dataclass(frozen=True)
@@ -243,6 +246,7 @@ AGENT_PROFILES: tuple[AgentProfile, ...] = (
 
 _PROFILE_BY_CODENAME = {profile.codename: profile for profile in AGENT_PROFILES}
 _UNKNOWN_ORDER = 10_000
+_CUSTOM_ORDER = 9_000
 
 
 def agent_profile(codename: str) -> AgentProfile | None:
@@ -250,27 +254,48 @@ def agent_profile(codename: str) -> AgentProfile | None:
     return _PROFILE_BY_CODENAME.get(_normalize_codename(codename))
 
 
-def profile_payload(codename: str) -> dict[str, Any]:
+def profile_payload(codename: str, *, state_root: Path | None = None) -> dict[str, Any]:
     """Return serializable display metadata for a codename."""
     profile = agent_profile(codename)
     if profile is None:
-        return {}
+        custom = _custom_agent(codename, state_root=state_root)
+        return custom.profile_payload() if custom is not None else {}
     payload = asdict(profile)
     payload.pop("codename", None)
     payload.pop("order", None)
     return payload
 
 
-def profile_order(codename: str) -> int:
+def profile_order(codename: str, *, state_root: Path | None = None) -> int:
     """Stable fleet display order with Batman, Lucius, and Drake first."""
     profile = agent_profile(codename)
-    return profile.order if profile is not None else _UNKNOWN_ORDER
+    if profile is not None:
+        return profile.order
+    custom = _custom_agent(codename, state_root=state_root)
+    if custom is not None:
+        return _CUSTOM_ORDER
+    return _UNKNOWN_ORDER
 
 
-def sort_codenames(codenames: list[str]) -> list[str]:
+def sort_codenames(codenames: list[str], *, state_root: Path | None = None) -> list[str]:
     """Sort codenames by public roster order, then alphabetically."""
-    return sorted(codenames, key=lambda codename: (profile_order(codename), codename))
+    return sorted(
+        codenames,
+        key=lambda codename: (profile_order(codename, state_root=state_root), codename),
+    )
 
 
 def _normalize_codename(codename: str) -> str:
     return codename.rsplit(".", 1)[-1].strip().lower()
+
+
+def _custom_agent(codename: str, *, state_root: Path | None = None):
+    try:
+        store = (
+            CustomAgentStore.from_state_root(state_root)
+            if state_root is not None
+            else CustomAgentStore.from_env()
+        )
+        return store.get(codename)
+    except Exception:
+        return None
