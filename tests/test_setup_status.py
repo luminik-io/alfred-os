@@ -908,7 +908,7 @@ def test_bootstrap_status_survives_tilde_code_memory_paths_without_home(
     assert code_memory["index_home"] == "~/code-memory-home"
     assert code_memory["graph_dir"] == "~/code-memory-cache"
     assert code_memory["repos"]["configured"] == ["api"]
-    assert code_memory["repos"]["source"] == "auto-fallback"
+    assert code_memory["repos"]["source"] == "configured-missing"
     assert payload["capability_plane"]["summary"]["total"] == 3
 
 
@@ -1080,7 +1080,37 @@ def test_bootstrap_status_prefers_existing_configured_code_memory_repos(
     }
 
 
-def test_bootstrap_status_falls_back_when_configured_code_memory_repos_are_stale(
+def test_bootstrap_status_uses_repo_local_map_for_configured_code_memory_repos(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    workspace = tmp_path / "workspace"
+    marketing = tmp_path / "marketing"
+    (workspace / "product" / "backend" / ".git").mkdir(parents=True)
+    (marketing / "site" / ".git").mkdir(parents=True)
+    (workspace / "product" / "ignored" / ".git").mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        f"acme-backend=backend,acme-site={marketing / 'site'}",
+    )
+    monkeypatch.setenv("ALFRED_CODE_MEMORY_REPOS", "acme-site,acme-backend")
+
+    code_memory = setup_mod.bootstrap_status()["code_memory"]
+
+    assert code_memory["repos"] == {
+        "configured": ["acme-site", "acme-backend"],
+        "configured_existing": ["acme-site", "acme-backend"],
+        "discovered": [],
+        "selected": ["acme-site", "acme-backend"],
+        "source": "configured",
+        "count": 2,
+        "limit": 25,
+    }
+
+
+def test_bootstrap_status_does_not_auto_discover_when_configured_code_memory_repos_are_stale(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
@@ -1095,15 +1125,15 @@ def test_bootstrap_status_falls_back_when_configured_code_memory_repos_are_stale
     assert code_memory["repos"] == {
         "configured": ["old-alfred"],
         "configured_existing": [],
-        "discovered": ["api"],
-        "selected": ["api"],
-        "source": "auto-fallback",
-        "count": 1,
+        "discovered": [],
+        "selected": [],
+        "source": "configured-missing",
+        "count": 0,
         "limit": 25,
     }
 
 
-def test_bootstrap_status_falls_back_when_configured_code_memory_dirs_are_not_git_repos(
+def test_bootstrap_status_does_not_auto_discover_when_configured_code_memory_dirs_are_not_git_repos(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     _stub_common(monkeypatch)
@@ -1120,10 +1150,10 @@ def test_bootstrap_status_falls_back_when_configured_code_memory_dirs_are_not_gi
     assert code_memory["repos"] == {
         "configured": ["docs"],
         "configured_existing": [],
-        "discovered": ["api"],
-        "selected": ["api"],
-        "source": "auto-fallback",
-        "count": 1,
+        "discovered": [],
+        "selected": [],
+        "source": "configured-missing",
+        "count": 0,
         "limit": 25,
     }
 

@@ -366,14 +366,56 @@ scope_raw_has_entries() {
 # In-scope repos for indexing: ALFRED_CODE_MEMORY_REPOS (comma-separated local
 # dir names under WORKSPACE), falling back to ALFRED_CODE_MAP_REPOS so a single
 # scope list drives both the planning code map and the code-memory index.
+repo_map_lookup() {
+  local lookup="$1" raw="${ALFRED_REPO_LOCAL_MAP:-}" entry key value
+  [ -n "$raw" ] || return 1
+  while IFS= read -r entry; do
+    entry="$(trim_env_value "$entry")"
+    [ -n "$entry" ] || continue
+    key="${entry%%=*}"
+    value="${entry#*=}"
+    if [ "$key" = "$entry" ]; then
+      continue
+    fi
+    key="$(trim_env_value "$key")"
+    value="$(trim_env_value "$value")"
+    if [ "$key" = "$lookup" ] && [ -n "$value" ]; then
+      printf '%s' "$value"
+      return 0
+    fi
+  done < <(printf '%s\n' "$raw" | tr ',' '\n')
+  return 1
+}
+
+repo_path_for_configured_name() {
+  local name="$1" mapped
+  if mapped="$(repo_map_lookup "$name")"; then
+    case "$mapped" in
+      /*) printf '%s' "$mapped" ;;
+      *) printf '%s/%s' "$WORKSPACE" "$mapped" ;;
+    esac
+    return 0
+  fi
+  printf '%s/%s' "$WORKSPACE" "$name"
+}
+
+canonical_repo_path() {
+  local path="$1"
+  if [ -d "$path" ]; then
+    cd "$path" 2>/dev/null && pwd -P && return 0
+  fi
+  printf '%s' "$path"
+}
+
 configured_scope_repos() {
-  local raw="${ALFRED_CODE_MEMORY_REPOS:-${ALFRED_CODE_MAP_REPOS:-}}"
+  local raw="${ALFRED_CODE_MEMORY_REPOS:-${ALFRED_CODE_MAP_REPOS:-}}" repo_path
   printf '%s\n' "$raw" | tr ',' '\n' | while IFS= read -r name; do
     name="$(printf '%s' "$name" | tr -d '[:space:]')"
     [ -n "$name" ] || continue
-    [ -d "$WORKSPACE/$name" ] || continue
-    [ -e "$WORKSPACE/$name/.git" ] || continue
-    printf '%s\n' "$WORKSPACE/$name"
+    repo_path="$(repo_path_for_configured_name "$name")"
+    [ -d "$repo_path" ] || continue
+    [ -e "$repo_path/.git" ] || continue
+    canonical_repo_path "$repo_path"
   done
   return 0
 }
@@ -436,8 +478,8 @@ scope_repos() {
     configured="$(configured_scope_repos)"
     if [ -n "$configured" ]; then
       printf '%s\n' "$configured"
-      return 0
     fi
+    return 0
   fi
   discover_scope_repos
   return 0
@@ -459,10 +501,38 @@ configured_scope_summary() {
   printf '%s' "$repos"
 }
 
+missing_configured_scope_summary() {
+  local raw name repo_path repos
+  raw="$(scope_raw)"
+  repos=""
+  while IFS= read -r name; do
+    name="$(printf '%s' "$name" | tr -d '[:space:]')"
+    [ -n "$name" ] || continue
+    repo_path="$(repo_path_for_configured_name "$name")"
+    if [ -d "$repo_path" ] && [ -e "$repo_path/.git" ]; then
+      continue
+    fi
+    if [ -n "$repos" ]; then
+      repos="$repos, $name"
+    else
+      repos="$name"
+    fi
+  done < <(printf '%s\n' "$raw" | tr ',' '\n')
+  printf '%s' "$repos"
+}
+
 scope_repo_summary() {
-  local rel repo repos
+  local configured missing rel repo repos
   if scope_raw_has_entries; then
-    configured_scope_summary
+    configured="$(configured_scope_repos)"
+    missing="$(missing_configured_scope_summary)"
+    if [ -z "$configured" ]; then
+      printf 'configured scope not found: %s' "$(configured_scope_summary)"
+    elif [ -n "$missing" ]; then
+      printf '%s (missing: %s)' "$(configured_scope_summary)" "$missing"
+    else
+      configured_scope_summary
+    fi
     return 0
   fi
   repos=""
@@ -481,10 +551,8 @@ scope_repo_summary() {
   if scope_raw_has_entries; then
     if [ -n "$(configured_scope_repos)" ]; then
       printf '%s' "$repos"
-    elif [ -n "$repos" ]; then
-      printf 'configured scope not found; auto-discovered: %s' "$repos"
     else
-      printf 'configured scope not found; auto-discovered: none found'
+      printf 'configured scope not found: %s' "$(configured_scope_summary)"
     fi
   elif [ -n "$repos" ]; then
     printf 'auto-discovered: %s' "$repos"
