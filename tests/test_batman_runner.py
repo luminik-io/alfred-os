@@ -1216,9 +1216,14 @@ def test_lifecycle_skips_existing_children_from_stale_marker_retry(monkeypatch):
             assert payload["children"] == [
                 {
                     "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/backend",
+                    "title": "Implement backend slice",
+                },
+                {
+                    "labels": ["agent:bundle:ready-plan"],
                     "repo": "myorg/frontend",
                     "title": "Implement frontend slice",
-                }
+                },
             ]
             return SimpleNamespace(
                 executed=True,
@@ -1257,6 +1262,110 @@ def test_lifecycle_skips_existing_children_from_stale_marker_retry(monkeypatch):
     assert [child.repo for child in reported_plan.children] == ["myorg/frontend"]
     assert reported_result.reason == runner.EXEC_OK
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+
+
+def test_lifecycle_preserves_full_marker_when_stale_retry_files_nothing(monkeypatch, capsys):
+    runner = _load_runner()
+    from batman import EXEC_PARTIAL
+
+    reports = []
+    finalized = []
+    original_plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/frontend",
+                title="Implement frontend slice",
+            ),
+        ),
+        affected_repos=("myorg/backend", "myorg/frontend"),
+        readiness_blockers=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return original_plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, plan):
+            assert [child.repo for child in plan.children] == ["myorg/frontend"]
+            payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+            assert payload is not None
+            assert payload["children"] == [
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/backend",
+                    "title": "Implement backend slice",
+                },
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/frontend",
+                    "title": "Implement frontend slice",
+                },
+            ]
+            return SimpleNamespace(
+                executed=False,
+                reason=EXEC_PARTIAL,
+                created_issue_urls=(),
+                failed_repos=("myorg/frontend",),
+                children=tuple(plan.children),
+            )
+
+        def report(self, plan, reported):
+            reports.append((plan, reported))
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalized.append((repo, number)) or True,
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={
+            "number": 83,
+            "title": "ready",
+            "body": "",
+            runner.EXISTING_FANOUT_CHILDREN_KEY: [("myorg/backend", "Implement backend slice")],
+        },
+        firing_id="fid-stale-retry-zero",
+    )
+
+    assert out == 0
+    assert finalized == []
+    assert len(reports) == 1
+    reported_plan, reported_result = reports[0]
+    assert [child.repo for child in reported_plan.children] == ["myorg/frontend"]
+    assert reported_result.reason == EXEC_PARTIAL
+    payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+    assert payload is not None
+    assert payload["state"] == "executing"
+    assert payload["children"] == [
+        {
+            "labels": ["agent:bundle:ready-plan"],
+            "repo": "myorg/backend",
+            "title": "Implement backend slice",
+        },
+        {
+            "labels": ["agent:bundle:ready-plan"],
+            "repo": "myorg/frontend",
+            "title": "Implement frontend slice",
+        },
+    ]
+    assert "filed=0 failed=1 existing=1" in capsys.readouterr().err
 
 
 def test_lifecycle_warns_when_completed_marker_upgrade_fails(monkeypatch, capsys):

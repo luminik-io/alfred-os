@@ -455,11 +455,12 @@ def _run_lifecycle_body(
         _unset_pending_approval_label(parent_repo, parent_issue_number)
 
     execution_plan = _execution_plan(lifecycle, plan)
+    planned_marker_children = _fanout_marker_children(execution_plan)
+    existing_fanout_child_keys = _existing_fanout_child_keys(parent_issue)
     execution_plan = _filter_existing_fanout_children(
         execution_plan,
-        _existing_fanout_child_keys(parent_issue),
+        existing_fanout_child_keys,
     )
-    planned_marker_children = _fanout_marker_children(execution_plan)
     marker_saved = _save_completed_fanout_marker(
         parent_repo,
         parent_issue_number,
@@ -507,11 +508,12 @@ def _run_lifecycle_body(
         else:
             finalization_outcome = "failure-parent-finalization-pending"
     else:
-        if result.created_issue_urls:
+        if result.created_issue_urls or existing_fanout_child_keys:
             print(
                 f"[BATMAN-PARTIAL-FANOUT-MARKER-KEPT] "
                 f"parent={parent_repo}#{parent_issue_number} "
-                f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)}",
+                f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)} "
+                f"existing={len(existing_fanout_child_keys)}",
                 file=sys.stderr,
             )
         else:
