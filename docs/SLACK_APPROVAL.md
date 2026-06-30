@@ -111,7 +111,7 @@ Manager (opt-in) -> on-disk cache. Pick whichever matches your ops:
 ### Option A: env var
 
 ```sh
-echo 'SLACK_BOT_TOKEN=xoxb-...' >> ~/.alfredrc
+echo 'SLACK_BOT_TOKEN=xoxb-...' >> $ALFRED_HOME/.env
 ```
 
 ### Option B: AWS Secrets Manager

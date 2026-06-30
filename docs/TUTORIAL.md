@@ -22,7 +22,7 @@ Echo needs a repo to operate on. For the tutorial, use any repo you own where yo
 export ECHO_REPO_SLUG=myorg/sandbox-repo
 ```
 
-Add to `~/.alfredrc` so it persists.
+Add to `$ALFRED_HOME/.env` so it persists.
 
 ## Step 2: prepare a test issue
 

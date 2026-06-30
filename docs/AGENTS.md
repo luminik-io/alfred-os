@@ -1,6 +1,6 @@
 # Agents
 
-The agents shipped in Alfred are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; you can rename any agent during `alfred-init` or by editing `~/.alfredrc` later.
+The agents shipped in Alfred are engineering-focused. Each is a narrow specialist. Codenames default to Batman side-characters; you can rename any agent during `alfred-init` or by editing `$ALFRED_HOME/.env` later.
 
 ## Fleet map
 
@@ -118,7 +118,7 @@ The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-mor
 ```mermaid
 flowchart TB
     init["alfred-init wizard<br/><i>you pick codenames</i>"]
-    rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
+    rc["$ALFRED_HOME/.env<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
     conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
     unit["my.fleet.marshall scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=marshall</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
@@ -128,7 +128,7 @@ flowchart TB
     init --> conf
     conf -- "render.sh" --> unit
     unit -- "deploy.sh" --> runner
-    rc -. "sourced by shell" .-> runner
+    rc -. "loaded by agent-launch/native runtime" .-> runner
     runner --> output
 ```
 

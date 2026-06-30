@@ -4,7 +4,7 @@ The script wraps ``claude setup-token`` to mint a long-lived OAuth token
 for scheduled (launchd / systemd) firings. We verify the parts the
 operator interacts with directly:
 
-* token-presence detection (env vs ~/.alfredrc vs unset),
+* token-presence detection ($ALFRED_HOME/.env vs unset),
 * the rotate-in-place semantics of ``write_token`` (no duplicates,
   unrelated lines preserved, 0600 perms applied),
 * ``--check-only`` exit-code contract,
@@ -44,14 +44,10 @@ def _load_module():
 
 @pytest.fixture
 def env_file(tmp_path, monkeypatch):
-    """Isolate the token stores: the canonical ``$ALFRED_HOME/.env`` (where
-    the token is written) and the legacy ``~/.alfredrc`` (read-only, for
-    migration/back-compat). Yields the ``.env`` path.
-    """
-    rc = tmp_path / ".alfredrc"
+    """Isolate the canonical ``$ALFRED_HOME/.env`` token store."""
     env = tmp_path / ".env"
     monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    monkeypatch.setenv("ALFREDRC", str(rc))
+    monkeypatch.delenv("ALFREDRC", raising=False)
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     if "alfred_setup_token" in sys.modules:
@@ -59,30 +55,16 @@ def env_file(tmp_path, monkeypatch):
     yield env
 
 
-@pytest.fixture
-def alfredrc(tmp_path, monkeypatch):
-    """Path to the isolated legacy ~/.alfredrc (used by migration tests)."""
-    rc = tmp_path / ".alfredrc"
-    monkeypatch.setenv("ALFRED_HOME", str(tmp_path))
-    monkeypatch.setenv("ALFREDRC", str(rc))
-    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    if "alfred_setup_token" in sys.modules:
-        del sys.modules["alfred_setup_token"]
-    yield rc
-
-
 def test_existing_token_source_returns_none_when_unset(env_file):
     mod = _load_module()
     assert mod.existing_token_source() is None
 
 
-def test_existing_token_source_reports_env(env_file, monkeypatch):
+def test_existing_token_source_ignores_process_env(env_file, monkeypatch):
+    """A process-only token is not scheduler-ready after the .env cutover."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxxxx")
     mod = _load_module()
-    src = mod.existing_token_source()
-    assert src is not None
-    assert "env var" in src
+    assert mod.existing_token_source() is None
 
 
 def test_existing_token_source_reports_env_file(env_file):
@@ -96,18 +78,13 @@ def test_existing_token_source_reports_env_file(env_file):
     assert src == str(env_file)
 
 
-def test_existing_token_source_reports_legacy_alfredrc(alfredrc):
-    """A token left in the legacy ~/.alfredrc is still detected so the
-    operator is told to migrate, not just silently re-prompted."""
-    alfredrc.write_text(
-        "export GH_ORG=acme\nexport CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-existing\n"
+def test_existing_token_source_ignores_legacy_alfredrc(env_file):
+    """Legacy ~/.alfredrc is intentionally ignored after the .env cutover."""
+    (env_file.parent / ".alfredrc").write_text(
+        "export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-existing\n"
     )
     mod = _load_module()
-    src = mod.existing_token_source()
-    assert src is not None
-    assert str(alfredrc) in src
-    assert "legacy" in src
-    assert "--force" in src
+    assert mod.existing_token_source() is None
 
 
 def test_existing_token_source_ignores_comment_lines(env_file):
@@ -162,27 +139,6 @@ def test_write_token_quotes_value_against_shell_metachars(env_file):
     assert "'sk-ant-oat01-$DANGEROUS'" in contents
 
 
-def test_write_token_migrates_legacy_alfredrc(alfredrc):
-    """Writing the token to .env removes a stale token line left in the
-    legacy ~/.alfredrc so the two stores cannot disagree (the outage)."""
-    alfredrc.write_text(
-        "export GH_ORG=acme\n"
-        "# alfred setup-token, do not edit by hand (re-run to rotate)\n"
-        "export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-STALE\n"
-    )
-    mod = _load_module()
-    mod.write_token("sk-ant-oat01-FRESH")
-
-    # Token now lives in .env, gone from the legacy rc.
-    env_path = mod.env_path()
-    assert "sk-ant-oat01-FRESH" in env_path.read_text()
-    rc_text = alfredrc.read_text()
-    assert "CLAUDE_CODE_OAUTH_TOKEN" not in rc_text
-    assert "sk-ant-oat01-STALE" not in rc_text
-    # Unrelated operator lines in the rc are preserved.
-    assert "export GH_ORG=acme" in rc_text
-
-
 def test_token_line_regex_matches_canonical_format():
     mod = _load_module()
     sample = (
@@ -204,8 +160,8 @@ def test_token_line_regex_rejects_short_or_malformed():
     assert mod.TOKEN_LINE_RE.search("sk-ant-api01-not-an-oauth-token") is None
 
 
-def test_main_check_only_exits_zero_when_set(alfredrc, monkeypatch, capsys):
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxx")
+def test_main_check_only_exits_zero_when_set(env_file, capsys):
+    env_file.write_text("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-xxx\n", encoding="utf-8")
     mod = _load_module()
     rc = mod.main(["--check-only"])
     assert rc == 0
@@ -213,7 +169,17 @@ def test_main_check_only_exits_zero_when_set(alfredrc, monkeypatch, capsys):
     assert "is set" in out
 
 
-def test_main_check_only_exits_one_when_unset(alfredrc, capsys):
+def test_main_check_only_rejects_process_env_only_token(env_file, monkeypatch, capsys):
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxx")
+    mod = _load_module()
+    rc = mod.main(["--check-only"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "only present in the process environment" in captured.err
+    assert "is NOT set" in captured.out
+
+
+def test_main_check_only_exits_one_when_unset(env_file, capsys):
     mod = _load_module()
     rc = mod.main(["--check-only"])
     assert rc == 1
@@ -221,10 +187,10 @@ def test_main_check_only_exits_one_when_unset(alfredrc, capsys):
     assert "is NOT set" in out
 
 
-def test_main_no_args_exits_zero_when_already_set(alfredrc, monkeypatch, capsys):
+def test_main_no_args_exits_zero_when_already_set(env_file, capsys):
     """Without ``--force``, the default path should not re-spawn ``claude
     setup-token`` when a token is already configured."""
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxx")
+    env_file.write_text("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-xxx\n", encoding="utf-8")
     mod = _load_module()
     rc = mod.main([])
     assert rc == 0
@@ -272,7 +238,7 @@ def test_write_token_uses_narrow_umask(env_file, monkeypatch):
     assert final_perms == 0o600
 
 
-def test_run_setup_token_rejects_truncated_token(alfredrc, monkeypatch):
+def test_run_setup_token_rejects_truncated_token(env_file, monkeypatch):
     """If the upstream output is malformed (e.g. truncated by an ANSI
     escape), the parser must fail loud rather than silently write a
     partial credential."""

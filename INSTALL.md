@@ -20,7 +20,6 @@ Source checkout path:
 git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
 cd ~/code/alfred-os
 bash install.sh
-exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub auth
 claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
@@ -32,7 +31,6 @@ macOS Homebrew path, if you prefer package-manager installs:
 brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
 brew install alfred-os
 alfred-install
-exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub auth
 claude                            # Claude Code first-run auth
 alfred-init                       # choose agents, repos, codenames, Slack
@@ -55,7 +53,7 @@ for an AI coding tool to run end to end:
 ```
 
 The repo owner must match `GH_ORG`; the runtime agents store the bare repo name
-in `~/.alfredrc` and build `GH_ORG/repo` at firing time.
+in `$ALFRED_HOME/.env` and build `GH_ORG/repo` at firing time.
 
 If you want Claude Code, Codex, or another local coding assistant to drive these
 steps, use [`docs/AI_ASSISTED_INSTALL.md`](docs/AI_ASSISTED_INSTALL.md). It has
@@ -74,8 +72,8 @@ Idempotent (safe to re-run). On a fresh Mac or a fresh Debian/Ubuntu box:
 3. macOS: `brew install`s `git`, `gh`, `jq`, `awscli`, `python@3.11`, `node`, `uv`. Linux: `apt-get install`s the equivalents; `uv` comes from its official installer and AWS CLI v2 is left to the operator.
 4. `npm install -g @anthropic-ai/claude-code`.
 5. Creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`).
-6. Drops `~/.alfredrc` from `.alfredrc.example`, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
-7. Appends a source-line to your shell rc (`~/.zshrc` / `~/.bashrc`) so every new shell loads `~/.alfredrc`.
+6. Seeds `$ALFRED_HOME/.env` from `.env.example`, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
+7. Leaves shell rc files alone. The scheduler, CLI, and native app load `$ALFRED_HOME/.env` directly.
 8. Reports auth status for `gh`, `aws`, `claude`.
 
 What it does **not** do (deliberately):
@@ -115,18 +113,12 @@ bash install.sh
 Watch for two things:
 
 - Homebrew install prompts for sudo.
-- The script asks for GitHub org, display name, email. Defaults are fine; edit `~/.alfredrc` later.
+- The script asks for GitHub org, display name, email. Defaults are fine; edit `$ALFRED_HOME/.env` later.
 
-### 3. Reload your shell
-
-```sh
-exec $SHELL
-```
-
-Confirms `ALFRED_HOME` and `WORKSPACE_ROOT` are set in this session:
+### 3. Confirm the runtime paths
 
 ```sh
-echo "$ALFRED_HOME $WORKSPACE_ROOT"
+grep -E '^(ALFRED_HOME|WORKSPACE_ROOT|GH_ORG)=' "${ALFRED_HOME:-$HOME/.alfred}/.env"
 ```
 
 ### 4. Authenticate the CLIs
@@ -147,7 +139,7 @@ claude
 
 First-run opens a browser to authenticate against your Anthropic account. For the default setup, use Claude Code through a Pro or Max subscription login. Alfred runs `claude -p` against the CLI account you authenticated and does not require an Anthropic API key.
 
-If `ANTHROPIC_API_KEY` is set in your shell or `~/.alfredrc`, Claude Code may prefer API billing over subscription auth. Unset it for subscription-backed Alfred runs.
+If `ANTHROPIC_API_KEY` is set in your shell or `$ALFRED_HOME/.env`, Claude Code may prefer API billing over subscription auth. Unset it for subscription-backed Alfred runs.
 
 AWS (optional: only if you want Secrets Manager for Slack/credentials):
 
@@ -162,7 +154,7 @@ See [`docs/AWS_SETUP.md`](docs/AWS_SETUP.md) for the recommended IAM policies.
 The framework's `slack_post()` resolves a webhook URL via env → cache → AWS Secrets. The simplest path is the env var:
 
 ```sh
-echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.alfredrc
+echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> $ALFRED_HOME/.env
 ```
 
 For a full walkthrough of creating the Slack app + webhook, read [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md).
@@ -183,7 +175,7 @@ silently assigns every repo to every agent.
 `alfred-init.py` now does the boring setup work for you:
 
 - Writes `launchd/agents.conf`, the shared scheduler manifest, and updates
-  `~/.alfredrc`.
+  `$ALFRED_HOME/.env`.
 - Copies prompt templates from `prompts/` into `~/.alfred/prompts/<codename>.md`
   without overwriting your edits.
 - Creates the standard GitHub labels on the selected repos, including
@@ -265,11 +257,9 @@ The npm global install dir might not be on PATH. Run `npm config get prefix`, ap
 
 | Path | What it is | Safe to delete |
 |---|---|---|
-| `~/.alfredrc` | Operator config: sourced by every shell | After re-running install.sh |
+| `$ALFRED_HOME/.env` | Operator config loaded by the scheduler, CLI, and native app | After re-running install.sh |
 | `~/.alfred/` | Runtime root (state, worktrees, deployed bin/lib) | Yes, `deploy.sh` repopulates |
 | `~/code/` | Default workspace root | If you set a different `WORKSPACE_ROOT` |
-| `~/.zshrc` (or `.bashrc`) | One source-block appended | Manually edit to remove |
-
 Everything else lives inside the cloned repo and is removed by `rm -rf ~/code/alfred-os`.
 
 ## Where to go next

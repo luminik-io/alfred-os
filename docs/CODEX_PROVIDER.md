@@ -86,7 +86,7 @@ References:
 ## Troubleshooting
 
 **`codex: command not found`.** Install/sign in to Codex CLI, rerun
-`bash deploy.sh`, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
+`bash deploy.sh`, or set `CODEX_BIN=<absolute-path>` in `$ALFRED_HOME/.env`.
 
 **Hybrid never falls back on provider faults.** Hybrid fallback is intentionally
 narrow. It only falls back from Claude to Codex for capability failures, where

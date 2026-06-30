@@ -449,14 +449,13 @@ def test_process_code_memory_binary_overrides_runtime_env_file(tmp_path: Path) -
     assert str(file_bin) not in res.stderr
 
 
-def test_launcher_keeps_rc_home_when_runtime_env_has_stale_home(tmp_path: Path) -> None:
+def test_launcher_uses_default_runtime_env_when_home_is_unset(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    runtime_a = tmp_path / "runtime-a"
+    runtime_a = home / ".alfred"
     runtime_b = tmp_path / "runtime-b"
     home.mkdir()
-    runtime_a.mkdir()
+    runtime_a.mkdir(parents=True)
     runtime_b.mkdir()
-    (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime_a}\n", encoding="utf-8")
     (runtime_a / ".env").write_text(
         f"ALFRED_HOME={runtime_b}\nALFRED_CODE_MEMORY_AUTOFETCH=0\n",
         encoding="utf-8",
@@ -485,10 +484,7 @@ def test_launcher_keeps_process_home_when_rc_points_elsewhere(tmp_path: Path) ->
     home.mkdir()
     runtime_a.mkdir()
     runtime_b.mkdir()
-    (home / ".alfredrc").write_text(
-        f"ALFRED_HOME={runtime_a}\nALFRED_CODE_MEMORY_AUTOFETCH=1\n",
-        encoding="utf-8",
-    )
+    (runtime_a / ".env").write_text("ALFRED_CODE_MEMORY_AUTOFETCH=1\n", encoding="utf-8")
     (runtime_b / ".env").write_text("ALFRED_CODE_MEMORY_AUTOFETCH=0\n", encoding="utf-8")
     env = os.environ.copy()
     env["HOME"] = str(home)
@@ -507,22 +503,18 @@ def test_launcher_keeps_process_home_when_rc_points_elsewhere(tmp_path: Path) ->
     assert f"{runtime_a}/state/code-memory" not in res.stderr
 
 
-def test_launcher_runtime_env_overrides_same_home_code_memory_rc(tmp_path: Path) -> None:
+def test_launcher_loads_runtime_env_code_memory_scope(tmp_path: Path) -> None:
     home = tmp_path / "home"
     runtime = tmp_path / "runtime"
     home.mkdir()
     runtime.mkdir()
-    (home / ".alfredrc").write_text(
-        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/old\n",
-        encoding="utf-8",
-    )
     (runtime / ".env").write_text(
         "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/new\n",
         encoding="utf-8",
     )
     env = os.environ.copy()
     env["HOME"] = str(home)
-    env.pop("ALFRED_HOME", None)
+    env["ALFRED_HOME"] = str(runtime)
     env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
     env.pop("ALFRED_CODE_MEMORY_REPOS", None)
 
@@ -535,7 +527,6 @@ def test_launcher_runtime_env_overrides_same_home_code_memory_rc(tmp_path: Path)
 
     assert res.returncode == 0, res.stderr
     assert "repos:       org/new" in res.stderr
-    assert "org/old" not in res.stderr
 
 
 def test_launcher_preserves_process_code_memory_over_runtime_env(tmp_path: Path) -> None:
@@ -543,18 +534,14 @@ def test_launcher_preserves_process_code_memory_over_runtime_env(tmp_path: Path)
     runtime = tmp_path / "runtime"
     home.mkdir()
     runtime.mkdir()
-    (home / ".alfredrc").write_text(
-        f"ALFRED_HOME={runtime}\nALFRED_CODE_MEMORY_REPOS=org/old\n",
-        encoding="utf-8",
-    )
     (runtime / ".env").write_text(
         "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/new\n",
         encoding="utf-8",
     )
     env = os.environ.copy()
     env["HOME"] = str(home)
+    env["ALFRED_HOME"] = str(runtime)
     env["ALFRED_CODE_MEMORY_REPOS"] = "org/process"
-    env.pop("ALFRED_HOME", None)
     env.pop("ALFRED_CODE_MEMORY_AUTOFETCH", None)
 
     res = subprocess.run(
@@ -602,12 +589,11 @@ def test_launcher_ignores_stale_rc_code_memory_when_process_home_is_active(
     assert "org/stale" not in res.stderr
 
 
-def test_launcher_empty_alfred_home_loads_rc_home_for_code_memory(tmp_path: Path) -> None:
+def test_launcher_empty_alfred_home_loads_default_home_for_code_memory(tmp_path: Path) -> None:
     home = tmp_path / "home"
-    runtime = tmp_path / "runtime"
+    runtime = home / ".alfred"
     home.mkdir()
     runtime.mkdir()
-    (home / ".alfredrc").write_text(f"ALFRED_HOME={runtime}\n", encoding="utf-8")
     (runtime / ".env").write_text(
         "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/runtime\n",
         encoding="utf-8",
@@ -630,7 +616,7 @@ def test_launcher_empty_alfred_home_loads_rc_home_for_code_memory(tmp_path: Path
     assert "repos:       org/runtime" in res.stderr
 
 
-def test_launcher_respects_explicit_alfredrc_for_code_memory(tmp_path: Path) -> None:
+def test_launcher_ignores_explicit_alfredrc_for_code_memory(tmp_path: Path) -> None:
     home = tmp_path / "home"
     runtime = tmp_path / "runtime"
     stale_runtime = tmp_path / "stale"
@@ -661,22 +647,20 @@ def test_launcher_respects_explicit_alfredrc_for_code_memory(tmp_path: Path) -> 
     )
 
     assert res.returncode == 0, res.stderr
-    assert f"rc:          {custom_rc}" in res.stderr
-    assert f"index-dir:   {runtime / 'custom-index'}" in res.stderr
-    assert "repos:       org/custom" in res.stderr
+    assert "env-file:" in res.stderr
+    assert f"index-dir:   {stale_runtime}/state/code-memory" in res.stderr
+    assert "org/custom" not in res.stderr
 
 
-def test_launcher_strips_alfredrc_comments_before_code_memory_filter(
+def test_launcher_strips_env_file_comments_before_code_memory_filter(
     tmp_path: Path,
 ) -> None:
     home = tmp_path / "home"
     runtime = home / "runtime"
     home.mkdir()
     runtime.mkdir()
-    (home / ".alfredrc").write_text(
-        "ALFRED_HOME=$HOME/runtime # active runtime\n"
-        "ALFRED_CODE_MEMORY_AUTOFETCH=0\n"
-        "ALFRED_CODE_MEMORY_REPOS=org/commented\n",
+    (runtime / ".env").write_text(
+        "ALFRED_CODE_MEMORY_AUTOFETCH=0\nALFRED_CODE_MEMORY_REPOS=org/commented\n",
         encoding="utf-8",
     )
     env = os.environ.copy()
@@ -697,7 +681,7 @@ def test_launcher_strips_alfredrc_comments_before_code_memory_filter(
     assert "repos:       org/commented" in res.stderr
 
 
-def test_launcher_indirect_pointer_cannot_move_default_code_memory_runtime(
+def test_launcher_ignores_indirect_pointer_for_default_code_memory_runtime(
     tmp_path: Path,
 ) -> None:
     home = tmp_path / "home"
@@ -733,7 +717,7 @@ def test_launcher_indirect_pointer_cannot_move_default_code_memory_runtime(
     )
 
     assert res.returncode == 0, res.stderr
-    assert f"rc:          {custom_rc}" in res.stderr
+    assert "env-file:" in res.stderr
     assert f"index-dir:   {default_runtime}/state/code-memory" in res.stderr
     assert "repos:       org/default" in res.stderr
     assert "org/stale" not in res.stderr
@@ -779,7 +763,7 @@ def test_launcher_ignores_pointed_rc_memory_when_process_home_is_active(
     )
 
     assert res.returncode == 0, res.stderr
-    assert f"rc:          {custom_rc}" in res.stderr
+    assert "env-file:" in res.stderr
     assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
     assert "repos:       org/runtime" in res.stderr
     assert str(stale_runtime) not in res.stderr

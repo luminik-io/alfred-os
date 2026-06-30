@@ -2,13 +2,13 @@
 """alfred-init, interactive fleet configuration wizard.
 
 Run after `git clone` + `bash install.sh`. install.sh handles dependency
-install (brew, gh, claude, aws, python, node, runtime dirs, ~/.alfredrc
+install (brew, gh, claude, aws, python, node, runtime dirs, $ALFRED_HOME/.env
 template). alfred-init handles configuration: auth checks, Slack webhook
 provisioning, agent selection, codename + repo + schedule wiring,
 agents.conf generation, deploy, doctor, smoke test.
 
 Wizard order (each step is idempotent, re-running won't duplicate):
-    0. Preflight:      ALFRED_HOME, ~/.alfredrc, GH_ORG must exist.
+    0. Preflight:      ALFRED_HOME, $ALFRED_HOME/.env, GH_ORG must exist.
     1. Claude Code:    `claude --version` + non-interactive auth probe.
     2. GitHub:         `gh auth status` + cache `gh repo list <GH_ORG>`.
     3. Slack webhook:  guide the operator, validate, test-post, store
@@ -289,20 +289,43 @@ SPECIAL_PROMPTS = {
 CODENAME_RE = re.compile(r"^[a-z][a-z0-9-]*$")
 SLACK_WEBHOOK_RE = re.compile(r"^https://hooks\.slack\.com/services/")
 
-ALFREDRC_BANNER = "# alfred-init, generated below this line. Safe to re-run."
+ALFRED_ENV_BANNER = "# alfred-init, generated below this line. Safe to re-run."
 # Matches the banner whatever separator a past release used between
 # "alfred-init" and "generated" (older releases used an em-dash, current
-# uses a comma). upsert_alfredrc relies on this so an upgrade rewrites the
+# uses a comma). upsert_env_file relies on this so an upgrade rewrites the
 # existing managed block in place instead of appending a duplicate.
-ALFREDRC_BANNER_RE = re.compile(r"# alfred-init.{1,4}generated below this line\. Safe to re-run\.")
-ALFREDRC_MEMORY_STOP_BANNER = (
-    "# alfred-init scheduler rc pointer and memory stop controls, generated below this line. "
-    "Safe to re-run."
+ALFRED_ENV_BANNER_RE = re.compile(
+    r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
-ALFREDRC_MEMORY_STOP_BANNER_RE = re.compile(
-    r"# alfred-init (?:scheduler rc pointer and memory stop controls|memory stop controls), "
-    r"generated below this line\. Safe to re-run\."
-)
+ENV_ASSIGNMENT_RE = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+
+
+def alfred_init_managed_env_keys() -> frozenset[str]:
+    keys = {
+        "GH_ORG",
+        "SLACK_WEBHOOK_URL",
+        "SLACK_WEBHOOK_SECRET_ID",
+        "SLACK_WEBHOOK_SECRET_REGION",
+        "BATMAN_ROLLOUT_ORDER",
+        "ALFRED_MORNING_BRIEF_AGENTS",
+        "ALFRED_TELEMETRY_ENABLED",
+        "ALFRED_TELEMETRY_URL",
+        "ALFRED_TELEMETRY_TOKEN",
+        *MEMORY_AUTO_PROMOTE_CONTROL_ENVS,
+    }
+    for role, (default_codename, _, _, _) in AGENT_CATALOG.items():
+        default_slug = default_codename.upper().replace("-", "_")
+        keys.add(f"AGENT_CODENAME_{role.upper()}")
+        keys.add(f"ALFRED_{default_slug}_REPOS")
+        keys.add(f"ALFRED_{default_slug}_AWS_PROFILE")
+    for env_keys in ROLE_REPO_ENV_KEYS.values():
+        keys.update(env_keys)
+    for prompts in SPECIAL_PROMPTS.values():
+        keys.update(env_key for env_key, _ in prompts)
+    return frozenset(keys)
+
+
+ALFRED_INIT_MANAGED_ENV_KEYS = alfred_init_managed_env_keys()
 
 
 # ---------------------------------------------------------------------------
@@ -393,7 +416,7 @@ def telemetry_url_fallback_label(url: str) -> str:
 @dataclass
 class WizardState:
     alfred_home: Path
-    alfredrc: Path
+    env_file: Path
     repo_root: Path
     gh_org: str = ""
     repos: list[str] = field(default_factory=list)
@@ -471,12 +494,12 @@ def have(binary: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# .alfredrc IO, append-only with idempotent guard markers.
+# .env IO, append-only with idempotent guard markers.
 # ---------------------------------------------------------------------------
 
 
-def _parse_alfredrc_text(raw_text: str) -> dict[str, str]:
-    """Parse KEY=VALUE pairs from alfredrc text. Quotes/exports are tolerated."""
+def _parse_env_text(raw_text: str) -> dict[str, str]:
+    """Parse KEY=VALUE pairs from dotenv text. Quotes/exports are tolerated."""
     out: dict[str, str] = {}
     for raw in raw_text.splitlines():
         line = raw.strip()
@@ -525,76 +548,161 @@ def strip_inline_comment(value: str) -> str:
     return value
 
 
-def read_alfredrc(path: Path) -> dict[str, str]:
-    """Parse KEY=VALUE pairs from ~/.alfredrc. Quotes/exports are tolerated."""
+def read_env_file(path: Path) -> dict[str, str]:
+    """Parse KEY=VALUE pairs from $ALFRED_HOME/.env. Quotes/exports are tolerated."""
     if not path.exists():
         return {}
-    return _parse_alfredrc_text(path.read_text())
+    return _parse_env_text(path.read_text())
 
 
-def read_unmanaged_alfredrc(path: Path) -> dict[str, str]:
-    """Parse only operator-authored ~/.alfredrc values above the managed block."""
+def read_unmanaged_env_file(path: Path) -> dict[str, str]:
+    """Parse only operator-authored .env values above the managed block."""
     if not path.exists():
         return {}
     raw = path.read_text()
-    managed = ALFREDRC_BANNER_RE.search(raw)
+    managed = ALFRED_ENV_BANNER_RE.search(raw)
     if managed:
         raw = raw[: managed.start()]
-    return _parse_alfredrc_text(raw)
+    return _parse_env_text(raw)
 
 
-def read_managed_alfredrc(path: Path) -> dict[str, str]:
-    """Parse only the alfred-init managed block from ~/.alfredrc."""
+def read_managed_env_file(path: Path) -> dict[str, str]:
+    """Parse only the alfred-init managed block from .env."""
     if not path.exists():
         return {}
     raw = path.read_text()
-    managed = ALFREDRC_BANNER_RE.search(raw)
+    managed = ALFRED_ENV_BANNER_RE.search(raw)
     if not managed:
         return {}
-    return _parse_alfredrc_text(raw[managed.end() :])
+    return _parse_env_text(
+        "\n".join(
+            _managed_env_assignment_lines(
+                raw,
+                managed,
+                ALFRED_INIT_MANAGED_ENV_KEYS,
+            )
+        )
+    )
 
 
-def quote_alfredrc_value(value: str) -> str:
-    """Return a shell-safe scalar for a generated ~/.alfredrc assignment."""
+def quote_env_value(value: str) -> str:
+    """Return a shell-safe scalar for a generated .env assignment."""
     if "\x00" in value or "\n" in value or "\r" in value:
-        raise ValueError("alfredrc values must be single-line strings")
+        raise ValueError("env values must be single-line strings")
     return shlex.quote(value)
 
 
-def upsert_alfredrc(path: Path, kvs: dict[str, str]) -> None:
-    """Add or update keys in ~/.alfredrc below the alfred-init banner.
+def upsert_env_file(path: Path, kvs: dict[str, str]) -> None:
+    """Add or update keys in .env below the alfred-init banner.
 
     Idempotent: rewrites the marker block on every call so re-running
     the wizard doesn't accumulate dupes.
     """
-    upsert_alfredrc_block(path, kvs, ALFREDRC_BANNER, ALFREDRC_BANNER_RE)
+    upsert_env_block(
+        path,
+        kvs,
+        ALFRED_ENV_BANNER,
+        ALFRED_ENV_BANNER_RE,
+        managed_keys=ALFRED_INIT_MANAGED_ENV_KEYS | frozenset(kvs),
+    )
 
 
-def upsert_alfredrc_block(
+def env_assignment_key(line: str) -> str | None:
+    """Return the dotenv key assigned by a line, or None for non-assignments."""
+    match = ENV_ASSIGNMENT_RE.match(line.strip())
+    return match.group(1) if match else None
+
+
+def _line_after_match(text: str, match: re.Match[str]) -> int:
+    line_end = text.find("\n", match.end())
+    return len(text) if line_end == -1 else line_end + 1
+
+
+def _managed_env_assignment_lines(
+    text: str,
+    match: re.Match[str],
+    managed_keys: frozenset[str],
+) -> list[str]:
+    """Return contiguous assignment lines owned by the matched generated block."""
+    lines: list[str] = []
+    cursor = _line_after_match(text, match)
+    while cursor < len(text):
+        line_end = text.find("\n", cursor)
+        if line_end == -1:
+            line_end = len(text)
+            next_cursor = len(text)
+        else:
+            next_cursor = line_end + 1
+        line = text[cursor:line_end]
+        key = env_assignment_key(line)
+        if key not in managed_keys:
+            break
+        lines.append(line)
+        cursor = next_cursor
+    return lines
+
+
+def _managed_env_block_end(
+    text: str,
+    match: re.Match[str],
+    managed_keys: frozenset[str],
+) -> int:
+    cursor = _line_after_match(text, match)
+    while cursor < len(text):
+        line_end = text.find("\n", cursor)
+        if line_end == -1:
+            line_end = len(text)
+            next_cursor = len(text)
+        else:
+            next_cursor = line_end + 1
+        key = env_assignment_key(text[cursor:line_end])
+        if key not in managed_keys:
+            break
+        cursor = next_cursor
+    return cursor
+
+
+def _join_env_sections(*sections: str) -> str:
+    cleaned = [section.strip("\n") for section in sections if section.strip()]
+    if not cleaned:
+        return ""
+    return "\n\n".join(cleaned) + "\n"
+
+
+def upsert_env_block(
     path: Path,
     kvs: dict[str, str],
     banner: str,
     banner_re: re.Pattern[str],
+    *,
+    managed_keys: frozenset[str] | None = None,
 ) -> None:
     """Add or update keys in an idempotent generated rc block."""
     if not kvs:
         return
     existing = path.read_text() if path.exists() else ""
-    # Strip any prior generated block for this marker so we re-emit fresh
-    # values instead of accumulating a duplicate section.
-    prior = banner_re.search(existing)
-    if prior:
-        existing = existing[: prior.start()].rstrip() + "\n"
     block = [banner]
     for k, v in kvs.items():
-        block.append(f"{k}={quote_alfredrc_value(v)}")
-    new = existing.rstrip() + "\n\n" + "\n".join(block) + "\n"
+        block.append(f"{k}={quote_env_value(v)}")
+    block_text = "\n".join(block)
+    # Strip any prior generated block for this marker so we re-emit fresh
+    # values instead of accumulating a duplicate section. When a key allowlist
+    # is provided, remove only this block's managed assignment lines and keep
+    # later .env sections such as scheduler tokens and Batman setup intact.
+    prior = banner_re.search(existing)
+    if prior and managed_keys is not None:
+        block_end = _managed_env_block_end(existing, prior, managed_keys)
+        new = _join_env_sections(existing[: prior.start()], block_text, existing[block_end:])
+    elif prior:
+        new = _join_env_sections(existing[: prior.start()], block_text)
+    else:
+        new = _join_env_sections(existing, block_text)
     path.write_text(new)
     with contextlib.suppress(OSError):
         path.chmod(0o600)
 
 
-def remove_alfredrc_block(path: Path, banner_re: re.Pattern[str]) -> None:
+def remove_env_block(path: Path, banner_re: re.Pattern[str]) -> None:
     """Remove a generated rc block and its managed values, if present."""
     if not path.exists():
         return
@@ -610,37 +718,6 @@ def remove_alfredrc_block(path: Path, banner_re: re.Pattern[str]) -> None:
     path.write_text(new + "\n")
     with contextlib.suppress(OSError):
         path.chmod(0o600)
-
-
-def mirror_memory_stop_controls_to_launch_rc(state: WizardState, env_kvs: dict[str, str]) -> int:
-    """Mirror custom rc path and emergency memory controls into scheduled jobs source."""
-    launch_rc = Path.home() / ".alfredrc"
-    if launch_rc == state.alfredrc:
-        remove_alfredrc_block(launch_rc, ALFREDRC_MEMORY_STOP_BANNER_RE)
-        return 0
-    controls = {
-        key: value
-        for key, value in env_kvs.items()
-        if key in MEMORY_AUTO_PROMOTE_CONTROL_ENVS and value.strip()
-    }
-    values = {"ALFREDRC": str(state.alfredrc), **controls}
-    upsert_alfredrc_block(
-        launch_rc,
-        values,
-        ALFREDRC_MEMORY_STOP_BANNER,
-        ALFREDRC_MEMORY_STOP_BANNER_RE,
-    )
-    return len(controls)
-
-
-def persist_alfredrc_pointer(state: WizardState) -> Path:
-    """Persist the selected rc path for clean-shell deploy/render reruns."""
-    pointer = state.alfred_home / "launchd" / "alfredrc.path"
-    pointer.parent.mkdir(parents=True, exist_ok=True)
-    pointer.write_text(f"{state.alfredrc}\n", encoding="utf-8")
-    with contextlib.suppress(OSError):
-        pointer.chmod(0o600)
-    return pointer
 
 
 # ---------------------------------------------------------------------------
@@ -757,7 +834,7 @@ def repo_runtime_values(repos: list[str]) -> list[str]:
     The wizard stores selected repos as GitHub slugs (owner/repo) so label
     setup can call gh with an unambiguous -R value. Most shipped runners read
     ALFRED_<AGENT>_REPOS as local repo names under GH_ORG and then build
-    owner/repo themselves, so the generated ~/.alfredrc must strip the owner.
+    owner/repo themselves, so the generated .env must strip the owner.
     """
 
     return repo_local_names(repos)
@@ -890,7 +967,7 @@ def render_agents_conf(state: WizardState) -> str:
 
 
 def env_assignments_for(state: WizardState) -> dict[str, str]:
-    """Per-role env-var map written into ~/.alfredrc."""
+    """Per-role env-var map written into $ALFRED_HOME/.env."""
     out: dict[str, str] = {}
     if state.gh_org:
         out["GH_ORG"] = state.gh_org
@@ -942,21 +1019,20 @@ def env_assignments_for(state: WizardState) -> dict[str, str]:
 def memory_auto_promote_control_assignments(state: WizardState) -> dict[str, str]:
     """Preserve persisted stop controls for scheduled memory auto-promotion."""
     values: dict[str, str] = {}
-    for source in (state.alfred_home / ".env", state.alfredrc):
-        with contextlib.suppress(OSError):
-            for key, value in read_alfredrc(source).items():
-                if key not in MEMORY_AUTO_PROMOTE_CONTROL_ENVS:
-                    continue
-                clean = value.strip()
-                if not clean:
-                    continue
-                if memory_auto_promote_stop_control_active(key, clean):
-                    values[key] = clean
-                    continue
-                existing = values.get(key)
-                if existing and memory_auto_promote_stop_control_active(key, existing):
-                    continue
+    with contextlib.suppress(OSError):
+        for key, value in read_env_file(state.env_file).items():
+            if key not in MEMORY_AUTO_PROMOTE_CONTROL_ENVS:
+                continue
+            clean = value.strip()
+            if not clean:
+                continue
+            if memory_auto_promote_stop_control_active(key, clean):
                 values[key] = clean
+                continue
+            existing = values.get(key)
+            if existing and memory_auto_promote_stop_control_active(key, existing):
+                continue
+            values[key] = clean
     return values
 
 
@@ -1009,17 +1085,17 @@ def step_0_preflight(state: WizardState) -> None:
         fail("Run `bash install.sh` first.")
         sys.exit(1)
     ok(f"ALFRED_HOME: {state.alfred_home}")
-    if not state.alfredrc.exists():
-        fail(f"~/.alfredrc not found at {state.alfredrc}.")
+    if not state.env_file.exists():
+        fail(f"$ALFRED_HOME/.env not found at {state.env_file}.")
         fail("Run `bash install.sh` first.")
         sys.exit(1)
-    ok(f"~/.alfredrc: {state.alfredrc}")
-    rc = read_alfredrc(state.alfredrc)
+    ok(f"$ALFRED_HOME/.env: {state.env_file}")
+    rc = read_env_file(state.env_file)
     state.gh_org = os.environ.get("GH_ORG") or rc.get("GH_ORG", "")
     if not state.gh_org:
         state.gh_org = ask("GH_ORG (GitHub org/user for your fleet)", "")
         if not state.gh_org:
-            fail("GH_ORG required. Add it to ~/.alfredrc and re-run.")
+            fail("GH_ORG required. Add it to $ALFRED_HOME/.env and re-run.")
             sys.exit(1)
     ok(f"GH_ORG: {state.gh_org}")
     note("Run with ALFRED_NONINTERACTIVE=1 for non-interactive defaults.")
@@ -1066,9 +1142,9 @@ def step_1_claude(*, non_interactive: bool) -> None:
 def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
     """Detect missing ``CLAUDE_CODE_OAUTH_TOKEN`` and prompt to mint one.
 
-    Skips when the token is already set in the env or in
-    ``~/.alfredrc``. Skips silently in ``--non-interactive`` mode (CI,
-    automation) where prompting for a browser flow would hang.
+    Skips when the token is already set in ``$ALFRED_HOME/.env``. Skips
+    silently in ``--non-interactive`` mode (CI, automation) where prompting
+    for a browser flow would hang.
 
     The token is what scheduled agents read instead of the host
     credential store, so without it every launchd / systemd-spawned
@@ -1077,28 +1153,23 @@ def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
     if non_interactive:
         return
 
-    # Env var set in the parent shell -> already configured.
-    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
-        ok("CLAUDE_CODE_OAUTH_TOKEN already set in env")
+    env_file = Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred")) / ".env"
+    if read_env_file(env_file).get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+        ok(f"CLAUDE_CODE_OAUTH_TOKEN already set in {env_file}")
         return
 
-    # Check ~/.alfredrc directly so a fresh shell sees the export.
-    alfredrc = Path(os.environ.get("ALFREDRC", str(Path.home() / ".alfredrc")))
-    if alfredrc.is_file():
-        try:
-            text = alfredrc.read_text(encoding="utf-8")
-        except OSError:
-            text = ""
-        for line in text.splitlines():
-            stripped = line.strip().removeprefix("export").strip()
-            if stripped.startswith("CLAUDE_CODE_OAUTH_TOKEN="):
-                ok(f"CLAUDE_CODE_OAUTH_TOKEN already set in {alfredrc}")
-                return
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+        warn(
+            "CLAUDE_CODE_OAUTH_TOKEN is set only in this shell; scheduled firings "
+            f"need it in {env_file}."
+        )
+        warn('Persist it with: alfred setup-token --token "$CLAUDE_CODE_OAUTH_TOKEN"')
+        return
 
     print(
         "\n  Scheduled firings (launchd / systemd --user) can't read the\n"
         "  credential store the interactive `claude` populates. The fix is\n"
-        "  a long-lived OAuth token in ~/.alfredrc that `claude` reads via\n"
+        "  a long-lived OAuth token in $ALFRED_HOME/.env that `claude` reads via\n"
         "  the CLAUDE_CODE_OAUTH_TOKEN env var. It is tied to your existing\n"
         "  subscription (no extra cost, no API-key billing) and rotates with\n"
         "  `alfred setup-token --force`.\n"
@@ -1266,7 +1337,7 @@ def step_3_slack(
         state.aws_region = region
     else:
         state.slack_storage = "env"
-        ok("Slack webhook will be written to ~/.alfredrc as SLACK_WEBHOOK_URL")
+        ok("Slack webhook will be written to $ALFRED_HOME/.env as SLACK_WEBHOOK_URL")
 
 
 def step_4_aws(state: WizardState, *, non_interactive: bool) -> None:
@@ -1448,7 +1519,7 @@ def step_7_repos(
                     break
                 fail("Select at least one repo, or type 'none' to leave this agent idle.")
     # Special prompts (Huntress staging URL, Gordon ECS cluster, etc.)
-    managed_defaults = read_managed_alfredrc(state.alfredrc)
+    managed_defaults = read_managed_env_file(state.env_file)
     for role in state.enabled_roles:
         codename = state.codename_for(role)
         # Match by canonical Batman name even if operator renamed the codename.
@@ -1565,13 +1636,8 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
     target.write_text(conf)
     ok(f"wrote {target}")
     env_kvs = env_assignments_for(state)
-    upsert_alfredrc(state.alfredrc, env_kvs)
-    ok(f"updated {state.alfredrc} with {len(env_kvs)} keys")
-    pointer = persist_alfredrc_pointer(state)
-    ok(f"persisted selected rc path to {pointer}")
-    mirrored = mirror_memory_stop_controls_to_launch_rc(state, env_kvs)
-    if mirrored:
-        ok(f"mirrored {mirrored} memory stop-control key(s) into {Path.home() / '.alfredrc'}")
+    upsert_env_file(state.env_file, env_kvs)
+    ok(f"updated {state.env_file} with {len(env_kvs)} keys")
     created_prompts = seed_prompt_templates(state)
     if created_prompts:
         ok(
@@ -1908,15 +1974,15 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     repo_root = args.repo_root or Path(__file__).resolve().parent.parent
     alfred_home = Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred"))
-    alfredrc = Path(os.environ.get("ALFREDRC") or (Path.home() / ".alfredrc"))
+    env_file = alfred_home / ".env"
 
     print(f"{STYLE.BLUE}alfred-init{STYLE.OFF} agent fleet configuration.")
     print(f"  Repo:        {repo_root}")
     print(f"  ALFRED_HOME: {alfred_home}")
-    print(f"  ~/.alfredrc: {alfredrc}")
+    print(f"  .env:        {env_file}")
     print()
 
-    state = WizardState(alfred_home=alfred_home, alfredrc=alfredrc, repo_root=repo_root)
+    state = WizardState(alfred_home=alfred_home, env_file=env_file, repo_root=repo_root)
 
     if args.config:
         apply_config_overrides(state, load_config(args.config))

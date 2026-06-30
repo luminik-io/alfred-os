@@ -5,7 +5,7 @@ Alfred uses AWS for two optional things:
 1. **Secrets Manager**: stores the Slack webhook URL and any per-fleet credentials (Sentry tokens, third-party API keys) so they don't live in shell rc files. Resolution is cached on disk for 30 days; AWS is only hit when the cache expires or is missing.
 2. **Per-agent IAM**: every scheduled agent that needs AWS access gets its own scoped IAM user with a narrow inline policy. The operator's SSO chain is never used by scheduled agents.
 
-If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in `~/.alfredrc`. Alfred runs fine without an AWS account.
+If you don't need either, skip this doc and put `SLACK_WEBHOOK_URL` directly in `$ALFRED_HOME/.env`. Alfred runs fine without an AWS account.
 
 ## Why per-agent IAM
 
@@ -186,7 +186,7 @@ aws --profile <your-codename>-cron secretsmanager get-secret-value \
 
 ## 4. Configure the scheduled agent env
 
-The rendered plists do not have an `AWS_PROFILE` column. `alfred-init` writes role-specific profile variables such as `ALFRED_HUNTRESS_AWS_PROFILE` and `ALFRED_GORDON_AWS_PROFILE` into `~/.alfredrc`; `bin/agent-launch` loads that file at firing time; the stable role runner then sets `AWS_PROFILE` only around the AWS calls it owns.
+The rendered plists do not have an `AWS_PROFILE` column. `alfred-init` writes role-specific profile variables such as `ALFRED_HUNTRESS_AWS_PROFILE` and `ALFRED_GORDON_AWS_PROFILE` into `$ALFRED_HOME/.env`; `bin/agent-launch` loads that file at firing time; the stable role runner then sets `AWS_PROFILE` only around the AWS calls it owns.
 
 For per-agent profiles, the cleanest pattern is to set `AWS_PROFILE` inside the agent's Python runner before any `subprocess.run(["aws", ...])` call:
 

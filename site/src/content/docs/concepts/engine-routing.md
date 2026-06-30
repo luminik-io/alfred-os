@@ -38,7 +38,7 @@ alfred codex probe                   # run one tiny non-interactive request
 alfred auth status                   # auth-surface check across both engines
 ```
 
-Set the env-var form in `~/.alfredrc` when you want the override to follow your shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
+Set the env-var form in `$ALFRED_HOME/.env` when you want the override to follow your shell. Set the state-file form when you want the override to follow the host scheduler (it survives a `deploy.sh` re-render).
 
 ## Hybrid fallback behavior
 
@@ -89,7 +89,7 @@ Alfred's default posture is to use the local CLI subscription auth you have alre
 - Codex with a ChatGPT plan: sign in through the Codex CLI with your ChatGPT account. Keep `OPENAI_API_KEY` unset unless you intentionally want API-key billing.
 - AWS: only used when an agent needs Secrets Manager, and only with per-agent IAM (see [AWS setup](/guides/aws/)).
 
-The shipped fleet is designed to run on subscriptions you already have. No double billing. If you want to add API-key fallback for redundancy, set the env vars deliberately and document what you did in `~/.alfredrc`.
+The shipped fleet is designed to run on subscriptions you already have. No double billing. If you want to add API-key fallback for redundancy, set the env vars deliberately and document what you did in `$ALFRED_HOME/.env`.
 
 ## Multi-engine roadmap
 

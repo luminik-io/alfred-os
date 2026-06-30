@@ -210,13 +210,9 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
     workspace = tmp_path / "workspace"
     home.mkdir()
     workspace.mkdir()
-    (home / ".alfredrc").write_text(
-        f"ALFRED_HOME={runtime}\nWORKSPACE_ROOT={workspace}\nCUSTOM_FROM_RC=loaded-from-rc\n",
-        encoding="utf-8",
-    )
     (runtime / "launchd").mkdir(parents=True)
     (runtime / ".env").write_text(
-        "CUSTOM_FROM_ENV=loaded-from-env\n",
+        f"WORKSPACE_ROOT={workspace}\nCUSTOM_FROM_ENV=loaded-from-env\n",
         encoding="utf-8",
     )
     (runtime / "launchd" / "agents.conf").write_text(
@@ -224,8 +220,9 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
         encoding="utf-8",
     )
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("ALFRED_HOME", str(runtime))
     monkeypatch.delenv("WORKSPACE_ROOT", raising=False)
+    monkeypatch.setenv("ALFREDRC", str(home / ".alfredrc"))
 
     cli = _load_cli_module()
     captured: dict[str, object] = {}
@@ -247,13 +244,12 @@ def test_cli_native_dry_run_loads_launcher_env(monkeypatch, tmp_path):
     assert captured["cmd"] == [sys.executable, str(CLI.parent / "lucius.py"), "--dry-run"]
     assert env["ALFRED_HOME"] == str(runtime)
     assert env["WORKSPACE_ROOT"] == str(workspace)
-    assert env["CUSTOM_FROM_RC"] == "loaded-from-rc"
     assert env["CUSTOM_FROM_ENV"] == "loaded-from-env"
+    assert "ALFREDRC" not in env
     assert env["ALFRED_DRY_RUN"] == "1"
     assert env["AGENT_CODENAME"] == "lucius"
     assert env["LAUNCHD_LABEL"] == "custom.fleet.lucius"
     assert str(CLI.parent.parent / "lib") in env["PYTHONPATH"].split(os.pathsep)
-    assert "ALFRED_HOME" not in os.environ
     assert "WORKSPACE_ROOT" not in os.environ
 
 

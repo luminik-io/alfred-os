@@ -15,8 +15,8 @@ This module owns the 12-factor env-var contract:
 What this module does NOT own:
 
 * The Slack webhook URL resolution (env + cache + AWS Secrets) -> ``notify.py``.
-* The ``.alfredrc`` loader: alfred-os reads config exclusively from env vars
-  for 12-factor compliance; there is no ``.alfredrc`` parse path here.
+* The dotenv loader: alfred-os reads config from process env and
+  ``$ALFRED_HOME/.env``. There is no global shell rc parse path here.
 * Constructing ``ClaudeResult`` objects -> ``result.py``.
 
 All values are computed at call time (no module-level caches), so tests can

@@ -190,8 +190,8 @@ TELEMETRY_ENV_KEYS = (
 )
 TELEMETRY_TRUSTED_TOKEN_ENV = "ALFRED_TELEMETRY_TRUSTED_TOKEN"
 DEFAULT_TELEMETRY_URL_ENV = "ALFRED_DEFAULT_TELEMETRY_URL"
-TELEMETRY_RC_BANNER = "# alfred telemetry, generated below this line. Safe to re-run."
-TELEMETRY_RC_BANNER_RE = re.compile(
+TELEMETRY_ENV_BANNER = "# alfred telemetry, generated below this line. Safe to re-run."
+TELEMETRY_ENV_BANNER_RE = re.compile(
     r"(?:\n{0,2})# alfred telemetry, generated below this line\. Safe to re-run\.\n"
     r"(?:ALFRED_TELEMETRY_(?:ENABLED|URL|TOKEN)=.*(?:\n|$))*",
     re.MULTILINE,
@@ -207,6 +207,7 @@ SUPPORT_SCHEDULER_SCRIPTS = {"proof-telemetry.py"}
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
+ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 def _switch_value(raw: str) -> str:
@@ -438,14 +439,11 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
 # ----- anonymous usage totals -----
 
 
-def _alfredrc_path(raw: str | None = None) -> Path:
-    configured = raw or os.environ.get("ALFREDRC")
-    if configured:
-        return _safe_expanduser(Path(configured))
-    return _home_child(".alfredrc")
+def _runtime_env_path() -> Path:
+    return _alfred_home_path() / ".env"
 
 
-def _read_alfredrc_values(path: Path) -> dict[str, str]:
+def _read_env_values(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if not path.exists():
         return out
@@ -459,20 +457,79 @@ def _read_alfredrc_values(path: Path) -> dict[str, str]:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
-        if not key:
+        if not ENV_KEY_RE.match(key):
             continue
-        value = value.strip()
-        try:
-            parsed = shlex.split(value)
-        except ValueError:
-            parsed = []
-        out[key] = parsed[0] if len(parsed) == 1 else value.strip("'").strip('"')
+        value = _strip_env_inline_comment(value).strip()
+        single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"
+        decoded = _decode_env_value(value)
+        if not single_quoted:
+            home = _safe_home()
+            if home is not None:
+                home_text = str(home)
+                decoded = decoded.replace("${HOME}", home_text).replace("$HOME", home_text)
+        out[key] = decoded
     return out
 
 
-def _telemetry_values(alfredrc: Path) -> dict[str, str]:
-    values = _read_alfredrc_values(_alfred_home_path() / ".env")
-    values.update(_read_alfredrc_values(alfredrc))
+def _strip_env_inline_comment(value: str) -> str:
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
+def _decode_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
+        return value[1:-1].replace("'\"'\"'", "'")
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1]
+    return value
+
+
+def _hydrate_cli_env_from_runtime_env() -> None:
+    """Load the canonical runtime ``.env`` before CLI command dispatch.
+
+    The installer no longer writes shell-rc exports, so operator commands must
+    see the same single source that scheduled agents see. Match
+    ``agent-launch`` precedence: parent-process env wins for ad hoc shell
+    overrides, and ``$ALFRED_HOME/.env`` fills the
+    scheduler-visible defaults.
+    """
+
+    os.environ.pop("ALFREDRC", None)
+    if not os.environ.get("ALFRED_HOME", "").strip():
+        os.environ["ALFRED_HOME"] = str(_home_child(".alfred"))
+    for key, value in _read_env_values(_runtime_env_path()).items():
+        if key == "ALFREDRC" or key in os.environ:
+            continue
+        os.environ[key] = value
+    if not os.environ.get("WORKSPACE_ROOT", "").strip():
+        os.environ["WORKSPACE_ROOT"] = str(_home_child("code"))
+
+
+def _telemetry_values() -> dict[str, str]:
+    values = _read_env_values(_runtime_env_path())
     for key in (
         *TELEMETRY_ENV_KEYS,
         TELEMETRY_TRUSTED_TOKEN_ENV,
@@ -577,11 +634,11 @@ def _quote_env_value(value: str) -> str:
     return shlex.quote(value)
 
 
-def _write_telemetry_rc_block(path: Path, values: dict[str, str]) -> None:
+def _write_telemetry_env_block(path: Path, values: dict[str, str]) -> None:
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    existing = TELEMETRY_RC_BANNER_RE.sub("", existing).strip()
+    existing = TELEMETRY_ENV_BANNER_RE.sub("", existing).strip()
     existing = _strip_telemetry_env_lines(existing).strip()
-    block = [TELEMETRY_RC_BANNER]
+    block = [TELEMETRY_ENV_BANNER]
     for key in TELEMETRY_ENV_KEYS:
         if key in values and values[key] != "":
             block.append(f"{key}={_quote_env_value(values[key])}")
@@ -799,9 +856,9 @@ def _telemetry_schedule_error(schedule: str) -> str | None:
 
 
 def cmd_telemetry_status(args: argparse.Namespace) -> int:
-    alfredrc = _alfredrc_path(args.alfredrc)
+    env_file = _runtime_env_path()
     conf = _telemetry_agents_conf_path(args.agents_conf)
-    values = _telemetry_values(alfredrc)
+    values = _telemetry_values()
     enabled = _telemetry_enabled(values)
     url = _telemetry_effective_url(values)
     token = values.get("ALFRED_TELEMETRY_TOKEN", "").strip()
@@ -815,7 +872,7 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
         "endpoint": url,
         "token_configured": bool(token) or _telemetry_state_token_exists(),
         "trusted_token_configured": bool(trusted_token),
-        "alfredrc": str(alfredrc),
+        "env_file": str(env_file),
         "agents_conf": str(conf),
         "scheduler_row": _telemetry_row_state(conf),
         "install_id_path": str(install_id_path),
@@ -844,9 +901,9 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
 
 
 def cmd_telemetry_on(args: argparse.Namespace) -> int:
-    alfredrc = _alfredrc_path(args.alfredrc)
+    env_file = _runtime_env_path()
     conf = _telemetry_agents_conf_path(args.agents_conf)
-    current = _telemetry_values(alfredrc)
+    current = _telemetry_values()
     url = (
         args.url or current.get("ALFRED_TELEMETRY_URL") or _default_telemetry_url(current)
     ).strip()
@@ -891,10 +948,10 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
                 "warning: kept install id and token so previous usage totals can be cleared later",
                 file=sys.stderr,
             )
-    _write_telemetry_rc_block(alfredrc, values)
+    _write_telemetry_env_block(env_file, values)
     _ensure_telemetry_scheduler_row(conf, args.schedule)
     print("alfred: telemetry enabled")
-    print(f"alfred: wrote {alfredrc}")
+    print(f"alfred: wrote {env_file}")
     print(f"alfred: scheduled {TELEMETRY_LABEL} in {conf}")
     print(_telemetry_deploy_hint(conf))
     return 0
@@ -909,9 +966,9 @@ def _clear_previous_telemetry_report(values: dict[str, str]) -> dict[str, object
 
 
 def cmd_telemetry_off(args: argparse.Namespace) -> int:
-    alfredrc = _alfredrc_path(args.alfredrc)
+    env_file = _runtime_env_path()
     conf = _telemetry_agents_conf_path(args.agents_conf)
-    current = _telemetry_values(alfredrc)
+    current = _telemetry_values()
     clear_values = dict(current)
     if not clear_values.get("ALFRED_TELEMETRY_URL"):
         clear_values["ALFRED_TELEMETRY_URL"] = _telemetry_previous_clear_url(current)
@@ -926,7 +983,7 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
         "ALFRED_TELEMETRY_TOKEN"
     ):
         values["ALFRED_TELEMETRY_TOKEN"] = current["ALFRED_TELEMETRY_TOKEN"]
-    _write_telemetry_rc_block(alfredrc, values)
+    _write_telemetry_env_block(env_file, values)
     removed = _remove_telemetry_scheduler_row(conf)
     if clear_status in {"sent", "no_install_id"}:
         _delete_telemetry_state_token()
@@ -948,7 +1005,7 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
             "warning: kept install id so previous usage totals can be cleared later",
             file=sys.stderr,
         )
-    print(f"alfred: wrote {alfredrc}")
+    print(f"alfred: wrote {env_file}")
     print(f"alfred: {'removed' if removed else 'no'} scheduler row at {conf}")
     print(_telemetry_deploy_hint(conf))
     if args.delete_install_id:
@@ -1361,7 +1418,9 @@ def _codex_status() -> int:
         resolved = shutil.which(binary)
     if not resolved:
         print(f"codex: not found on PATH ({binary})", file=sys.stderr)
-        print("Set CODEX_BIN in ~/.alfredrc or install/sign in to Codex CLI.", file=sys.stderr)
+        print(
+            "Set CODEX_BIN in $ALFRED_HOME/.env or install/sign in to Codex CLI.", file=sys.stderr
+        )
         return 1
 
     print(f"codex binary: {resolved}")
@@ -2224,6 +2283,8 @@ def cmd_setup_token(args: argparse.Namespace) -> int:
         cmd.append("--force")
     if args.check_only:
         cmd.append("--check-only")
+    if args.token:
+        cmd.extend(["--token", args.token])
     return subprocess.run(cmd, check=False).returncode
 
 
@@ -2276,6 +2337,17 @@ def cmd_auth(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    previous_env = os.environ.copy()
+    _hydrate_cli_env_from_runtime_env()
+
+    try:
+        return _main_hydrated(argv)
+    finally:
+        os.environ.clear()
+        os.environ.update(previous_env)
+
+
+def _main_hydrated(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="alfred", description="Alfred operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -2297,7 +2369,6 @@ def main(argv: list[str] | None = None) -> int:
     telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)
     p_telemetry_status = telemetry_sub.add_parser("status", help="show usage total reporting state")
     p_telemetry_status.add_argument("--json", action="store_true")
-    p_telemetry_status.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_status.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_status.set_defaults(func=cmd_telemetry_status)
     p_telemetry_on = telemetry_sub.add_parser("on", help="enable anonymous usage totals")
@@ -2313,26 +2384,24 @@ def main(argv: list[str] | None = None) -> int:
         default="interval:3600",
         help="agents.conf cadence for the usage total reporter (default: interval:3600)",
     )
-    p_telemetry_on.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_on.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_on.set_defaults(func=cmd_telemetry_on)
     p_telemetry_off = telemetry_sub.add_parser("off", help="disable anonymous usage totals")
     p_telemetry_off.add_argument(
         "--forget-endpoint",
         action="store_true",
-        help="remove the telemetry endpoint from the managed .alfredrc block",
+        help="remove the telemetry endpoint from the managed .env block",
     )
     p_telemetry_off.add_argument(
         "--keep-token",
         action="store_true",
-        help="keep the existing ingest token in .alfredrc",
+        help="keep the existing ingest token in .env",
     )
     p_telemetry_off.add_argument(
         "--delete-install-id",
         action="store_true",
         help="delete $ALFRED_HOME/state/telemetry-install-id",
     )
-    p_telemetry_off.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_off.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_off.set_defaults(func=cmd_telemetry_off)
 
@@ -2469,6 +2538,14 @@ def main(argv: list[str] | None = None) -> int:
         "--check-only",
         action="store_true",
         help="report status without spawning `claude setup-token`",
+    )
+    p_setup_token.add_argument(
+        "--token",
+        metavar="VALUE",
+        help=(
+            "skip the interactive `claude setup-token` spawn and write the "
+            "given token to $ALFRED_HOME/.env directly"
+        ),
     )
     p_setup_token.set_defaults(func=cmd_setup_token)
 

@@ -7,24 +7,18 @@
 # scheduler unit files while still making scheduled jobs see the same config as
 # the operator shell.
 #
-# Config lives in two files, loaded in this order:
-#
-#   1. ${ALFREDRC:-~/.alfredrc}
-#                           - optional shell rc the operator may also source
-#                             interactively (export KEY=value).
-#   2. ${ALFRED_HOME}/.env  - the canonical runtime store. This is the same
-#                             file the Set up surface, alfred-setup-token,
-#                             config_value(), and ams-launch.sh read and write
-#                             (dotenv KEY=value, no `export`). Loading it here
-#                             is what keeps the token tooling and the runtime
-#                             loader pointed at one source of truth: a token
-#                             written by `alfred setup-token` reaches every
-#                             scheduled firing instead of silently 401ing.
+# Config lives in ${ALFRED_HOME}/.env, the canonical runtime store. This is
+# the same file the Set up surface, alfred-setup-token, config_value(), and
+# ams-launch.sh read and write (dotenv KEY=value, no `export`). Loading it
+# here keeps the token tooling and runtime loader pointed at one source of
+# truth: a token written by `alfred setup-token` reaches every scheduled
+# firing instead of silently 401ing.
 #
 # Already-exported variables (real environment, or set by an earlier file) are
-# not clobbered, so a value in .alfredrc or the scheduler unit still wins over
-# the same key in .env. Memory auto-promote stop controls are the exception:
-# an emergency opt-out or kill switch in .env must override stale enables.
+# not clobbered, so a value from the scheduler/process environment still wins
+# over the same key in .env. Memory auto-promote stop controls are the
+# exception: an emergency opt-out or kill switch in .env must override stale
+# enables.
 
 set -euo pipefail
 
@@ -39,6 +33,7 @@ shift
 if [ -n "${ALFRED_HOME+x}" ] && [ -z "${ALFRED_HOME:-}" ]; then
   unset ALFRED_HOME
 fi
+unset ALFREDRC
 
 strip_inline_comment() {
   local value="$1" ch quote="" escaped=0 i previous=""
@@ -99,7 +94,7 @@ memory_auto_promote_stop_control_active() {
   [ -n "$token" ] || return 1
   # All fail-closed auto-promote controls live here. In particular, malformed
   # nonblank ALFRED_AUTO_PROMOTE_LLM_JUDGE values must override stale truthy
-  # values from .alfredrc or scheduler env so the LLM judge gate cannot be
+  # values from process env so the LLM judge gate cannot be
   # bypassed by a typo in the canonical runtime .env.
   case "$key" in
     ALFRED_AUTO_PROMOTE|ALFRED_AUTO_PROMOTE_LLM_JUDGE)
@@ -157,74 +152,8 @@ PY
   esac
 }
 
-normalize_runtime_home() {
-  local path="$1" expanded normalized=""
-  expanded="$(expand_user_path "$path")"
-  if command -v python3 >/dev/null 2>&1; then
-    normalized="$(python3 - "$expanded" <<'PY' 2>/dev/null || true
-from pathlib import Path
-import sys
-
-print(Path(sys.argv[1]).expanduser().resolve(strict=False))
-PY
-)"
-  fi
-  if [ -n "$normalized" ]; then
-    printf '%s' "$normalized"
-  else
-    printf '%s' "$expanded"
-  fi
-}
-
-read_env_key() {
-  local file="$1" wanted="$2" line key value quote_style sq="'" dq='"' splice
-  [ -f "$file" ] || return 0
-  splice="${sq}${dq}${sq}${dq}${sq}"
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      ''|\#*) continue ;;
-    esac
-    case "$line" in
-      export\ *) line="${line#export }" ;;
-    esac
-    key="${line%%=*}"
-    value="${line#*=}"
-    [ "$key" = "$wanted" ] || continue
-    value="$(trim_env_value "$(strip_inline_comment "$value")")"
-    quote_style="none"
-    case "$value" in
-      \'*\') quote_style="single"; value="${value#\'}"; value="${value%\'}"; value="${value//$splice/$sq}" ;;
-      \"*\") quote_style="double"; value="${value#\"}"; value="${value%\"}" ;;
-    esac
-    if [ "$quote_style" != "single" ]; then
-      value="${value//\$\{HOME\}/$HOME}"
-      value="${value//\$HOME/$HOME}"
-    fi
-    printf '%s' "$value"
-    return 0
-  done < "$file"
-}
-
-rc_targets_effective_home() {
-  local selected_alfredrc="$1" direct_selected_alfredrc="$2" effective_home rc_home
-  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
-    return 0
-  fi
-  if [ -z "${ALFRED_HOME:-}" ]; then
-    return 0
-  fi
-  effective_home="$(normalize_runtime_home "$ALFRED_HOME")"
-  rc_home="$(read_env_key "$selected_alfredrc" "ALFRED_HOME")"
-  if [ -n "$rc_home" ]; then
-    rc_home="$(normalize_runtime_home "$rc_home")"
-  else
-    rc_home="$(normalize_runtime_home "$HOME/.alfred")"
-  fi
-  [ "$effective_home" = "$rc_home" ]
-}
-
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" file_overrides_process_runtime="${5:-}" setup_runtime_overrides="${6:-}" source_kind="${7:-}" preserve_alfred_home="${8:-}" line key value quote_style existing_value
+  local file="$1" no_clobber="${2:-}" file_overrides_existing="${3:-}" file_overrides_process_runtime="${4:-}" setup_runtime_overrides="${5:-}" line key value quote_style existing_value
   [ -f "$file" ] || return 0
   env_value_quote_style() {
     case "$1" in
@@ -273,19 +202,10 @@ load_env_file() {
       value="${value//\$\{HOME\}/$HOME}"
       value="${value//\$HOME/$HOME}"
     fi
-    if [ "$source_kind" = "alfredrc" ] &&
-      setup_runtime_config_key "$key" &&
-      [ "${RC_TARGETS_EFFECTIVE_HOME:-1}" -eq 0 ]; then
-      continue
-    fi
     # In no-clobber mode, an already-exported value (real environment or an
     # earlier-loaded file) wins. Keeps .env a gap-filler, not an override,
     # except for fail-closed memory stop controls.
     if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
-      if [ "$key" = "ALFREDRC" ] && [ "$allow_alfredrc_pointer" = "allow_alfredrc_pointer" ]; then
-        export "$key=$value"
-        continue
-      fi
       existing_value="${!key}"
       if memory_auto_promote_stop_control_active "$key" "$existing_value"; then
         continue
@@ -295,9 +215,6 @@ load_env_file() {
           setup_runtime_config_key "$key" &&
           ! original_env_has_key "$key"; then
           export "$key=$value"
-          continue
-        fi
-        if [ "$preserve_alfred_home" = "preserve_alfred_home" ] && [ "$key" = "ALFRED_HOME" ]; then
           continue
         fi
         if [ "$file_overrides_existing" = "file_overrides_existing" ] && {
@@ -316,57 +233,17 @@ load_env_file() {
   done < "$file"
 }
 
-load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" allow_alfredrc_pointer="allow_alfredrc_pointer" direct_selected_alfredrc=""
-  if original_env_has_key "ALFREDRC" && [ -n "${ALFREDRC:-}" ]; then
-    direct_selected_alfredrc="direct_selected_alfredrc"
-  fi
-  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
-  ALFREDRC="$selected_alfredrc"
-  export ALFREDRC
-  if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
-    RC_TARGETS_EFFECTIVE_HOME=1
-  else
-    RC_TARGETS_EFFECTIVE_HOME=0
-  fi
-  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
-    load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer" file_overrides_existing file_overrides_process_runtime "" alfredrc
-  else
-    load_env_file "$selected_alfredrc" no_clobber "$allow_alfredrc_pointer" "" "" "" alfredrc
-  fi
-  if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
-    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
-    ALFREDRC="$selected_alfredrc"
-    export ALFREDRC
-    if [ "$direct_selected_alfredrc" != "direct_selected_alfredrc" ] && [ -z "${ALFRED_HOME:-}" ]; then
-      ALFRED_HOME="$HOME/.alfred"
-      export ALFRED_HOME
-    fi
-    if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
-      RC_TARGETS_EFFECTIVE_HOME=1
-    else
-      RC_TARGETS_EFFECTIVE_HOME=0
-    fi
-    if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
-      load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing file_overrides_process_runtime "" alfredrc
-    else
-      load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing "" "" alfredrc preserve_alfred_home
-    fi
-  fi
-}
-
-load_selected_alfredrc
-
 : "${ALFRED_HOME:=$HOME/.alfred}"
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 
 # Load the canonical runtime store once ALFRED_HOME is known. no-clobber so
-# anything already set by .alfredrc or the scheduler unit takes precedence.
-load_env_file "$ALFRED_HOME/.env" no_clobber "" "" "" setup_runtime_overrides
+# anything already set by the scheduler/process environment takes precedence.
+load_env_file "$ALFRED_HOME/.env" no_clobber "" "" setup_runtime_overrides
 
 : "${WORKSPACE_ROOT:=$HOME/code}"
+WORKSPACE_ROOT="$(expand_user_path "$WORKSPACE_ROOT")"
 
-export ALFRED_HOME WORKSPACE_ROOT ALFREDRC
+export ALFRED_HOME WORKSPACE_ROOT
 
 case "$SCRIPT" in
   */*) TARGET="$SCRIPT" ;;

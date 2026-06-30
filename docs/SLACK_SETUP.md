@@ -59,7 +59,7 @@ You have three options. Pick one.
 
 ### Option A: Env var (simplest)
 
-Append to `~/.alfredrc`:
+Append to `$ALFRED_HOME/.env`:
 
 ```sh
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...........
@@ -434,7 +434,7 @@ Do this when you accidentally paste the URL somewhere it shouldn't be (chat, scr
 
    ```sh
    # Env var path:
-   sed -i '' 's|^SLACK_WEBHOOK_URL=.*|SLACK_WEBHOOK_URL=<new-url>|' ~/.alfredrc
+   sed -i '' 's|^SLACK_WEBHOOK_URL=.*|SLACK_WEBHOOK_URL=<new-url>|' $ALFRED_HOME/.env
 
    # AWS Secrets path:
    aws --profile <admin> secretsmanager update-secret \

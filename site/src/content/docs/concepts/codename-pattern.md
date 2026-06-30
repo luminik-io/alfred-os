@@ -87,7 +87,7 @@ The role implementation lives in `bin/<role>.py` (the filename never changes). T
 ```mermaid
 flowchart TB
     init["alfred-init wizard<br/><i>you pick codenames</i>"]
-    rc["~/.alfredrc<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
+    rc["$ALFRED_HOME/.env<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
     conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
     unit["my.fleet.marshall scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=marshall</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
@@ -97,7 +97,7 @@ flowchart TB
     init --> conf
     conf -- "render.sh" --> unit
     unit -- "deploy.sh" --> runner
-    rc -. "sourced by shell" .-> runner
+    rc -. "loaded by agent-launch/native runtime" .-> runner
     runner --> output
 ```
 

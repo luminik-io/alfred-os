@@ -122,7 +122,7 @@ The supported fix is a long-lived OAuth token that `claude` reads from an env va
 alfred setup-token
 ```
 
-This detects whether the token is already configured, runs `claude setup-token` for you, captures the printed token, appends `export CLAUDE_CODE_OAUTH_TOKEN=...` to `~/.alfredrc`, and chmods the file to 0600. Rotate later with `alfred setup-token --force`. Check status without touching auth with `alfred setup-token --check-only`. The interactive browser approval step still happens. That part Anthropic owns and we cannot automate.
+This detects whether the token is already configured, runs `claude setup-token` for you, captures the printed token, writes `CLAUDE_CODE_OAUTH_TOKEN=...` to `$ALFRED_HOME/.env`, and chmods the file to 0600. Rotate later with `alfred setup-token --force`. Check status without touching auth with `alfred setup-token --check-only`. The interactive browser approval step still happens. That part Anthropic owns and we cannot automate.
 
 The `alfred-init` wizard offers to run this for you on first install, so most operators never need to invoke it directly.
 
@@ -134,16 +134,16 @@ If you'd rather drive the flow yourself:
 claude setup-token
 ```
 
-Approve in the browser, copy the printed token. Add it to `~/.alfredrc` (which `agent-launch` sources on every firing):
+Approve in the browser, copy the printed token. Add it to `$ALFRED_HOME/.env` (which `agent-launch` parses on every firing):
 
 ```sh
-export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
 ```
 
 Tighten permissions so other accounts on the host cannot read it:
 
 ```sh
-chmod 600 ~/.alfredrc
+chmod 600 $ALFRED_HOME/.env
 ```
 
 #### Notes that apply either way
@@ -206,7 +206,7 @@ alfred claude secondary
 
 ## CLAUDE_BIN env var
 
-If `claude` isn't on the PATH that the host scheduler inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/claude` over an fnm-managed path:
+If `claude` isn't on the PATH that the host scheduler inherits (common when `npm` install puts it under `~/.local/share/fnm/aliases/.../bin`), set the absolute path in `$ALFRED_HOME/.env`. Prefer a stable symlink such as `$HOME/.local/bin/claude` over an fnm-managed path:
 
 ```sh
 CLAUDE_BIN=$HOME/.local/bin/claude
@@ -239,16 +239,16 @@ Claude Code supports installable skills (small markdown + script bundles that ex
 ## Troubleshooting
 
 **`claude: command not found` from a scheduled agent.**
-The scheduler unit's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`, or symlink `claude` to `/usr/local/bin/` or `~/.local/bin`.
+The scheduler unit's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `$ALFRED_HOME/.env`, or symlink `claude` to `/usr/local/bin/` or `~/.local/bin`.
 
 **`codex: command not found` from a scheduled agent.**
-Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`. Prefer a stable symlink such as `$HOME/.local/bin/codex` over an app-bundle path.
+Run `deploy.sh` again after installing Codex, or set `CODEX_BIN=<absolute-path>` in `$ALFRED_HOME/.env`. Prefer a stable symlink such as `$HOME/.local/bin/codex` over an app-bundle path.
 
 **`error_rate_limit` immediately on every firing.**
 You've hit a provider usage limit. `cat $ALFRED_HOME/state/global-blocked-until.json` shows Alfred's local cool-down. Either wait for the provider reset, swap to a second account via `alfred claude swap`, upgrade, or intentionally use provider-approved usage credits if that is your billing choice.
 
 **Unexpected API charges.**
-Check whether `ANTHROPIC_API_KEY` is set in your shell, scheduler environment, or `~/.alfredrc`. For subscription-backed runs, unset it and re-run `claude /status` interactively to confirm the active account. If Codex is unexpectedly using API billing, check whether `OPENAI_API_KEY` is set or whether Codex was logged in through an API-key flow instead of ChatGPT-plan auth.
+Check whether `ANTHROPIC_API_KEY` is set in your shell, scheduler environment, or `$ALFRED_HOME/.env`. For subscription-backed runs, unset it and re-run `claude /status` interactively to confirm the active account. If Codex is unexpectedly using API billing, check whether `OPENAI_API_KEY` is set or whether Codex was logged in through an API-key flow instead of ChatGPT-plan auth.
 
 **`error_max_turns` on every firing of one agent.**
 That agent's max-turns budget is too tight for the work. Either widen the budget in the stable role runner (look for `max_turns=` in files such as `bin/lucius.py`), or scope-cap the issues that agent picks up.

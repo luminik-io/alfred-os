@@ -42,11 +42,19 @@ def _capture_server(*, status: int = 200):
     return server, received
 
 
-def _run(tmp_path: Path, *args: str, alfredrc: Path | None = None, agents_conf: Path | None = None):
+def _env_file(tmp_path: Path) -> Path:
+    path = tmp_path / "alfred" / ".env"
+    path.parent.mkdir(exist_ok=True)
+    return path
+
+
+def _run(tmp_path: Path, *args: str, env_file: Path | None = None, agents_conf: Path | None = None):
     home = tmp_path / "home"
     alfred_home = tmp_path / "alfred"
     home.mkdir(exist_ok=True)
     alfred_home.mkdir(exist_ok=True)
+    if env_file is not None and env_file != alfred_home / ".env":
+        raise AssertionError(f"telemetry CLI now only reads {alfred_home / '.env'}")
     env = {
         **os.environ,
         "HOME": str(home),
@@ -62,18 +70,16 @@ def _run(tmp_path: Path, *args: str, alfredrc: Path | None = None, agents_conf: 
     ):
         env.pop(key, None)
     cmd = [sys.executable, str(ROOT / "bin" / "alfred"), "telemetry", *args]
-    if alfredrc is not None:
-        cmd.extend(["--alfredrc", str(alfredrc)])
     if agents_conf is not None:
         cmd.extend(["--agents-conf", str(agents_conf)])
     return subprocess.run(cmd, check=False, capture_output=True, text=True, env=env, timeout=15)
 
 
 def test_telemetry_status_reads_managed_files(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
 
-    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+    result = _run(tmp_path, "status", "--json", env_file=env_file, agents_conf=agents_conf)
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
@@ -84,15 +90,15 @@ def test_telemetry_status_reads_managed_files(tmp_path):
 
 
 def test_telemetry_status_honors_commented_opt_out(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(
+    env_file = _env_file(tmp_path)
+    env_file.write_text(
         "ALFRED_TELEMETRY_ENABLED=0 # opt out\n"
         "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
         encoding="utf-8",
     )
     agents_conf = tmp_path / "agents.conf"
 
-    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+    result = _run(tmp_path, "status", "--json", env_file=env_file, agents_conf=agents_conf)
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
@@ -100,9 +106,9 @@ def test_telemetry_status_honors_commented_opt_out(tmp_path):
     assert payload["endpoint"] == "https://telemetry.example.com/ingest"
 
 
-def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(
+def test_telemetry_on_writes_env_block_before_init_block_and_schedules_row(tmp_path):
+    env_file = _env_file(tmp_path)
+    env_file.write_text(
         "GH_ORG=acme\n\n"
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "ALFRED_LUCIUS_REPOS=api\n",
@@ -120,21 +126,21 @@ def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_pa
         "https://telemetry.example.com/ingest",
         "--token",
         "shared secret",
-        alfredrc=alfredrc,
+        env_file=env_file,
         agents_conf=agents_conf,
     )
 
     assert result.returncode == 0, result.stderr
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert rc_text.index("# alfred telemetry") < rc_text.index("# alfred-init")
-    assert "ALFRED_TELEMETRY_ENABLED=1" in rc_text
-    assert "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest" in rc_text
-    assert "ALFRED_TELEMETRY_TOKEN='shared secret'" in rc_text
-    assert alfredrc.stat().st_mode & 0o777 == 0o600
+    env_text = env_file.read_text(encoding="utf-8")
+    assert env_text.index("# alfred telemetry") < env_text.index("# alfred-init")
+    assert "ALFRED_TELEMETRY_ENABLED=1" in env_text
+    assert "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest" in env_text
+    assert "ALFRED_TELEMETRY_TOKEN='shared secret'" in env_text
+    assert env_file.stat().st_mode & 0o777 == 0o600
     conf_text = agents_conf.read_text(encoding="utf-8")
     assert conf_text.count("alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\t") == 1
 
-    status = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+    status = _run(tmp_path, "status", "--json", env_file=env_file, agents_conf=agents_conf)
     payload = json.loads(status.stdout)
     assert payload["enabled"] is True
     assert payload["endpoint"] == "https://telemetry.example.com/ingest"
@@ -144,14 +150,14 @@ def test_telemetry_on_writes_rc_block_before_init_block_and_schedules_row(tmp_pa
 
 
 def test_telemetry_status_reports_trusted_token_without_printing_it(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(
+    env_file = _env_file(tmp_path)
+    env_file.write_text(
         "ALFRED_TELEMETRY_TRUSTED_TOKEN=trusted-secret\n",
         encoding="utf-8",
     )
     agents_conf = tmp_path / "agents.conf"
 
-    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+    result = _run(tmp_path, "status", "--json", env_file=env_file, agents_conf=agents_conf)
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
@@ -166,10 +172,10 @@ def test_telemetry_status_reads_trusted_token_from_alfred_home_env(tmp_path):
         "ALFRED_TELEMETRY_TRUSTED_TOKEN=trusted-secret\n",
         encoding="utf-8",
     )
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
 
-    result = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+    result = _run(tmp_path, "status", "--json", env_file=env_file, agents_conf=agents_conf)
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
@@ -178,32 +184,32 @@ def test_telemetry_status_reads_trusted_token_from_alfred_home_env(tmp_path):
 
 
 def test_telemetry_on_uses_hosted_default_without_url(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
 
-    result = _run(tmp_path, "on", alfredrc=alfredrc, agents_conf=agents_conf)
+    result = _run(tmp_path, "on", env_file=env_file, agents_conf=agents_conf)
 
     assert result.returncode == 0, result.stderr
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert "ALFRED_TELEMETRY_ENABLED=1" in rc_text
-    assert f"ALFRED_TELEMETRY_URL={DEFAULT_TELEMETRY_URL}" in rc_text
+    env_text = env_file.read_text(encoding="utf-8")
+    assert "ALFRED_TELEMETRY_ENABLED=1" in env_text
+    assert f"ALFRED_TELEMETRY_URL={DEFAULT_TELEMETRY_URL}" in env_text
     assert "alfred.proof-telemetry\tproof-telemetry.py\tinterval:3600\t" in agents_conf.read_text(
         encoding="utf-8"
     )
 
 
-def test_telemetry_on_uses_default_endpoint_from_alfredrc(tmp_path):
+def test_telemetry_on_uses_default_endpoint_from_env_file(tmp_path):
     endpoint = "https://selfhosted.example.com/ingest"
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}\n", encoding="utf-8")
+    env_file = _env_file(tmp_path)
+    env_file.write_text(f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}\n", encoding="utf-8")
     agents_conf = tmp_path / "agents.conf"
 
-    result = _run(tmp_path, "on", alfredrc=alfredrc, agents_conf=agents_conf)
+    result = _run(tmp_path, "on", env_file=env_file, agents_conf=agents_conf)
 
     assert result.returncode == 0, result.stderr
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}" in rc_text
-    assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
+    env_text = env_file.read_text(encoding="utf-8")
+    assert f"ALFRED_DEFAULT_TELEMETRY_URL={endpoint}" in env_text
+    assert f"ALFRED_TELEMETRY_URL={endpoint}" in env_text
 
 
 def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
@@ -217,7 +223,7 @@ def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
     token.write_text("old-token\n", encoding="utf-8")
     token_endpoint.write_text(f"{url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
 
     try:
@@ -227,7 +233,7 @@ def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
             "--clear-token",
             "--url",
             url,
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
     finally:
@@ -237,7 +243,7 @@ def test_telemetry_on_clear_token_resets_install_id_pair(tmp_path):
     assert not token.exists()
     assert not token_endpoint.exists()
     assert not install_id.exists()
-    assert "ALFRED_TELEMETRY_TOKEN" not in alfredrc.read_text(encoding="utf-8")
+    assert "ALFRED_TELEMETRY_TOKEN" not in env_file.read_text(encoding="utf-8")
     assert received[0]["path"] == "/ingest"
     assert received[0]["token"] == "old-token"
     assert received[0]["body"]["install_id"] == "old-install-id"
@@ -257,8 +263,8 @@ def test_telemetry_on_clear_token_clears_previous_endpoint_before_switching(tmp_
     token.write_text("old-token\n", encoding="utf-8")
     token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={old_url}\n", encoding="utf-8")
+    env_file = _env_file(tmp_path)
+    env_file.write_text(f"ALFRED_TELEMETRY_URL={old_url}\n", encoding="utf-8")
     agents_conf = tmp_path / "agents.conf"
 
     try:
@@ -268,7 +274,7 @@ def test_telemetry_on_clear_token_clears_previous_endpoint_before_switching(tmp_
             "--clear-token",
             "--url",
             new_url,
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
     finally:
@@ -285,9 +291,9 @@ def test_telemetry_on_clear_token_clears_previous_endpoint_before_switching(tmp_
     assert not token.exists()
     assert not token_endpoint.exists()
     assert not install_id.exists()
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert f"ALFRED_TELEMETRY_URL={new_url}" in rc_text
-    assert old_url not in rc_text
+    env_text = env_file.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={new_url}" in env_text
+    assert old_url not in env_text
 
 
 def test_telemetry_on_clear_token_uses_persisted_endpoint_when_current_url_is_implicit(
@@ -305,7 +311,7 @@ def test_telemetry_on_clear_token_uses_persisted_endpoint_when_current_url_is_im
     token.write_text("old-token\n", encoding="utf-8")
     token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
 
     try:
@@ -315,7 +321,7 @@ def test_telemetry_on_clear_token_uses_persisted_endpoint_when_current_url_is_im
             "--clear-token",
             "--url",
             new_url,
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
     finally:
@@ -332,9 +338,9 @@ def test_telemetry_on_clear_token_uses_persisted_endpoint_when_current_url_is_im
     assert not token.exists()
     assert not token_endpoint.exists()
     assert not install_id.exists()
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert f"ALFRED_TELEMETRY_URL={new_url}" in rc_text
-    assert old_url not in rc_text
+    env_text = env_file.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={new_url}" in env_text
+    assert old_url not in env_text
 
 
 def test_telemetry_on_clear_token_keeps_explicit_replacement_token(tmp_path):
@@ -348,7 +354,7 @@ def test_telemetry_on_clear_token_keeps_explicit_replacement_token(tmp_path):
     token.write_text("old-token\n", encoding="utf-8")
     token_endpoint.write_text(f"{url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
 
     try:
@@ -360,7 +366,7 @@ def test_telemetry_on_clear_token_keeps_explicit_replacement_token(tmp_path):
             "new-token",
             "--url",
             url,
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
     finally:
@@ -371,7 +377,7 @@ def test_telemetry_on_clear_token_keeps_explicit_replacement_token(tmp_path):
     assert not token.exists()
     assert not token_endpoint.exists()
     assert not install_id.exists()
-    assert "ALFRED_TELEMETRY_TOKEN=new-token" in alfredrc.read_text(encoding="utf-8")
+    assert "ALFRED_TELEMETRY_TOKEN=new-token" in env_file.read_text(encoding="utf-8")
 
 
 def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
@@ -385,8 +391,8 @@ def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
     token.write_text("old-token\n", encoding="utf-8")
     token_endpoint.write_text(f"{url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={url}\n", encoding="utf-8")
+    env_file = _env_file(tmp_path)
+    env_file.write_text(f"ALFRED_TELEMETRY_URL={url}\n", encoding="utf-8")
     agents_conf = tmp_path / "agents.conf"
 
     try:
@@ -394,7 +400,7 @@ def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
             tmp_path,
             "on",
             "--clear-token",
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
     finally:
@@ -405,7 +411,7 @@ def test_telemetry_on_clear_token_keeps_install_id_when_clear_fails(tmp_path):
     assert token_endpoint.read_text(encoding="utf-8").strip() == url
     assert install_id.read_text(encoding="utf-8").strip() == "old-install-id"
     assert "kept install id and token" in result.stderr
-    assert "ALFRED_TELEMETRY_TOKEN=old-token" in alfredrc.read_text(encoding="utf-8")
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in env_file.read_text(encoding="utf-8")
 
 
 def test_telemetry_on_clear_token_keeps_old_endpoint_pair_when_switch_clear_fails(tmp_path):
@@ -421,8 +427,8 @@ def test_telemetry_on_clear_token_keeps_old_endpoint_pair_when_switch_clear_fail
     token.write_text("old-token\n", encoding="utf-8")
     token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(f"ALFRED_TELEMETRY_URL={old_url}\n", encoding="utf-8")
+    env_file = _env_file(tmp_path)
+    env_file.write_text(f"ALFRED_TELEMETRY_URL={old_url}\n", encoding="utf-8")
     agents_conf = tmp_path / "agents.conf"
 
     try:
@@ -432,7 +438,7 @@ def test_telemetry_on_clear_token_keeps_old_endpoint_pair_when_switch_clear_fail
             "--clear-token",
             "--url",
             new_url,
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
     finally:
@@ -444,10 +450,10 @@ def test_telemetry_on_clear_token_keeps_old_endpoint_pair_when_switch_clear_fail
     assert new_received == []
     assert old_received[0]["token"] == "old-token"
     assert "kept install id and token" in result.stderr
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert f"ALFRED_TELEMETRY_URL={old_url}" in rc_text
-    assert f"ALFRED_TELEMETRY_URL={new_url}" not in rc_text
-    assert "ALFRED_TELEMETRY_TOKEN=old-token" in rc_text
+    env_text = env_file.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={old_url}" in env_text
+    assert f"ALFRED_TELEMETRY_URL={new_url}" not in env_text
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in env_text
 
 
 def test_telemetry_on_clear_token_keeps_old_pair_when_replacement_clear_fails(tmp_path):
@@ -463,8 +469,8 @@ def test_telemetry_on_clear_token_keeps_old_pair_when_replacement_clear_fails(tm
     token.write_text("old-token\n", encoding="utf-8")
     token_endpoint.write_text(f"{old_url}\n", encoding="utf-8")
     install_id.write_text("old-install-id\n", encoding="utf-8")
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(
+    env_file = _env_file(tmp_path)
+    env_file.write_text(
         f"ALFRED_TELEMETRY_URL={old_url}\nALFRED_TELEMETRY_TOKEN=old-token\n",
         encoding="utf-8",
     )
@@ -479,7 +485,7 @@ def test_telemetry_on_clear_token_keeps_old_pair_when_replacement_clear_fails(tm
             "new-token",
             "--url",
             new_url,
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
     finally:
@@ -490,14 +496,14 @@ def test_telemetry_on_clear_token_keeps_old_pair_when_replacement_clear_fails(tm
     assert len(old_received) == 1
     assert new_received == []
     assert old_received[0]["token"] == "old-token"
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert f"ALFRED_TELEMETRY_URL={old_url}" in rc_text
-    assert "ALFRED_TELEMETRY_TOKEN=old-token" in rc_text
-    assert "new-token" not in rc_text
+    env_text = env_file.read_text(encoding="utf-8")
+    assert f"ALFRED_TELEMETRY_URL={old_url}" in env_text
+    assert "ALFRED_TELEMETRY_TOKEN=old-token" in env_text
+    assert "new-token" not in env_text
 
 
 def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
     on = _run(
         tmp_path,
@@ -506,18 +512,18 @@ def test_telemetry_off_disables_and_removes_scheduler_row(tmp_path):
         "https://telemetry.example.com/ingest",
         "--token",
         "secret",
-        alfredrc=alfredrc,
+        env_file=env_file,
         agents_conf=agents_conf,
     )
     assert on.returncode == 0
 
-    off = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+    off = _run(tmp_path, "off", env_file=env_file, agents_conf=agents_conf)
 
     assert off.returncode == 0
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert "ALFRED_TELEMETRY_ENABLED=0" in rc_text
-    assert "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest" in rc_text
-    assert "ALFRED_TELEMETRY_TOKEN" not in rc_text
+    env_text = env_file.read_text(encoding="utf-8")
+    assert "ALFRED_TELEMETRY_ENABLED=0" in env_text
+    assert "ALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest" in env_text
+    assert "ALFRED_TELEMETRY_TOKEN" not in env_text
     assert "alfred.proof-telemetry" not in agents_conf.read_text(encoding="utf-8")
 
 
@@ -525,8 +531,8 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
     server, received = _capture_server()
     try:
         endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
-        alfredrc = tmp_path / ".alfredrc"
-        alfredrc.write_text(
+        env_file = _env_file(tmp_path)
+        env_file.write_text(
             "ALFRED_TELEMETRY_ENABLED=1\n"
             f"ALFRED_TELEMETRY_URL={endpoint}\n"
             "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
@@ -546,7 +552,7 @@ def test_telemetry_off_clears_previous_usage_totals(tmp_path):
         token.write_text("persisted-install-token\n", encoding="utf-8")
         token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
 
-        result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+        result = _run(tmp_path, "off", env_file=env_file, agents_conf=agents_conf)
 
         assert result.returncode == 0, result.stderr
         assert "cleared previous usage totals" in result.stdout
@@ -571,8 +577,8 @@ def test_telemetry_off_uses_saved_endpoint_when_hosted_default_is_disabled(tmp_p
     server, received = _capture_server()
     try:
         endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
-        alfredrc = tmp_path / ".alfredrc"
-        alfredrc.write_text(
+        env_file = _env_file(tmp_path)
+        env_file.write_text(
             "ALFRED_TELEMETRY_ENABLED=1\n"
             "ALFRED_DEFAULT_TELEMETRY_URL=\n"
             "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
@@ -592,7 +598,7 @@ def test_telemetry_off_uses_saved_endpoint_when_hosted_default_is_disabled(tmp_p
         token.write_text("persisted-install-token\n", encoding="utf-8")
         token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
 
-        result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+        result = _run(tmp_path, "off", env_file=env_file, agents_conf=agents_conf)
 
         assert result.returncode == 0, result.stderr
         assert "cleared previous usage totals" in result.stdout
@@ -614,8 +620,8 @@ def test_telemetry_off_uses_saved_endpoint_when_hosted_default_is_disabled(tmp_p
 
 
 def test_telemetry_off_keeps_saved_token_when_no_clear_url_exists(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(
+    env_file = _env_file(tmp_path)
+    env_file.write_text(
         "ALFRED_TELEMETRY_ENABLED=1\n"
         "ALFRED_DEFAULT_TELEMETRY_URL=\n"
         "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
@@ -631,7 +637,7 @@ def test_telemetry_off_keeps_saved_token_when_no_clear_url_exists(tmp_path):
     token.parent.mkdir(parents=True)
     token.write_text("persisted-install-token\n", encoding="utf-8")
 
-    result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+    result = _run(tmp_path, "off", env_file=env_file, agents_conf=agents_conf)
 
     assert result.returncode == 0, result.stderr
     assert token.exists()
@@ -642,8 +648,8 @@ def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
     server, received = _capture_server(status=500)
     try:
         endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
-        alfredrc = tmp_path / ".alfredrc"
-        alfredrc.write_text(
+        env_file = _env_file(tmp_path)
+        env_file.write_text(
             "ALFRED_TELEMETRY_ENABLED=1\n"
             f"ALFRED_TELEMETRY_URL={endpoint}\n"
             "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
@@ -663,17 +669,17 @@ def test_telemetry_off_preserves_token_when_clear_fails(tmp_path):
         token.write_text("persisted-install-token\n", encoding="utf-8")
         token_endpoint.write_text(f"{endpoint}\n", encoding="utf-8")
 
-        result = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+        result = _run(tmp_path, "off", env_file=env_file, agents_conf=agents_conf)
 
         assert result.returncode == 0
         assert "could not clear previous usage totals" in result.stderr
         assert received and received[0]["token"] == "shared-secret"
         assert token.exists()
         assert token_endpoint.exists()
-        rc_text = alfredrc.read_text(encoding="utf-8")
-        assert "ALFRED_TELEMETRY_ENABLED=0" in rc_text
-        assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
-        assert "ALFRED_TELEMETRY_TOKEN=shared-secret" in rc_text
+        env_text = env_file.read_text(encoding="utf-8")
+        assert "ALFRED_TELEMETRY_ENABLED=0" in env_text
+        assert f"ALFRED_TELEMETRY_URL={endpoint}" in env_text
+        assert "ALFRED_TELEMETRY_TOKEN=shared-secret" in env_text
     finally:
         server.shutdown()
 
@@ -682,8 +688,8 @@ def test_telemetry_off_deletes_install_id_after_clear_succeeds(tmp_path):
     server, _received = _capture_server()
     try:
         endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
-        alfredrc = tmp_path / ".alfredrc"
-        alfredrc.write_text(
+        env_file = _env_file(tmp_path)
+        env_file.write_text(
             "ALFRED_TELEMETRY_ENABLED=1\n"
             f"ALFRED_TELEMETRY_URL={endpoint}\n"
             "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
@@ -703,7 +709,7 @@ def test_telemetry_off_deletes_install_id_after_clear_succeeds(tmp_path):
             tmp_path,
             "off",
             "--delete-install-id",
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
 
@@ -718,8 +724,8 @@ def test_telemetry_off_preserves_install_id_when_clear_fails(tmp_path):
     server, _received = _capture_server(status=500)
     try:
         endpoint = f"http://127.0.0.1:{server.server_port}/ingest"
-        alfredrc = tmp_path / ".alfredrc"
-        alfredrc.write_text(
+        env_file = _env_file(tmp_path)
+        env_file.write_text(
             "ALFRED_TELEMETRY_ENABLED=1\n"
             f"ALFRED_TELEMETRY_URL={endpoint}\n"
             "ALFRED_TELEMETRY_TOKEN=shared-secret\n",
@@ -739,23 +745,23 @@ def test_telemetry_off_preserves_install_id_when_clear_fails(tmp_path):
             tmp_path,
             "off",
             "--delete-install-id",
-            alfredrc=alfredrc,
+            env_file=env_file,
             agents_conf=agents_conf,
         )
 
         assert result.returncode == 0
         assert "kept install id" in result.stderr
         assert install_id.exists()
-        rc_text = alfredrc.read_text(encoding="utf-8")
-        assert f"ALFRED_TELEMETRY_URL={endpoint}" in rc_text
-        assert "ALFRED_TELEMETRY_TOKEN=shared-secret" in rc_text
+        env_text = env_file.read_text(encoding="utf-8")
+        assert f"ALFRED_TELEMETRY_URL={endpoint}" in env_text
+        assert "ALFRED_TELEMETRY_TOKEN=shared-secret" in env_text
     finally:
         server.shutdown()
 
 
 def test_telemetry_off_removes_later_init_block_telemetry_values(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text(
+    env_file = _env_file(tmp_path)
+    env_file.write_text(
         "GH_ORG=acme\n\n"
         "# alfred-init, generated below this line. Safe to re-run.\n"
         "ALFRED_TELEMETRY_ENABLED=1\n"
@@ -769,20 +775,20 @@ def test_telemetry_off_removes_later_init_block_telemetry_values(tmp_path):
         encoding="utf-8",
     )
 
-    off = _run(tmp_path, "off", alfredrc=alfredrc, agents_conf=agents_conf)
+    off = _run(tmp_path, "off", env_file=env_file, agents_conf=agents_conf)
 
     assert off.returncode == 0
-    rc_text = alfredrc.read_text(encoding="utf-8")
-    assert rc_text.count("ALFRED_TELEMETRY_ENABLED=") == 1
-    assert "ALFRED_TELEMETRY_ENABLED=0" in rc_text
-    assert "https://old.example/ingest" in rc_text
-    assert "# alfred-init" in rc_text
-    status = _run(tmp_path, "status", "--json", alfredrc=alfredrc, agents_conf=agents_conf)
+    env_text = env_file.read_text(encoding="utf-8")
+    assert env_text.count("ALFRED_TELEMETRY_ENABLED=") == 1
+    assert "ALFRED_TELEMETRY_ENABLED=0" in env_text
+    assert "https://old.example/ingest" in env_text
+    assert "# alfred-init" in env_text
+    status = _run(tmp_path, "status", "--json", env_file=env_file, agents_conf=agents_conf)
     assert json.loads(status.stdout)["enabled"] is False
 
 
 def test_telemetry_on_prefers_deploy_source_over_runtime_copy(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     alfred_home = tmp_path / "alfred"
     runtime_launchd = alfred_home / "launchd"
     runtime_launchd.mkdir(parents=True)
@@ -802,7 +808,7 @@ def test_telemetry_on_prefers_deploy_source_over_runtime_copy(tmp_path):
         "on",
         "--url",
         "https://telemetry.example.com/ingest",
-        alfredrc=alfredrc,
+        env_file=env_file,
     )
 
     assert result.returncode == 0, result.stderr
@@ -815,7 +821,7 @@ def test_telemetry_on_prefers_deploy_source_over_runtime_copy(tmp_path):
 
 
 def test_telemetry_on_creates_source_agents_conf_when_marker_exists(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     alfred_home = tmp_path / "alfred"
     runtime_launchd = alfred_home / "launchd"
     runtime_launchd.mkdir(parents=True)
@@ -831,7 +837,7 @@ def test_telemetry_on_creates_source_agents_conf_when_marker_exists(tmp_path):
         "on",
         "--url",
         "https://telemetry.example.com/ingest",
-        alfredrc=alfredrc,
+        env_file=env_file,
     )
 
     assert result.returncode == 0, result.stderr
@@ -849,7 +855,7 @@ def test_telemetry_on_rejects_nonlocal_http_endpoint(tmp_path):
 
 
 def test_telemetry_on_allows_local_http_endpoint(tmp_path):
-    alfredrc = tmp_path / ".alfredrc"
+    env_file = _env_file(tmp_path)
     agents_conf = tmp_path / "agents.conf"
 
     result = _run(
@@ -857,12 +863,12 @@ def test_telemetry_on_allows_local_http_endpoint(tmp_path):
         "on",
         "--url",
         "http://127.0.0.1:8787/ingest",
-        alfredrc=alfredrc,
+        env_file=env_file,
         agents_conf=agents_conf,
     )
 
     assert result.returncode == 0
-    assert "ALFRED_TELEMETRY_URL=http://127.0.0.1:8787/ingest" in alfredrc.read_text(
+    assert "ALFRED_TELEMETRY_URL=http://127.0.0.1:8787/ingest" in env_file.read_text(
         encoding="utf-8"
     )
 

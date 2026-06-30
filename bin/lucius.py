@@ -174,7 +174,7 @@ def issue_reference_line(issue_num: int) -> str:
 
 
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
-    """Load per-repo pre-push commands from ${HOME}/.alfredrc.d/<codename>.yaml.
+    """Load per-repo pre-push commands from $ALFRED_HOME/agents/<codename>.toml.
 
     TOML format:
         pre_push:
@@ -188,7 +188,7 @@ def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
       python repo (pyproject.toml) -> uv run ruff check . && uv run mypy . && uv run pytest
       else                   -> "" (no pre-push, agent reports it in PR body)
     """
-    cfg_path = Path(os.path.expanduser(f"~/.alfredrc.d/{agent_codename}.yaml"))
+    cfg_path = ALFRED_HOME / "agents" / f"{agent_codename}.toml"
     user_cfg: dict[str, str] = {}
     if cfg_path.exists():
         try:

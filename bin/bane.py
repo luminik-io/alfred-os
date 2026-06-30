@@ -2,7 +2,7 @@
 """Bane - test coverage agent. Adds tests for actively-changed undertested files.
 
 Per-repo configuration (slug, pre-push command, coverage hint) loads from
-${HOME}/.alfredrc.d/<codename>.yaml. TOML format:
+$ALFRED_HOME/agents/<codename>.toml. TOML format:
 
     repos:
       backend:
@@ -29,6 +29,7 @@ sys.path.insert(
     (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
 )
 from agent_runner import (
+    ALFRED_HOME,
     GH_ORG,
     STATE_ROOT,
     WORKSPACE,
@@ -78,9 +79,9 @@ PREFLIGHT = PreflightSpec(
 
 def _load_repo_config(agent_codename: str) -> dict[str, dict[str, str]]:
     """Read per-repo pre_push + coverage_hint from
-    ${HOME}/.alfredrc.d/<codename>.yaml. See module docstring for format.
+    $ALFRED_HOME/agents/<codename>.toml. See module docstring for format.
     """
-    cfg_path = Path(os.path.expanduser(f"~/.alfredrc.d/{agent_codename}.yaml"))
+    cfg_path = ALFRED_HOME / "agents" / f"{agent_codename}.toml"
     user_cfg: dict[str, dict[str, str]] = {}
     if cfg_path.exists():
         try:
@@ -103,7 +104,7 @@ def _load_repo_config(agent_codename: str) -> dict[str, dict[str, str]]:
                 entry["pre_push"] = ""
         if "coverage_hint" not in entry:
             entry["coverage_hint"] = (
-                f"(operator: configure coverage_hint per repo in ~/.alfredrc.d/{agent_codename}.yaml)"
+                f"(operator: configure coverage_hint per repo in $ALFRED_HOME/agents/{agent_codename}.toml)"
             )
         out[repo] = entry
     return out

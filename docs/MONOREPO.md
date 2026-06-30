@@ -28,7 +28,7 @@ my-monorepo/
 ```
 
 `pnpm-workspace.yaml` declares `apps/*` and `packages/*`. Alfred treats the
-whole thing as one GitHub repo. In `~/.alfredrc`:
+whole thing as one GitHub repo. In `$ALFRED_HOME/.env`:
 
 ```sh
 ALFRED_LUCIUS_REPOS=my-monorepo
@@ -85,7 +85,7 @@ my-rust/
 ```
 
 `Cargo.toml` declares `members = ["crates/*", "xtask"]`. Alfred still sees one
-repo. The pre-push hook in `~/.alfredrc.d/lucius.yaml` should use crate-aware
+repo. The pre-push hook in `$ALFRED_HOME/agents/lucius.toml` should use crate-aware
 commands:
 
 ```toml
@@ -146,12 +146,12 @@ believe a cross-package edit is needed, stop and print
 
 ## Per-package tests
 
-Pre-push commands are configured per repo in `~/.alfredrc.d/<codename>.yaml`.
+Pre-push commands are configured per repo in `$ALFRED_HOME/agents/<codename>.toml`.
 For a monorepo, you usually want the pre-push to be the workspace-wide test
 command (it's the safest default for an agent that does not know which
 package it touched). Bane and Lucius read the same config.
 
-Workspace-wide default in `~/.alfredrc.d/lucius.yaml`:
+Workspace-wide default in `$ALFRED_HOME/agents/lucius.toml`:
 
 ```toml
 [pre_push]

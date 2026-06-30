@@ -21,7 +21,6 @@
 #   __JAVA_BLOCK__         - Environment=JAVA_HOME=... when needs_java=yes
 #   __ALFRED_BIN__         - $ALFRED_HOME/bin
 #   __ALFRED_HOME__        - resolves at render time from $ALFRED_HOME
-#   __ALFREDRC__           - resolves at render time from $ALFREDRC or ~/.alfredrc
 #   __WORKSPACE_ROOT__     - resolves at render time from $WORKSPACE_ROOT
 #   __HOME__               - $HOME at render time
 #   __LOG_STEM__           - basename for /tmp/<stem>.{stdout,stderr}
@@ -95,17 +94,8 @@ trim_env_value() {
   printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
-ORIGINAL_ENV_KEYS=":$(env | sed 's/=.*//' | tr '\n' ':')"
-
-original_env_has_key() {
-  case "$ORIGINAL_ENV_KEYS" in
-    *:"$1":*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" line key value
+  local file="$1" no_clobber="${2:-}" line key value
   [[ -f "$file" ]] || return 0
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
@@ -129,14 +119,6 @@ load_env_file() {
     value="${value//\$\{HOME\}/$HOME}"
     value="${value//\$HOME/$HOME}"
     if [[ -n "$no_clobber" && -n "${!key+x}" ]]; then
-      if [[ "$key" == "ALFREDRC" && "$allow_alfredrc_pointer" == "allow_alfredrc_pointer" ]]; then
-        export "$key=$value"
-        continue
-      fi
-      if [[ "$file_overrides_existing" == "file_overrides_existing" ]] && ! original_env_has_key "$key"; then
-        export "$key=$value"
-        continue
-      fi
       continue
     fi
     export "$key=$value"
@@ -168,108 +150,12 @@ PY
   esac
 }
 
-discover_alfredrc_from_launchd() {
-  local dir="$HOME/Library/LaunchAgents"
-  [[ -d "$dir" ]] || return 0
-  python3 - "$dir" <<'PY' 2>/dev/null || true
-import pathlib
-import plistlib
-import sys
-
-for path in sorted(pathlib.Path(sys.argv[1]).glob("*.plist")):
-    try:
-        data = plistlib.loads(path.read_bytes())
-    except Exception:
-        continue
-    env = data.get("EnvironmentVariables") if isinstance(data, dict) else None
-    value = env.get("ALFREDRC") if isinstance(env, dict) else None
-    if isinstance(value, str) and value.strip():
-        print(value.strip())
-        raise SystemExit
-PY
-}
-
-discover_alfredrc_from_systemd() {
-  local dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
-  [[ -d "$dir" ]] || return 0
-  python3 - "$dir" <<'PY' 2>/dev/null || true
-import pathlib
-import shlex
-import sys
-
-for path in sorted(pathlib.Path(sys.argv[1]).glob("*.service")):
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        continue
-    for raw in lines:
-        line = raw.strip()
-        if not line.startswith("Environment="):
-            continue
-        rest = line.removeprefix("Environment=").strip()
-        try:
-            parts = shlex.split(rest)
-        except ValueError:
-            parts = rest.split()
-        for part in parts:
-            if part.startswith("ALFREDRC="):
-                value = part.partition("=")[2].strip()
-                if value:
-                    print(value)
-                    raise SystemExit
-PY
-}
-
-discover_persisted_alfredrc() {
-  local candidate line discovered runtime_home="${ALFRED_HOME:-$HOME/.alfred}"
-  for candidate in "$runtime_home/launchd/alfredrc.path" "$HOME/.alfred/launchd/alfredrc.path"; do
-    if [[ -f "$candidate" ]]; then
-      IFS= read -r line < "$candidate" || true
-      if [[ -n "$line" ]]; then
-        expand_user_path "$line"
-        printf '\n'
-        return 0
-      fi
-    fi
-  done
-  discovered="$(discover_alfredrc_from_launchd)"
-  if [[ -n "$discovered" ]]; then
-    expand_user_path "$discovered"
-    printf '\n'
-    return 0
-  fi
-  discovered="$(discover_alfredrc_from_systemd)"
-  if [[ -n "$discovered" ]]; then
-    expand_user_path "$discovered"
-    printf '\n'
-  fi
-}
-
-load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-}" allow_alfredrc_pointer="allow_alfredrc_pointer"
-  if [[ -z "$selected_alfredrc" ]]; then
-    selected_alfredrc="$(discover_persisted_alfredrc)"
-  fi
-  if [[ -z "$selected_alfredrc" ]]; then
-    selected_alfredrc="$HOME/.alfredrc"
-  fi
-  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
-  ALFREDRC="$selected_alfredrc"
-  export ALFREDRC
-  load_env_file "$ALFREDRC" no_clobber "$allow_alfredrc_pointer"
-  if [[ -n "${ALFREDRC:-}" && "$ALFREDRC" != "$selected_alfredrc" ]]; then
-    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
-    ALFREDRC="$selected_alfredrc"
-    export ALFREDRC
-    load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing
-  fi
-}
-
-load_selected_alfredrc
-
 : "${ALFRED_HOME:=$HOME/.alfred}"
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
+load_env_file "$ALFRED_HOME/.env" no_clobber
 : "${WORKSPACE_ROOT:=${WORKSPACE_ROOT:-$HOME/code}}"
-export ALFRED_HOME WORKSPACE_ROOT ALFREDRC
+WORKSPACE_ROOT="$(expand_user_path "$WORKSPACE_ROOT")"
+export ALFRED_HOME WORKSPACE_ROOT
 
 # Linux JAVA_HOME / PATH derivation. Unlike macOS, there is no Homebrew
 # openjdk@21 prefix to interrogate; derive from `command -v java` and fall
@@ -374,13 +260,13 @@ render_one() {
 
   python3 - "$SERVICE_TEMPLATE" "$TIMER_TEMPLATE" "$service_out" "$timer_out" \
       "$label" "$script" "$schedule_block" "$path_value" "$java_block" \
-      "$alfred_bin" "$ALFRED_HOME" "$ALFREDRC" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" \
+      "$alfred_bin" "$ALFRED_HOME" "$WORKSPACE_ROOT" "$HOME" "$log_stem" "${GH_ORG:-}" \
       "$agent_short" "$role" <<'PY'
 import sys
 
 (service_template, timer_template, service_out, timer_out, label, script,
  schedule_block, path_value, java_block, alfred_bin, alfred_home,
- alfredrc, workspace_root, home_dir, log_stem, gh_org, agent_short, role) = sys.argv[1:]
+ workspace_root, home_dir, log_stem, gh_org, agent_short, role) = sys.argv[1:]
 
 with open(service_template) as f:
     service_txt = f.read()
@@ -418,7 +304,6 @@ mapping = {
     "__ALFRED_BIN__": alfred_bin,
     "__AGENT_LAUNCH__": systemd_token(f"{alfred_bin}/agent-launch"),
     "__ALFRED_HOME__": systemd_token(alfred_home),
-    "__ALFREDRC_ENV__": env_line("ALFREDRC", alfredrc),
     "__WORKSPACE_ROOT__": systemd_token(workspace_root),
     "__AGENT_SHORT__": agent_short,
     "__GH_ORG_BLOCK__": gh_org_block,

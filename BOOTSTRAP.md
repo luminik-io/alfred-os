@@ -98,7 +98,7 @@ Create a Slack incoming webhook for the channel where the fleet should report (w
 **Simplest** (env var):
 
 ```sh
-echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.alfredrc
+echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> $ALFRED_HOME/.env
 ```
 
 **Recommended for prod** (AWS Secrets Manager, default secret ID `alfred/slack-webhook`):
@@ -110,7 +110,7 @@ aws --profile <admin-profile> secretsmanager create-secret \
   --region us-east-1
 ```
 
-Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` if you keep secrets under a different prefix.
+Override `SLACK_WEBHOOK_SECRET_ID` in `$ALFRED_HOME/.env` if you keep secrets under a different prefix.
 
 The runtime caches the webhook at `$ALFRED_HOME/state/slack-webhook.cache` with a 30-day TTL, so a slow Secrets Manager call does not stall every Slack post. See `slack_post()` in [`lib/agent_runner/`](lib/agent_runner/__init__.py) and the full walkthrough in [`docs/SLACK_SETUP.md`](docs/SLACK_SETUP.md) (which also covers the optional bot-token + app-level-token paths).
 
@@ -122,7 +122,7 @@ Run the public wizard. It chooses which agents are enabled, which repos they wat
 ./bin/alfred-init.py
 ```
 
-The wizard writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, and runs `alfred doctor`.
+The wizard writes `launchd/agents.conf`, updates `$ALFRED_HOME/.env`, runs `bash deploy.sh`, and runs `alfred doctor`.
 
 For a one-repo solo-builder fleet, you can drive the same setup without
 interactive choices:
@@ -138,7 +138,7 @@ interactive choices:
 This configures the full engineering fleet, seeds prompts into
 `~/.alfred/prompts/`, and creates the GitHub labels the runners expect. Add
 Slack later by re-running the wizard or setting `SLACK_WEBHOOK_URL` in
-`~/.alfredrc`.
+`$ALFRED_HOME/.env`.
 
 The full fleet is installed up front, but high-impact work still has explicit
 gates. Batman is present, visible, and runner-gated until `alfred enable batman`
@@ -241,9 +241,9 @@ alfred resume lucius
 
 ## 8. Troubleshooting
 
-**`claude: command not found` in the scheduler log.** The rendered unit's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Set `CLAUDE_BIN=<absolute-path>` in `~/.alfredrc`, or expose the binary through a stable directory already rendered into scheduler PATH, such as `~/.local/bin`. `which claude` shows the path.
+**`claude: command not found` in the scheduler log.** The rendered unit's `PATH` does not include the fnm-managed Node bin (or wherever your `claude` lives). Set `CLAUDE_BIN=<absolute-path>` in `$ALFRED_HOME/.env`, or expose the binary through a stable directory already rendered into scheduler PATH, such as `~/.local/bin`. `which claude` shows the path.
 
-**`codex: command not found` in the scheduler log.** Rerun `deploy.sh` after installing Codex. If `codex` is visible in your interactive shell, deploy links it into `~/.local/bin/codex`, which the renderer adds to scheduler PATH. Otherwise set `CODEX_BIN=<absolute-path>` in `~/.alfredrc`.
+**`codex: command not found` in the scheduler log.** Rerun `deploy.sh` after installing Codex. If `codex` is visible in your interactive shell, deploy links it into `~/.local/bin/codex`, which the renderer adds to scheduler PATH. Otherwise set `CODEX_BIN=<absolute-path>` in `$ALFRED_HOME/.env`.
 
 **Slack posts silently fail.** The webhook cache may be stale (URL rotated) or AWS Secrets Manager may be unreachable. Run `aws secretsmanager get-secret-value --secret-id <your/webhook/path> --region us-east-1` against the agent's profile (`AWS_PROFILE=<your-codename>-cron`, etc.) and confirm it returns the URL. To force a refresh, delete `~/.alfred/state/slack-webhook.cache`.
 

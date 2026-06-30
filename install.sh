@@ -16,11 +16,9 @@
 #      official installer and AWS CLI v2 is left to the operator.
 #   4. Installs Claude Code (the @anthropic-ai/claude-code CLI) via npm.
 #   5. Creates $ALFRED_HOME and $WORKSPACE_ROOT if missing.
-#   6. Drops a starter ~/.alfredrc from .alfredrc.example and
+#   6. Drops a starter $ALFRED_HOME/.env from .env.example and
 #      prompts for the values it cannot infer.
-#   7. Appends ~/.alfredrc sourcing to your shell rc so
-#      every new shell sees them (skipped if already present).
-#   8. Prints the exact next 3 commands you should run.
+#   7. Prints the exact next 3 commands you should run.
 #
 # What this script deliberately does NOT do (you'll see WHY in the printed
 # next-steps):
@@ -76,8 +74,12 @@ Environment overrides:
   GH_ORG          Pre-fill the GitHub org/user for your fleet
   OPERATOR_NAME   Display name used in agent prompts
   OPERATOR_EMAIL  Operator email used in agent prompts
-  ALFRED_HOME     Runtime root (default: \$HOME/.alfred)
+  ALFRED_HOME     Runtime root for this install (default: \$HOME/.alfred)
   WORKSPACE_ROOT  Where you check out repos (default: \$HOME/code)
+
+  Custom ALFRED_HOME/WORKSPACE_ROOT values are not written to shell startup
+  files. Keep exporting them, or copy the prefixed next-step commands printed
+  after install.
 
   ALFRED_NONINTERACTIVE=1   Same as --non-interactive
   ALFRED_SKIP_NPM=1         Skip Claude Code install via npm
@@ -111,6 +113,10 @@ ask() {
   fi
   IFS= read -r answer || answer=""
   printf '%s\n' "${answer:-$default}"
+}
+
+shell_quote() {
+  printf "%q" "$1"
 }
 
 # --------------------------------------------------------------------------
@@ -352,8 +358,10 @@ fi
 # 5. Runtime directories
 # --------------------------------------------------------------------------
 step "Runtime directories"
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
-WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
+DEFAULT_ALFRED_HOME="$HOME/.alfred"
+DEFAULT_WORKSPACE_ROOT="$HOME/code"
+ALFRED_HOME="${ALFRED_HOME:-$DEFAULT_ALFRED_HOME}"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$DEFAULT_WORKSPACE_ROOT}"
 
 if [[ ! -d "$ALFRED_HOME" ]]; then
   mkdir -p "$ALFRED_HOME"/{bin,lib,state,worktrees}
@@ -445,21 +453,21 @@ fi
 # --------------------------------------------------------------------------
 # 6. Operator config
 # --------------------------------------------------------------------------
-step "Operator config (~/.alfredrc)"
-RC_FILE="$HOME/.alfredrc"
+step "Operator config ($ALFRED_HOME/.env)"
+ENV_FILE="$ALFRED_HOME/.env"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEMPLATE="$SCRIPT_DIR/.alfredrc.example"
+TEMPLATE="$SCRIPT_DIR/.env.example"
 
 if [[ ! -f "$TEMPLATE" ]]; then
-  warn "$.alfredrc.example not found in this clone; skipping operator config seeding."
-elif [[ -f "$RC_FILE" ]]; then
-  ok "$RC_FILE already exists; not overwriting"
+  warn ".env.example not found in this clone; skipping operator config seeding."
+elif [[ -f "$ENV_FILE" ]]; then
+  ok "$ENV_FILE already exists; not overwriting"
 else
   GH_ORG_VAL="$(ask 'GitHub org/user for your fleet' "${GH_ORG:-}")"
   OPERATOR_NAME_VAL="$(ask 'Operator display name (used in prompts)' "${OPERATOR_NAME:-}")"
   OPERATOR_EMAIL_VAL="$(ask 'Operator email (used in prompts)' "${OPERATOR_EMAIL:-}")"
 
-  cp "$TEMPLATE" "$RC_FILE"
+  cp "$TEMPLATE" "$ENV_FILE"
   # Fill in the prompted values. BSD sed (macOS) needs an empty extension arg
   # after -i; GNU sed (Linux) does not accept one. Branch on $ALFRED_OS.
   if [[ "$ALFRED_OS" == "darwin" ]]; then
@@ -469,7 +477,7 @@ else
       -e "s|^OPERATOR_EMAIL=.*|OPERATOR_EMAIL=${OPERATOR_EMAIL_VAL}|" \
       -e "s|^ALFRED_HOME=.*|ALFRED_HOME=${ALFRED_HOME}|" \
       -e "s|^WORKSPACE_ROOT=.*|WORKSPACE_ROOT=${WORKSPACE_ROOT}|" \
-      "$RC_FILE"
+      "$ENV_FILE"
   else
     sed -i \
       -e "s|^GH_ORG=.*|GH_ORG=${GH_ORG_VAL}|" \
@@ -477,47 +485,14 @@ else
       -e "s|^OPERATOR_EMAIL=.*|OPERATOR_EMAIL=${OPERATOR_EMAIL_VAL}|" \
       -e "s|^ALFRED_HOME=.*|ALFRED_HOME=${ALFRED_HOME}|" \
       -e "s|^WORKSPACE_ROOT=.*|WORKSPACE_ROOT=${WORKSPACE_ROOT}|" \
-      "$RC_FILE"
+      "$ENV_FILE"
   fi
-  chmod 600 "$RC_FILE"
-  ok "wrote $RC_FILE (chmod 600)"
+  chmod 600 "$ENV_FILE"
+  ok "wrote $ENV_FILE (chmod 600)"
 fi
 
 # --------------------------------------------------------------------------
-# 7. Shell rc append
-# --------------------------------------------------------------------------
-step "Shell rc"
-SHELL_RC=""
-case "${SHELL:-}" in
-  */zsh)  SHELL_RC="$HOME/.zshrc";;
-  */bash) SHELL_RC="$HOME/.bashrc";;
-  *)      SHELL_RC="$HOME/.profile";;
-esac
-
-# shellcheck disable=SC2016
-APPEND_BLOCK='# alfred-os, added by install.sh
-[[ -f ~/.alfredrc ]] && {
-  set -a
-  source ~/.alfredrc
-  set +a
-}'
-
-if [[ ! -f "$SHELL_RC" ]]; then
-  printf '%s\n' "$APPEND_BLOCK" > "$SHELL_RC"
-  ok "created $SHELL_RC with alfred-os source line"
-elif grep -qE 'alfred-os.{1,4}added by install\.sh' "$SHELL_RC"; then
-  # Pattern, not a literal: older releases used an em-dash between
-  # "alfred-os" and "added", current uses a comma. Recognising both keeps
-  # this check idempotent across upgrades, so we never append a second
-  # source-block to a shell rc that already has one.
-  ok "$SHELL_RC already sources ~/.alfredrc"
-else
-  printf '\n%s\n' "$APPEND_BLOCK" >> "$SHELL_RC"
-  ok "appended source-block to $SHELL_RC"
-fi
-
-# --------------------------------------------------------------------------
-# 8. Auth + post-install reminder
+# 7. Auth + post-install reminder
 # --------------------------------------------------------------------------
 step "Auth status"
 if command -v gh >/dev/null 2>&1; then
@@ -576,8 +551,26 @@ ${C_GREEN}===> Install complete.${C_OFF}
 
 Next steps (run them in this order):
 
-  1. Open a fresh shell so ALFRED_HOME and WORKSPACE_ROOT are loaded:
-       ${C_BLUE}exec \$SHELL${C_OFF}
+EOF
+
+RUNTIME_ENV_PREFIX=""
+if [[ "$ALFRED_HOME" != "$DEFAULT_ALFRED_HOME" || "$WORKSPACE_ROOT" != "$DEFAULT_WORKSPACE_ROOT" ]]; then
+  RUNTIME_ENV_PREFIX="ALFRED_HOME=$(shell_quote "$ALFRED_HOME") WORKSPACE_ROOT=$(shell_quote "$WORKSPACE_ROOT") "
+  cat <<EOF
+  1. Keep the selected runtime in scope when you open a new shell:
+       ${C_BLUE}export ALFRED_HOME=$(shell_quote "$ALFRED_HOME")${C_OFF}
+       ${C_BLUE}export WORKSPACE_ROOT=$(shell_quote "$WORKSPACE_ROOT")${C_OFF}
+
+EOF
+else
+  cat <<EOF
+  1. No shell startup changes were made. Alfred commands read:
+       ${C_BLUE}$ALFRED_HOME/.env${C_OFF}
+
+EOF
+fi
+
+cat <<EOF
 
   2. Authenticate the CLIs that need it:
        ${C_BLUE}gh auth login${C_OFF}                     # GitHub
@@ -596,11 +589,11 @@ Next steps (run them in this order):
   4. Deploy the framework + verify (deploy.sh self-detects the host
      scheduler: launchd plists on macOS, systemd --user timers on Linux).
      Deploy also starts the local Redis Agent Memory Server:
-       ${C_BLUE}${DEPLOY_CMD}${C_OFF}
-       ${C_BLUE}${DOCTOR_CMD}${C_OFF}
+       ${C_BLUE}${RUNTIME_ENV_PREFIX}${DEPLOY_CMD}${C_OFF}
+       ${C_BLUE}${RUNTIME_ENV_PREFIX}${DOCTOR_CMD}${C_OFF}
 
   5. Configure your first fleet:
-       ${C_BLUE}${INIT_CMD}${C_OFF}
+       ${C_BLUE}${RUNTIME_ENV_PREFIX}${INIT_CMD}${C_OFF}
 
   6. Read ${C_BLUE}${INSTALL_DOC}${C_OFF} for the full first-fleet walkthrough,
      then ${C_BLUE}${BOOTSTRAP_DOC}${C_OFF} for the deeper-dive operations guide.

@@ -22,7 +22,7 @@ class AlfredOs < Formula
     # Install the framework files into a libexec subdir so we don't pollute
     # bin/ with internal helpers. Then drop a small launcher into bin/.
     libexec.install Dir["*"]
-    libexec.install ".alfredrc.example"
+    libexec.install ".env.example"
 
     # User-facing helpers go onto PATH.
     bin.install_symlink libexec/"bin/alfred" => "alfred"
@@ -51,7 +51,7 @@ class AlfredOs < Formula
       Available commands:
         alfred                 # local CLI, including `alfred claude`
         alfred-init            # interactive fleet configuration wizard
-        alfred-install         # one-time fresh-machine setup (brew + npm + dirs + rc)
+        alfred-install         # one-time fresh-machine setup (brew + npm + dirs + .env)
         alfred-deploy          # sync lib/+bin/ into $ALFRED_HOME; renders scheduler units when agents.conf exists
         alfred doctor          # preflight configured agents without running real work
         alfred-label-state     # CLI for the issue claim state machine
@@ -61,10 +61,9 @@ class AlfredOs < Formula
 
       Next steps:
         1. alfred-install
-        2. exec $SHELL                     # pick up ~/.alfredrc
-        3. gh auth login                   # GitHub
-        4. claude                          # Claude Code first-run auth
-        5. alfred-init                     # configure agents, deploy, run doctor
+        2. gh auth login                   # GitHub
+        3. claude                          # Claude Code first-run auth
+        4. alfred-init                     # configure agents, deploy, run doctor
 
       Framework-only smoke test:
         alfred-deploy && alfred doctor
@@ -83,7 +82,7 @@ class AlfredOs < Formula
   test do
     # Smoke: lib/ is intact and `alfred doctor` at least executes. It exits clean
     # against an empty fleet.
-    assert_path_exists libexec/".alfredrc.example"
+    assert_path_exists libexec/".env.example"
     assert_path_exists libexec/"lib/agent_runner/__init__.py"
     assert_match(/passed/, shell_output("#{bin}/alfred doctor"))
   end

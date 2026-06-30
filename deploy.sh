@@ -11,7 +11,6 @@
 # Env vars (defaults shown):
 #   ALFRED_HOME      = $HOME/.alfred
 #   WORKSPACE_ROOT   = $HOME/code
-#   ALFREDRC         = $HOME/.alfredrc
 # These flow into the rendered launchd plists / systemd units for any
 # consumer that ships agents.
 
@@ -58,17 +57,8 @@ trim_env_value() {
   printf '%s' "$1" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
-ORIGINAL_ENV_KEYS=":$(env | sed 's/=.*//' | tr '\n' ':')"
-
-original_env_has_key() {
-  case "$ORIGINAL_ENV_KEYS" in
-    *:"$1":*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 load_env_file() {
-  local file="$1" no_clobber="${2:-}" allow_alfredrc_pointer="${3:-}" file_overrides_existing="${4:-}" line key value
+  local file="$1" no_clobber="${2:-}" line key value
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
@@ -92,14 +82,6 @@ load_env_file() {
     value="${value//\$\{HOME\}/$HOME}"
     value="${value//\$HOME/$HOME}"
     if [ -n "$no_clobber" ] && [ -n "${!key+x}" ]; then
-      if [ "$key" = "ALFREDRC" ] && [ "$allow_alfredrc_pointer" = "allow_alfredrc_pointer" ]; then
-        export "$key=$value"
-        continue
-      fi
-      if [ "$file_overrides_existing" = "file_overrides_existing" ] && ! original_env_has_key "$key"; then
-        export "$key=$value"
-        continue
-      fi
       continue
     fi
     export "$key=$value"
@@ -131,108 +113,12 @@ PY
   esac
 }
 
-discover_alfredrc_from_launchd() {
-  local dir="$HOME/Library/LaunchAgents"
-  [ -d "$dir" ] || return 0
-  python3 - "$dir" <<'PY' 2>/dev/null || true
-import pathlib
-import plistlib
-import sys
-
-for path in sorted(pathlib.Path(sys.argv[1]).glob("*.plist")):
-    try:
-        data = plistlib.loads(path.read_bytes())
-    except Exception:
-        continue
-    env = data.get("EnvironmentVariables") if isinstance(data, dict) else None
-    value = env.get("ALFREDRC") if isinstance(env, dict) else None
-    if isinstance(value, str) and value.strip():
-        print(value.strip())
-        raise SystemExit
-PY
-}
-
-discover_alfredrc_from_systemd() {
-  local dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
-  [ -d "$dir" ] || return 0
-  python3 - "$dir" <<'PY' 2>/dev/null || true
-import pathlib
-import shlex
-import sys
-
-for path in sorted(pathlib.Path(sys.argv[1]).glob("*.service")):
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        continue
-    for raw in lines:
-        line = raw.strip()
-        if not line.startswith("Environment="):
-            continue
-        rest = line.removeprefix("Environment=").strip()
-        try:
-            parts = shlex.split(rest)
-        except ValueError:
-            parts = rest.split()
-        for part in parts:
-            if part.startswith("ALFREDRC="):
-                value = part.partition("=")[2].strip()
-                if value:
-                    print(value)
-                    raise SystemExit
-PY
-}
-
-discover_persisted_alfredrc() {
-  local candidate line discovered runtime_home="${ALFRED_HOME:-$HOME/.alfred}"
-  for candidate in "$runtime_home/launchd/alfredrc.path" "$HOME/.alfred/launchd/alfredrc.path"; do
-    if [ -f "$candidate" ]; then
-      IFS= read -r line < "$candidate" || true
-      if [ -n "$line" ]; then
-        expand_user_path "$line"
-        printf '\n'
-        return 0
-      fi
-    fi
-  done
-  discovered="$(discover_alfredrc_from_launchd)"
-  if [ -n "$discovered" ]; then
-    expand_user_path "$discovered"
-    printf '\n'
-    return 0
-  fi
-  discovered="$(discover_alfredrc_from_systemd)"
-  if [ -n "$discovered" ]; then
-    expand_user_path "$discovered"
-    printf '\n'
-  fi
-}
-
-load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-}" allow_alfredrc_pointer="allow_alfredrc_pointer"
-  if [ -z "$selected_alfredrc" ]; then
-    selected_alfredrc="$(discover_persisted_alfredrc)"
-  fi
-  if [ -z "$selected_alfredrc" ]; then
-    selected_alfredrc="$HOME/.alfredrc"
-  fi
-  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
-  ALFREDRC="$selected_alfredrc"
-  export ALFREDRC
-  load_env_file "$ALFREDRC" no_clobber "$allow_alfredrc_pointer"
-  if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
-    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
-    ALFREDRC="$selected_alfredrc"
-    export ALFREDRC
-    load_env_file "$selected_alfredrc" no_clobber "" file_overrides_existing
-  fi
-}
-
-load_selected_alfredrc
-
 : "${ALFRED_HOME:=$HOME/.alfred}"
+ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
+load_env_file "$ALFRED_HOME/.env" no_clobber
 : "${WORKSPACE_ROOT:=$HOME/code}"
-export ALFRED_HOME WORKSPACE_ROOT ALFREDRC
+WORKSPACE_ROOT="$(expand_user_path "$WORKSPACE_ROOT")"
+export ALFRED_HOME WORKSPACE_ROOT
 
 RUNTIME_BIN="$ALFRED_HOME/bin"
 RUNTIME_LIB="$ALFRED_HOME/lib"
@@ -244,10 +130,9 @@ mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_PROMPTS" "$L
 
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
-printf '%s\n' "$ALFREDRC" > "$RUNTIME_LAUNCHD/alfredrc.path"
-chmod 600 "$RUNTIME_LAUNCHD/alfredrc.path"
 printf '%s\n' "$REPO_DIR" > "$RUNTIME_LAUNCHD/source-repo.txt"
 chmod 644 "$RUNTIME_LAUNCHD/source-repo.txt"
+rm -f "$RUNTIME_LAUNCHD/alfredrc.path"
 
 echo "[alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackages)"
 # v0.4.0 introduced subpackages (agent_runner/, connectors/,

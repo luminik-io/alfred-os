@@ -4,7 +4,7 @@ Covers the deterministic, side-effect-free helpers:
     - discover_agents (filesystem walk over bin/*.py + .sh)
     - render_agents_conf (TSV emission)
     - env_assignments_for (per-role env-var map)
-    - read_alfredrc / upsert_alfredrc (idempotent rc append)
+    - read_env_file / upsert_env_file (idempotent rc append)
     - _resolve_repo_selection (repo selection grammar)
     - main() with ALFRED_DOCTOR=1 (short-circuit sentinel)
 
@@ -112,9 +112,11 @@ def _state_with(
     codenames=None,
     schedules=None,
 ):
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir(exist_ok=True)
     state = init_mod.WizardState(
-        alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        alfred_home=alfred_home,
+        env_file=alfred_home / ".env",
         repo_root=tmp_path / "repo",
         gh_org=gh_org,
         slack_webhook=slack_url,
@@ -253,7 +255,7 @@ def test_render_agents_conf_schedules_health_rows_with_runtime_env_file(
 ):
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
-    state.alfred_home.mkdir()
+    state.alfred_home.mkdir(exist_ok=True)
     (state.alfred_home / ".env").write_text(
         "ALFRED_HUNTRESS_TARGET_URL=https://staging.example.com\n"
     )
@@ -264,17 +266,17 @@ def test_render_agents_conf_schedules_health_rows_with_runtime_env_file(
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
-def test_render_agents_conf_schedules_health_rows_with_stale_managed_alfredrc(
+def test_render_agents_conf_schedules_health_rows_with_managed_env_file(
     init_mod, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
-    state.alfredrc.write_text(
+    state.env_file.write_text(
         "\n".join(
             [
                 "# operator settings stay above",
-                init_mod.ALFREDRC_BANNER,
+                init_mod.ALFRED_ENV_BANNER,
                 "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
                 "",
             ]
@@ -287,17 +289,17 @@ def test_render_agents_conf_schedules_health_rows_with_stale_managed_alfredrc(
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
-def test_render_agents_conf_schedules_health_rows_with_unmanaged_alfredrc(
+def test_render_agents_conf_schedules_health_rows_with_unmanaged_env_file(
     init_mod, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
-    state.alfredrc.write_text(
+    state.env_file.write_text(
         "\n".join(
             [
                 "ALFRED_HUNTRESS_TARGET_URL=https://handwritten.example.com",
-                init_mod.ALFREDRC_BANNER,
+                init_mod.ALFRED_ENV_BANNER,
                 "",
             ]
         )
@@ -309,7 +311,7 @@ def test_render_agents_conf_schedules_health_rows_with_unmanaged_alfredrc(
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
-def test_render_agents_conf_schedules_health_rows_with_custom_alfredrc(
+def test_render_agents_conf_schedules_health_rows_with_custom_env_file(
     init_mod, tmp_path, monkeypatch
 ):
     home = tmp_path / "home"
@@ -317,7 +319,7 @@ def test_render_agents_conf_schedules_health_rows_with_custom_alfredrc(
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
-    state.alfredrc = tmp_path / "override.alfredrc"
+    state.env_file = tmp_path / "override.env"
     state.role_to_extras["smoke_runner"] = {
         "ALFRED_HUNTRESS_TARGET_URL": "https://staging.example.com"
     }
@@ -331,11 +333,11 @@ def test_render_agents_conf_schedules_health_rows_with_custom_alfredrc(
 def test_step_7_repos_preserves_managed_special_prompt_defaults(init_mod, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
-    state.alfredrc.write_text(
+    state.env_file.write_text(
         "\n".join(
             [
                 "# operator-owned settings",
-                init_mod.ALFREDRC_BANNER,
+                init_mod.ALFRED_ENV_BANNER,
                 "ALFRED_HUNTRESS_TARGET_URL=https://staging.example.com",
                 "ALFRED_GORDON_ECS_CLUSTER=staging",
                 "ALFRED_GORDON_SENTRY_ORG=acme",
@@ -364,10 +366,10 @@ def test_step_7_repos_keeps_config_special_prompt_over_managed_default(
     monkeypatch.setenv("HOME", str(tmp_path))
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
     state.role_to_extras["smoke_runner"] = {"ALFRED_HUNTRESS_TARGET_URL": "https://new.example.com"}
-    state.alfredrc.write_text(
+    state.env_file.write_text(
         "\n".join(
             [
-                init_mod.ALFREDRC_BANNER,
+                init_mod.ALFRED_ENV_BANNER,
                 "ALFRED_HUNTRESS_TARGET_URL=https://old.example.com",
                 "",
             ]
@@ -604,11 +606,11 @@ def test_env_assignments_aws_profile_per_agent(init_mod, tmp_path):
 
 def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfred_home.mkdir()
-    state.alfredrc.write_text(
+    state.alfred_home.mkdir(exist_ok=True)
+    state.env_file.write_text(
         "\n".join(
             [
-                init_mod.ALFREDRC_BANNER,
+                init_mod.ALFRED_ENV_BANNER,
                 "ALFRED_AUTO_PROMOTE=0",
                 "ALFRED_AUTO_PROMOTE_KILL=1",
                 "",
@@ -622,11 +624,11 @@ def test_env_assignments_preserve_memory_auto_promote_stop_controls(init_mod, tm
     assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
 
 
-def test_env_assignments_use_alfredrc_stop_control_over_runtime_env(init_mod, tmp_path):
+def test_env_assignments_uses_selected_env_file_stop_control(init_mod, tmp_path):
     state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfred_home.mkdir()
+    state.alfred_home.mkdir(exist_ok=True)
     (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE=1\n")
-    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE=0\n")
+    state.env_file.write_text("ALFRED_AUTO_PROMOTE=0\n")
 
     out = init_mod.env_assignments_for(state)
 
@@ -870,25 +872,25 @@ def test_config_override_telemetry_string_true_opts_in(init_mod, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# alfredrc IO
+# env file IO
 # ---------------------------------------------------------------------------
 
 
-def test_read_alfredrc_missing_returns_empty(tmp_path, init_mod):
-    assert init_mod.read_alfredrc(tmp_path / ".alfredrc") == {}
+def test_read_env_file_missing_returns_empty(tmp_path, init_mod):
+    assert init_mod.read_env_file(tmp_path / ".env") == {}
 
 
-def test_read_alfredrc_parses_kv_and_strips_quotes(tmp_path, init_mod):
-    rc = tmp_path / ".alfredrc"
+def test_read_env_file_parses_kv_and_strips_quotes(tmp_path, init_mod):
+    rc = tmp_path / ".env"
     rc.write_text("# comment\nGH_ORG=acme\nexport OPERATOR_NAME=Alice\nQUOTED='hello world'\n\n")
-    out = init_mod.read_alfredrc(rc)
+    out = init_mod.read_env_file(rc)
     assert out["GH_ORG"] == "acme"
     assert out["OPERATOR_NAME"] == "Alice"
     assert out["QUOTED"] == "hello world"
 
 
-def test_read_alfredrc_strips_inline_comments_without_touching_quoted_hashes(tmp_path, init_mod):
-    rc = tmp_path / ".alfredrc"
+def test_read_env_file_strips_inline_comments_without_touching_quoted_hashes(tmp_path, init_mod):
+    rc = tmp_path / ".env"
     rc.write_text(
         "\n".join(
             [
@@ -904,7 +906,7 @@ def test_read_alfredrc_strips_inline_comments_without_touching_quoted_hashes(tmp
         )
     )
 
-    out = init_mod.read_alfredrc(rc)
+    out = init_mod.read_env_file(rc)
 
     assert out["ALFRED_AUTO_PROMOTE"] == "0"
     assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
@@ -915,46 +917,46 @@ def test_read_alfredrc_strips_inline_comments_without_touching_quoted_hashes(tmp
     assert out["EMPTY"] == ""
 
 
-def test_env_assignments_preserve_runtime_stop_control_over_stale_alfredrc(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfred_home.mkdir()
-    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE=0\nALFRED_AUTO_PROMOTE_KILL=1\n")
-    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE=1\nALFRED_AUTO_PROMOTE_KILL=0\n")
+def test_maybe_offer_setup_token_warns_process_env_only_token_without_prompting(
+    tmp_path, init_mod, monkeypatch, capsys
+):
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "shell-only-token")
+    prompts: list[str] = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "n")
 
-    out = init_mod.env_assignments_for(state)
+    init_mod._maybe_offer_setup_token(non_interactive=False)
 
-    assert out["ALFRED_AUTO_PROMOTE"] == "0"
-    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "1"
-
-
-def test_env_assignments_preserve_malformed_runtime_kill_over_stale_alfredrc(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfred_home.mkdir()
-    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_KILL=fales\n")
-    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE_KILL=0\n")
-
-    out = init_mod.env_assignments_for(state)
-
-    assert out["ALFRED_AUTO_PROMOTE_KILL"] == "fales"
+    captured = capsys.readouterr()
+    assert "scheduled firings need it" in captured.err
+    assert 'alfred setup-token --token "$CLAUDE_CODE_OAUTH_TOKEN"' in captured.err
+    assert prompts == []
 
 
-def test_env_assignments_preserve_runtime_judge_stop_over_stale_alfredrc(init_mod, tmp_path):
-    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfred_home.mkdir()
-    (state.alfred_home / ".env").write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=treu\n")
-    state.alfredrc.write_text("ALFRED_AUTO_PROMOTE_LLM_JUDGE=1\n")
+def test_maybe_offer_setup_token_accepts_runtime_env_file_token(
+    tmp_path, init_mod, monkeypatch, capsys
+):
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    (alfred_home / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=runtime-token\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "shell-only-token")
 
-    out = init_mod.env_assignments_for(state)
+    init_mod._maybe_offer_setup_token(non_interactive=False)
 
-    assert out["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
+    captured = capsys.readouterr()
+    assert f"already set in {alfred_home / '.env'}" in captured.out
+    assert "Run `alfred setup-token` now?" not in captured.out
 
 
-def test_upsert_alfredrc_idempotent(tmp_path, init_mod):
-    rc = tmp_path / ".alfredrc"
+def test_upsert_env_file_idempotent(tmp_path, init_mod):
+    rc = tmp_path / ".env"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")
-    init_mod.upsert_alfredrc(rc, {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/A/B/C"})
+    init_mod.upsert_env_file(rc, {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/A/B/C"})
     first = rc.read_text()
-    init_mod.upsert_alfredrc(rc, {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/A/B/C"})
+    init_mod.upsert_env_file(rc, {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/A/B/C"})
     second = rc.read_text()
     assert first == second
     # The pre-existing block survived.
@@ -963,24 +965,72 @@ def test_upsert_alfredrc_idempotent(tmp_path, init_mod):
     assert second.count("alfred-init, generated") == 1
 
 
-def test_upsert_alfredrc_updates_values(tmp_path, init_mod):
-    rc = tmp_path / ".alfredrc"
+def test_upsert_env_file_updates_values(tmp_path, init_mod):
+    rc = tmp_path / ".env"
     rc.write_text("GH_ORG=acme\n")
-    init_mod.upsert_alfredrc(rc, {"FOO": "1"})
-    init_mod.upsert_alfredrc(rc, {"FOO": "2"})
+    init_mod.upsert_env_file(rc, {"FOO": "1"})
+    init_mod.upsert_env_file(rc, {"FOO": "2"})
     text = rc.read_text()
     assert "FOO=1" not in text
     assert "FOO=2" in text
 
 
-def test_upsert_alfredrc_quotes_shell_metacharacters(tmp_path, init_mod):
-    rc = tmp_path / ".alfredrc"
+def test_upsert_env_file_preserves_later_runtime_blocks(tmp_path, init_mod):
+    rc = tmp_path / ".env"
+    rc.write_text(
+        "# operator preamble\n"
+        "OPERATOR_NAME=Prasad\n\n"
+        f"{init_mod.ALFRED_ENV_BANNER}\n"
+        "GH_ORG=old-org\n"
+        "ALFRED_LUCIUS_REPOS=old-org/api\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test\n"
+        "# alfred-batman-setup, generated below this line. Safe to re-run.\n"
+        "BATMAN_PARENT_REPO=old-org/specs\n",
+        encoding="utf-8",
+    )
+
+    init_mod.upsert_env_file(
+        rc,
+        {
+            "GH_ORG": "new-org",
+            "ALFRED_LUCIUS_REPOS": "new-org/api",
+        },
+    )
+
+    text = rc.read_text(encoding="utf-8")
+    assert "GH_ORG=old-org" not in text
+    assert "ALFRED_LUCIUS_REPOS=old-org/api" not in text
+    assert "GH_ORG=new-org" in text
+    assert "ALFRED_LUCIUS_REPOS=new-org/api" in text
+    assert "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test" in text
+    assert "alfred-batman-setup, generated" in text
+    assert "BATMAN_PARENT_REPO=old-org/specs" in text
+    assert text.index(init_mod.ALFRED_ENV_BANNER) < text.index("CLAUDE_CODE_OAUTH_TOKEN")
+    assert text.count("alfred-init, generated") == 1
+
+
+def test_read_managed_env_file_ignores_later_token_block(tmp_path, init_mod):
+    rc = tmp_path / ".env"
+    rc.write_text(
+        f"{init_mod.ALFRED_ENV_BANNER}\n"
+        "GH_ORG=acme\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test\n",
+        encoding="utf-8",
+    )
+
+    out = init_mod.read_managed_env_file(rc)
+
+    assert out == {"GH_ORG": "acme"}
+
+
+def test_upsert_env_file_quotes_shell_metacharacters(tmp_path, init_mod):
+    rc = tmp_path / ".env"
     marker = tmp_path / "command-substitution-ran"
     url = f"https://worker.example.com/ingest?token=a&x=$(touch {marker})"
     token = f"tok$(touch {marker})&still"
     quote_token = "can'quote"
 
-    init_mod.upsert_alfredrc(
+    init_mod.upsert_env_file(
         rc,
         {
             "ALFRED_TELEMETRY_URL": url,
@@ -992,7 +1042,7 @@ def test_upsert_alfredrc_quotes_shell_metacharacters(tmp_path, init_mod):
     text = rc.read_text()
     assert f"ALFRED_TELEMETRY_URL={url}" not in text
     assert f"ALFRED_TELEMETRY_TOKEN={token}" not in text
-    parsed = init_mod.read_alfredrc(rc)
+    parsed = init_mod.read_env_file(rc)
     assert parsed["ALFRED_TELEMETRY_URL"] == url
     assert parsed["ALFRED_TELEMETRY_TOKEN"] == token
     assert parsed["QUOTE_TOKEN"] == quote_token
@@ -1016,155 +1066,6 @@ def test_upsert_alfredrc_quotes_shell_metacharacters(tmp_path, init_mod):
     assert res.returncode == 0, res.stderr
     assert res.stdout.splitlines() == [url, token, quote_token]
     assert not marker.exists()
-
-
-def test_mirror_memory_stop_controls_to_launch_rc_for_custom_alfredrc(
-    monkeypatch, tmp_path, init_mod
-):
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
-    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfredrc = tmp_path / "custom.alfredrc"
-    launch_rc = home / ".alfredrc"
-    launch_rc.write_text(
-        "\n".join(
-            [
-                "MANUAL=value",
-                "",
-                init_mod.ALFREDRC_BANNER,
-                "GH_ORG=acme",
-                "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/A/B/C",
-                "",
-            ]
-        )
-    )
-
-    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
-        state,
-        {
-            "ALFRED_AUTO_PROMOTE": "0",
-            "ALFRED_AUTO_PROMOTE_KILL": "1",
-            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "treu",
-            "GH_ORG": "acme",
-        },
-    )
-
-    assert mirrored == 3
-    parsed = init_mod.read_alfredrc(launch_rc)
-    assert parsed["MANUAL"] == "value"
-    assert parsed["GH_ORG"] == "acme"
-    assert parsed["SLACK_WEBHOOK_URL"] == "https://hooks.slack.com/services/A/B/C"
-    assert parsed["ALFREDRC"] == str(state.alfredrc)
-    assert parsed["ALFRED_AUTO_PROMOTE"] == "0"
-    assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
-    assert parsed["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "treu"
-    text = launch_rc.read_text()
-    assert text.count(init_mod.ALFREDRC_BANNER) == 1
-    assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
-
-    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
-        state,
-        {
-            "ALFRED_AUTO_PROMOTE": "off",
-            "ALFRED_AUTO_PROMOTE_KILL": "1",
-            "ALFRED_AUTO_PROMOTE_LLM_JUDGE": "0",
-        },
-    )
-
-    assert mirrored == 3
-    parsed = init_mod.read_alfredrc(launch_rc)
-    assert parsed["GH_ORG"] == "acme"
-    assert parsed["ALFREDRC"] == str(state.alfredrc)
-    assert parsed["ALFRED_AUTO_PROMOTE"] == "off"
-    assert parsed["ALFRED_AUTO_PROMOTE_KILL"] == "1"
-    assert parsed["ALFRED_AUTO_PROMOTE_LLM_JUDGE"] == "0"
-    text = launch_rc.read_text()
-    assert text.count(init_mod.ALFREDRC_BANNER) == 1
-    assert text.count(init_mod.ALFREDRC_MEMORY_STOP_BANNER) == 1
-
-
-def test_custom_alfredrc_pointer_is_persisted_without_memory_stop_controls(
-    monkeypatch, tmp_path, init_mod
-):
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
-    state = _state_with(init_mod, tmp_path, roles=("lucius",))
-    state.alfredrc = tmp_path / "custom.alfredrc"
-
-    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
-        state,
-        {"GH_ORG": "acme"},
-    )
-
-    assert mirrored == 0
-    parsed = init_mod.read_alfredrc(home / ".alfredrc")
-    assert parsed["ALFREDRC"] == str(state.alfredrc)
-
-
-def test_selected_alfredrc_pointer_file_is_persisted(tmp_path, init_mod):
-    state = _state_with(init_mod, tmp_path, roles=("lucius",))
-    state.alfredrc = tmp_path / "custom.alfredrc"
-
-    pointer = init_mod.persist_alfredrc_pointer(state)
-
-    assert pointer == state.alfred_home / "launchd" / "alfredrc.path"
-    assert pointer.read_text(encoding="utf-8") == f"{state.alfredrc}\n"
-
-
-def test_mirror_memory_stop_controls_skips_default_alfredrc(monkeypatch, tmp_path, init_mod):
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
-    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfredrc = home / ".alfredrc"
-
-    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
-        state,
-        {"ALFRED_AUTO_PROMOTE": "0"},
-    )
-
-    assert mirrored == 0
-    assert not (home / ".alfredrc").exists()
-
-
-def test_mirror_memory_stop_controls_removes_stale_pointer_block_for_default_alfredrc(
-    monkeypatch, tmp_path, init_mod
-):
-    home = tmp_path / "home"
-    home.mkdir()
-    monkeypatch.setattr(init_mod.Path, "home", staticmethod(lambda: home))
-    state = _state_with(init_mod, tmp_path, roles=("memory_auto_promote",))
-    state.alfredrc = home / ".alfredrc"
-    stale_custom_rc = tmp_path / "stale-custom.alfredrc"
-    launch_rc = home / ".alfredrc"
-    launch_rc.write_text(
-        "\n".join(
-            [
-                "MANUAL=value",
-                "",
-                init_mod.ALFREDRC_MEMORY_STOP_BANNER,
-                f"ALFREDRC={stale_custom_rc}",
-                "ALFRED_AUTO_PROMOTE=0",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    mirrored = init_mod.mirror_memory_stop_controls_to_launch_rc(
-        state,
-        {"ALFRED_AUTO_PROMOTE": "1"},
-    )
-
-    assert mirrored == 0
-    text = launch_rc.read_text(encoding="utf-8")
-    parsed = init_mod.read_alfredrc(launch_rc)
-    assert parsed["MANUAL"] == "value"
-    assert "ALFREDRC" not in parsed
-    assert "ALFRED_AUTO_PROMOTE" not in parsed
-    assert init_mod.ALFREDRC_MEMORY_STOP_BANNER not in text
 
 
 # ---------------------------------------------------------------------------
@@ -1256,7 +1157,7 @@ def test_load_config_round_trip(tmp_path, init_mod):
 def test_apply_config_overrides(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     init_mod.apply_config_overrides(
@@ -1281,7 +1182,7 @@ def test_apply_config_overrides(init_mod, tmp_path):
 def test_apply_config_overrides_role_repos_by_codename_and_role_key(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     init_mod.apply_config_overrides(
@@ -1303,7 +1204,7 @@ def test_apply_config_overrides_role_repos_by_codename_and_role_key(init_mod, tm
 def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     init_mod.apply_config_overrides(
@@ -1321,7 +1222,7 @@ def test_apply_config_overrides_role_codename_and_schedule(init_mod, tmp_path):
 def test_apply_config_overrides_role_extras(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
 
@@ -1348,7 +1249,7 @@ def test_apply_config_overrides_role_extras(init_mod, tmp_path):
 def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, capsys):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     init_mod.apply_config_overrides(
@@ -1373,7 +1274,7 @@ def test_apply_config_overrides_ignores_unknown_agent_keys(init_mod, tmp_path, c
 def test_apply_config_overrides_rejects_invalid_codename(init_mod, tmp_path, capsys):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     init_mod.apply_config_overrides(
@@ -1386,7 +1287,7 @@ def test_apply_config_overrides_rejects_invalid_codename(init_mod, tmp_path, cap
 def test_step_7_repos_preserves_role_repos_from_config(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
         gh_org="acme",
     )
@@ -1407,7 +1308,7 @@ def test_step_7_repos_allows_batman_parent_repo_only_noninteractive(
 ):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
         gh_org="acme",
     )
@@ -1423,7 +1324,7 @@ def test_step_7_repos_allows_batman_parent_repo_only_noninteractive(
 def test_step_6_codenames_preserves_config_overrides(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     state.enabled_roles = ["feature_dev", "planner"]
@@ -1436,7 +1337,7 @@ def test_step_6_codenames_preserves_config_overrides(init_mod, tmp_path):
 def test_step_6_codenames_fails_on_config_collision(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     state.enabled_roles = ["feature_dev", "planner"]
@@ -1449,7 +1350,7 @@ def test_step_6_codenames_fails_on_config_collision(init_mod, tmp_path):
 def test_step_8_schedule_preserves_config_overrides(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     state.enabled_roles = ["feature_dev", "planner"]
@@ -1463,7 +1364,7 @@ def test_step_8_schedule_preserves_config_overrides(init_mod, tmp_path):
 def test_pick_agents_keeps_configured_agents(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     state.enabled_roles = ["bug_triage"]
@@ -1481,7 +1382,7 @@ def test_pick_agents_lists_gated_marker(init_mod, tmp_path, capsys):
     which full-fleet agents need a follow-up `alfred enable` to fire."""
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
     )
     available = [
@@ -1517,7 +1418,7 @@ def test_pick_agents_full_fleet_includes_batman_for_multi_repo(
     the cross-repo architect after setup."""
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
         gh_org="acme",
     )
@@ -1546,7 +1447,7 @@ def test_pick_agents_full_fleet_includes_batman_without_extra_prompt(
     """No extra Batman nudge is needed because the full fleet already includes it."""
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
         gh_org="acme",
     )
@@ -1569,7 +1470,7 @@ def test_pick_agents_full_fleet_includes_batman_without_extra_prompt(
 def test_repos_arg_rejects_repos_outside_gh_org(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path,
         gh_org="acme",
     )
@@ -1599,10 +1500,9 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
 
     alfred_home = tmp_path / "alfred"
     alfred_home.mkdir()
-    alfredrc = tmp_path / ".alfredrc"
-    alfredrc.write_text("GH_ORG=acme\n")
+    env_file = alfred_home / ".env"
+    env_file.write_text("GH_ORG=acme\n")
     monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
-    monkeypatch.setenv("ALFREDRC", str(alfredrc))
     monkeypatch.delenv("GH_ORG", raising=False)
     monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
     monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
@@ -1650,7 +1550,7 @@ def test_noninteractive_single_repo_starter_main(monkeypatch, tmp_path, init_mod
     )
 
     assert rc == 0
-    generated_rc = alfredrc.read_text()
+    generated_rc = env_file.read_text()
     assert "ALFRED_LUCIUS_REPOS=palette\n" in generated_rc
     assert "ALFRED_DRAKE_REPOS=palette\n" in generated_rc
     assert "ALFRED_RASALGHUL_REPOS=palette\n" in generated_rc
@@ -1710,7 +1610,7 @@ def test_seed_prompt_templates_does_not_overwrite(init_mod, tmp_path):
     (repo_root / "prompts" / "planner.md").write_text("planner template\n")
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=repo_root,
     )
     state.enabled_roles = ["planner"]
@@ -1728,7 +1628,7 @@ def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
     (repo_root / "prompts" / "spec-interrogator.md").write_text("compose prompt\n")
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=repo_root,
     )
 
@@ -1745,7 +1645,7 @@ def test_seed_prompt_templates_copies_shared_compose_prompt(init_mod, tmp_path):
 def test_write_opt_in_gate_does_not_arm_batman_during_setup(init_mod, tmp_path):
     state = init_mod.WizardState(
         alfred_home=tmp_path / "alfred",
-        alfredrc=tmp_path / ".alfredrc",
+        env_file=tmp_path / ".env",
         repo_root=tmp_path / "repo",
     )
     state.enabled_roles = ["cross_repo_coordinator"]

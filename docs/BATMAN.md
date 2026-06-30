@@ -269,7 +269,7 @@ python3 bin/alfred-batman-setup.py
 
 The wizard checks or writes the Claude OAuth token, Slack bot token,
 operator Slack member id, approval channel, parent repo, picker, and
-approval timeout in one idempotent block in `~/.alfredrc`. It finishes
+approval timeout in one idempotent block in `$ALFRED_HOME/.env`. It finishes
 with `bin/doctor.sh --lifecycle` unless `--skip-doctor` is passed.
 
 The same flow is also available through the Alfred CLI after deploy:

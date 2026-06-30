@@ -13,7 +13,6 @@ Source checkout path:
 git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
 cd ~/code/alfred-os
 bash install.sh
-exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
@@ -25,7 +24,6 @@ macOS Homebrew path, if you prefer package-manager installs:
 brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
 brew install alfred-os
 alfred-install
-exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 alfred-init                       # choose agents, repos, codenames, Slack
@@ -78,7 +76,7 @@ Full fleet for one repo or an explicit comma-separated repo list:
 This is the zero-guess path for a solo builder or an AI coding tool setting up
 one or more explicit repos. It assumes `GH_ORG` is set, `gh auth login` has
 completed, and `claude` has completed first-run auth. The repo owner must match
-`GH_ORG`; the runtime agents store the bare repo name in `~/.alfredrc` and build
+`GH_ORG`; the runtime agents store the bare repo name in `$ALFRED_HOME/.env` and build
 `GH_ORG/repo` at firing time. The command enables the full engineering fleet
 using exact installer selectors: `drake`, `batman`, `lucius`, `rasalghul`,
 `bane`, `nightwing`, `robin`, `huntress`, `gordon`, `automerge`,
@@ -90,7 +88,7 @@ exist. It assigns the selected repo list to each repo-operating agent, skips
 Slack safely, seeds prompt templates into
 `~/.alfred/prompts/`, creates standard GitHub labels on the selected repos,
 writes `launchd/agents.conf`, writes the shared scheduler manifest, updates
-`~/.alfredrc`, runs deploy, and runs doctor.
+`$ALFRED_HOME/.env`, runs deploy, and runs doctor.
 
 Batman is included in the full fleet. It only acts on approved
 `agent:large-feature` parent issues after `alfred batman setup` writes the
@@ -127,8 +125,8 @@ Idempotent (safe to re-run). It detects the host OS and picks a lane: Homebrew o
 3. Installs `python@3.11`, `git`, `gh`, `jq`, `node`, `uv` (plus `awscli` on macOS; install AWS CLI v2 manually on Linux).
 4. `npm install -g @anthropic-ai/claude-code`.
 5. Creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`).
-6. Drops `~/.alfredrc` from the template, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
-7. Appends a source-line to your shell rc so every new shell loads `~/.alfredrc`.
+6. Seeds `$ALFRED_HOME/.env` from the template, prompts for `GH_ORG`, `OPERATOR_NAME`, `OPERATOR_EMAIL`.
+7. Leaves shell rc files alone. The scheduler, CLI, and native app load `$ALFRED_HOME/.env` directly.
 8. Reports auth status for `gh`, `aws`, `claude`.
 
 What it does **not** do (deliberately):
@@ -179,5 +177,5 @@ Then write your first codename agent:
 Full list in [`INSTALL.md`](https://github.com/luminik-io/alfred-os/blob/main/INSTALL.md#troubleshooting-installsh) on GitHub. The most common:
 
 - **`install.sh` stops on an unsupported host**: the apt lane targets Debian/Ubuntu. Other Linux distros need their packages installed by hand; the framework itself is distro-agnostic once the prerequisites are present.
-- **`claude: command not found` from a scheduled agent**: the scheduler unit's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `~/.alfredrc`.
+- **`claude: command not found` from a scheduled agent**: the scheduler unit's PATH doesn't include the npm global bin. Set `CLAUDE_BIN` in `$ALFRED_HOME/.env`.
 - **`gh auth login` browser doesn't open**: use the device-code flow: `gh auth login --hostname github.com --git-protocol https --web`.

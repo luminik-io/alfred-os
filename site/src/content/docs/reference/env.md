@@ -5,7 +5,7 @@ description: Every env var the framework reads, what defaults to what, where eac
 
 The framework is env-driven so a fresh user can clone + run without editing source. Every variable listed here is honoured by the `agent_runner` package, `install.sh`, `deploy.sh`, or the rendered scheduler units.
 
-For the local config template, see [`.alfredrc.example`](https://github.com/luminik-io/alfred-os/blob/main/.alfredrc.example).
+For the local config template, see [`.env.example`](https://github.com/luminik-io/alfred-os/blob/main/.env.example).
 
 ## Required
 

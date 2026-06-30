@@ -97,9 +97,8 @@ load_env_file() {
   done < "$file"
 }
 
-load_env_file "$HOME/.alfredrc"
-
 : "${ALFRED_HOME:=$HOME/.alfred}"
+load_env_file "$ALFRED_HOME/.env"
 : "${WORKSPACE_ROOT:=$HOME/code}"
 export ALFRED_HOME WORKSPACE_ROOT ALFRED_DOCTOR=1
 

@@ -88,7 +88,7 @@ $ALFRED_HOME/state/
 The contract is intentionally narrow: operational state is JSON or JSONL on
 disk, recalled lessons live in Redis Agent Memory, and FleetBrain keeps the
 local review and reliability ledger. Anything else is reconstructed from
-GitHub, the repo checkout, or your `~/.alfredrc`.
+GitHub, the repo checkout, or your `$ALFRED_HOME/.env`.
 
 ## Memory and FleetBrain
 
