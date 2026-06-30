@@ -1377,6 +1377,23 @@ def test_huntress_redacts_logs_and_creates_private_run_dir(monkeypatch):
         run_dir.rmdir()
 
 
+def test_huntress_idles_without_target_before_preflight(monkeypatch, capsys):
+    monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
+    huntress = load_bin_module("huntress.py", monkeypatch)
+    monkeypatch.setattr(huntress, "TARGET_URL", "")
+    monkeypatch.setattr(huntress, "with_lock", lambda agent: None)
+    monkeypatch.setattr(huntress, "doctor_mode", lambda: False)
+    monkeypatch.setattr(
+        huntress,
+        "preflight",
+        lambda spec: (_ for _ in ()).throw(AssertionError("preflight should not run")),
+    )
+
+    assert huntress.main() == 0
+
+    assert "[HUNTRESS-IDLE] no target URL configured" in capsys.readouterr().out
+
+
 def test_gordon_raises_on_aws_failure(monkeypatch):
     gordon = load_bin_module("gordon.py", monkeypatch)
 
@@ -1389,6 +1406,23 @@ def test_gordon_raises_on_aws_failure(monkeypatch):
 
     with pytest.raises(gordon.MonitoringFetchError):
         gordon._aws_json(["ecs", "describe-services"])
+
+
+def test_gordon_idles_without_cluster_before_preflight(monkeypatch, capsys):
+    monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
+    gordon = load_bin_module("gordon.py", monkeypatch)
+    monkeypatch.setattr(gordon, "STAGING_CLUSTER", "")
+    monkeypatch.setattr(gordon, "with_lock", lambda agent: None)
+    monkeypatch.setattr(gordon, "doctor_mode", lambda: False)
+    monkeypatch.setattr(
+        gordon,
+        "preflight",
+        lambda spec: (_ for _ in ()).throw(AssertionError("preflight should not run")),
+    )
+
+    assert gordon.main() == 0
+
+    assert "[GORDON-IDLE] no ECS cluster configured" in capsys.readouterr().out
 
 
 def test_gordon_raises_on_ecs_service_failures(monkeypatch):

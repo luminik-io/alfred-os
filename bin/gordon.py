@@ -283,6 +283,13 @@ def fetch_sentry_top_issues(token: str, hours: int = 24, limit: int = 5) -> list
 def main() -> int:
     with_lock(AGENT)
 
+    if not STAGING_CLUSTER:
+        if doctor_mode():
+            print(f"[{AGENT.upper()}-DOCTOR-OK]")
+            return 0
+        print(f"[{AGENT.upper()}-IDLE] no ECS cluster configured (set ALFRED_GORDON_ECS_CLUSTER)")
+        return 0
+
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -290,10 +297,6 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
-        return 0
-
-    if not STAGING_CLUSTER:
-        print(f"[{AGENT.upper()}-IDLE] no ECS cluster configured (set ALFRED_GORDON_ECS_CLUSTER)")
         return 0
 
     events = EventLog(agent=AGENT)

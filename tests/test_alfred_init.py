@@ -193,24 +193,19 @@ def test_render_agents_conf_schedules_batman_without_parent_repo(init_mod, tmp_p
     )
 
 
-def test_render_agents_conf_comments_config_gated_rows_without_env(init_mod, tmp_path, monkeypatch):
+def test_render_agents_conf_schedules_health_rows_without_env(init_mod, tmp_path, monkeypatch):
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner", "ops_morning"))
 
     text = init_mod.render_agents_conf(state)
 
-    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
-    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
-    assert "# gated until configured: gordon needs ALFRED_GORDON_ECS_CLUSTER" in text
-    assert "#alfred.gordon\tgordon.py\tcron:8:00" in text
-    assert "\nalfred.huntress\t" not in text
-    assert "\nalfred.gordon\t" not in text
+    assert "# gated until configured:" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
+    assert "\nalfred.gordon\tgordon.py\tcron:8:00" in text
 
 
-def test_render_agents_conf_schedules_config_gated_rows_with_config(
-    init_mod, tmp_path, monkeypatch
-):
+def test_render_agents_conf_schedules_health_rows_with_config(init_mod, tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
     monkeypatch.delenv("ALFRED_GORDON_ECS_CLUSTER", raising=False)
@@ -241,18 +236,19 @@ def test_render_agents_conf_schedules_batman_with_explicit_parent_repo(
     assert "\nalfred.batman\tbatman.py\tinterval:3600" in text
 
 
-def test_render_agents_conf_ignores_transient_env_for_config_gates(init_mod, tmp_path, monkeypatch):
+def test_render_agents_conf_does_not_gate_health_rows_on_transient_env(
+    init_mod, tmp_path, monkeypatch
+):
     monkeypatch.setenv("ALFRED_HUNTRESS_TARGET_URL", "https://staging.example.com")
     state = _state_with(init_mod, tmp_path, roles=("smoke_runner",))
 
     text = init_mod.render_agents_conf(state)
 
-    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
-    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
-    assert "\nalfred.huntress\t" not in text
+    assert "# gated until configured:" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
-def test_render_agents_conf_honors_runtime_env_file_for_config_gates(
+def test_render_agents_conf_schedules_health_rows_with_runtime_env_file(
     init_mod, tmp_path, monkeypatch
 ):
     monkeypatch.delenv("ALFRED_HUNTRESS_TARGET_URL", raising=False)
@@ -268,7 +264,7 @@ def test_render_agents_conf_honors_runtime_env_file_for_config_gates(
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
-def test_render_agents_conf_ignores_stale_managed_alfredrc_for_config_gates(
+def test_render_agents_conf_schedules_health_rows_with_stale_managed_alfredrc(
     init_mod, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -287,12 +283,11 @@ def test_render_agents_conf_ignores_stale_managed_alfredrc_for_config_gates(
 
     text = init_mod.render_agents_conf(state)
 
-    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
-    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
-    assert "\nalfred.huntress\t" not in text
+    assert "# gated until configured:" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
-def test_render_agents_conf_honors_unmanaged_alfredrc_for_config_gates(
+def test_render_agents_conf_schedules_health_rows_with_unmanaged_alfredrc(
     init_mod, tmp_path, monkeypatch
 ):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -314,7 +309,7 @@ def test_render_agents_conf_honors_unmanaged_alfredrc_for_config_gates(
     assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
-def test_render_agents_conf_does_not_trust_alfredrc_override_for_config_gates(
+def test_render_agents_conf_schedules_health_rows_with_custom_alfredrc(
     init_mod, tmp_path, monkeypatch
 ):
     home = tmp_path / "home"
@@ -329,9 +324,8 @@ def test_render_agents_conf_does_not_trust_alfredrc_override_for_config_gates(
 
     text = init_mod.render_agents_conf(state)
 
-    assert "# gated until configured: huntress needs ALFRED_HUNTRESS_TARGET_URL" in text
-    assert "#alfred.huntress\thuntress.py\tinterval:1800" in text
-    assert "\nalfred.huntress\t" not in text
+    assert "# gated until configured:" not in text
+    assert "\nalfred.huntress\thuntress.py\tinterval:1800" in text
 
 
 def test_step_7_repos_preserves_managed_special_prompt_defaults(init_mod, tmp_path, monkeypatch):
@@ -1673,6 +1667,8 @@ def test_starter_roles_and_agents_arg(init_mod):
         "feature_dev",
         "planner",
         "cross_repo_coordinator",
+        "smoke_runner",
+        "ops_morning",
         "pr_review",
         "agent_cleanup",
         "memory_harvest",

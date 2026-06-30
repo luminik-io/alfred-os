@@ -43,8 +43,8 @@ const rows: Row[] = [
   { agent: "nightwing",             load: "live", engine: "hybrid", fired: "1h32m", fires: 6, ok: 6, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
   { agent: "robin",                 load: "live", engine: "hybrid", fired: "1h32m", fires: 2, ok: 2, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
   { agent: "batman",                load: "live", engine: "hybrid", fired: "1h34m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
-  { agent: "huntress",              load: "off",  engine: "-",      fired: "never", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "paused", note: "gated: set target URL" },
-  { agent: "gordon",                load: "off",  engine: "-",      fired: "never", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "paused", note: "gated: set ECS cluster" },
+  { agent: "huntress",              load: "live", engine: "-",      fired: "never", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok", note: "idle until target URL exists" },
+  { agent: "gordon",                load: "live", engine: "-",      fired: "never", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok", note: "idle until ECS cluster exists" },
   { agent: "automerge",             load: "live", engine: "-",      fired: "12m",   fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
   { agent: "agent-cleanup",         load: "live", engine: "-",      fired: "6h06m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
   { agent: "memory-harvest",        load: "live", engine: "-",      fired: "1h01m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
@@ -106,7 +106,7 @@ const total = rows.length;
   </div>
 
   <figcaption class="fleet__cap">
-    Live <code>alfred status</code> output from a real Mac, captured 2026-06-30 after the OSS full-fleet install. Cost is <code>$0.00</code> because Alfred runs on your own Claude and Codex subscriptions, not pay-per-token API bills. Batman is loaded; Huntress and Gordon stay off until their target URL and ECS settings are configured.
+    Live <code>alfred status</code> output from a real Mac, captured 2026-06-30 after the OSS full-fleet install. Cost is <code>$0.00</code> because Alfred runs on your own Claude and Codex subscriptions, not pay-per-token API bills. Batman, Huntress, Gordon, Bane, Nightwing, and the support jobs are loaded from the first install.
   </figcaption>
 </figure>
 
