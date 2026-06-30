@@ -905,7 +905,7 @@ def test_child_issue_parent_match_rejects_issue_number_prefixes():
     )
 
 
-def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch):
+def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch, capsys):
     runner = _load_runner()
     from batman import EXEC_PARTIAL
 
@@ -913,7 +913,18 @@ def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch):
     closes = []
     plan = SimpleNamespace(
         bundle_slug="partial-plan",
-        children=(SimpleNamespace(repo="myorg/backend"), SimpleNamespace(repo="myorg/frontend")),
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:partial-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:partial-plan",),
+                repo="myorg/frontend",
+                title="Implement frontend slice",
+            ),
+        ),
         affected_repos=("myorg/backend", "myorg/frontend"),
         readiness_blockers=(),
     )
@@ -963,7 +974,22 @@ def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch):
     assert out == 0
     assert edits == []
     assert closes == []
-    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+    assert payload is not None
+    assert payload["state"] == "executing"
+    assert payload["children"] == [
+        {
+            "labels": ["agent:bundle:partial-plan"],
+            "repo": "myorg/backend",
+            "title": "Implement backend slice",
+        },
+        {
+            "labels": ["agent:bundle:partial-plan"],
+            "repo": "myorg/frontend",
+            "title": "Implement frontend slice",
+        },
+    ]
+    assert "[BATMAN-PARTIAL-FANOUT-MARKER-KEPT]" in capsys.readouterr().err
 
 
 def test_lifecycle_aborts_before_fanout_when_marker_save_fails(monkeypatch):
@@ -1147,7 +1173,7 @@ def test_lifecycle_executing_marker_uses_execution_plan(monkeypatch):
 
     assert out == 0
     assert reports == [(execution_plan, result)]
-    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
 
 
 def test_lifecycle_skips_existing_children_from_stale_marker_retry(monkeypatch):

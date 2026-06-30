@@ -507,7 +507,15 @@ def _run_lifecycle_body(
         else:
             finalization_outcome = "failure-parent-finalization-pending"
     else:
-        _clear_completed_fanout_marker(parent_repo, parent_issue_number)
+        if result.created_issue_urls:
+            print(
+                f"[BATMAN-PARTIAL-FANOUT-MARKER-KEPT] "
+                f"parent={parent_repo}#{parent_issue_number} "
+                f"filed={len(result.created_issue_urls)} failed={len(result.failed_repos)}",
+                file=sys.stderr,
+            )
+        else:
+            _clear_completed_fanout_marker(parent_repo, parent_issue_number)
     lifecycle.report(execution_plan, result)
     if finalization_outcome:
         return 1, finalization_outcome
