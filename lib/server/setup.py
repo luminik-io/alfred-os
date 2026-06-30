@@ -1006,8 +1006,36 @@ def _discover_code_memory_repos(env: dict[str, str]) -> list[str]:
 
 
 def _existing_code_memory_configured_repos(env: dict[str, str], configured: list[str]) -> list[str]:
-    workspace = _code_memory_workspace(env)
-    return [name for name in configured if _is_code_memory_git_repo(workspace / name)]
+    repo_map = _code_memory_repo_map(env)
+    return [
+        name
+        for name in configured
+        if _is_code_memory_git_repo(_code_memory_configured_repo_path(env, name, repo_map))
+    ]
+
+
+def _code_memory_repo_map(env: dict[str, str]) -> dict[str, str]:
+    raw = _code_memory_config(env, "ALFRED_REPO_LOCAL_MAP")
+    out: dict[str, str] = {}
+    for piece in raw.split(","):
+        if "=" not in piece:
+            continue
+        key, value = piece.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key and value:
+            out[key] = value
+    return out
+
+
+def _code_memory_configured_repo_path(
+    env: dict[str, str], name: str, repo_map: dict[str, str] | None = None
+) -> Path:
+    mapped = (repo_map if repo_map is not None else _code_memory_repo_map(env)).get(name, name)
+    path = Path(mapped)
+    if path.is_absolute():
+        return path
+    return _code_memory_workspace(env) / path
 
 
 def _is_code_memory_git_repo(path: Path) -> bool:
@@ -1020,12 +1048,12 @@ def _is_code_memory_git_repo(path: Path) -> bool:
 def _code_memory_repo_scope(env: dict[str, str]) -> dict[str, Any]:
     configured = _code_memory_repos(env)
     configured_existing = _existing_code_memory_configured_repos(env, configured)
-    discovered: list[str] = [] if configured_existing else _discover_code_memory_repos(env)
-    selected = configured_existing or discovered
-    if configured_existing:
+    discovered: list[str] = [] if configured else _discover_code_memory_repos(env)
+    selected = configured_existing if configured else discovered
+    if configured and configured_existing:
         source = "configured"
     elif configured:
-        source = "auto-fallback"
+        source = "configured-missing"
     else:
         source = "auto"
     return {

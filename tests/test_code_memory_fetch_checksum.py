@@ -262,7 +262,35 @@ def test_scope_repos_prefers_configured_scope(tmp_path: Path) -> None:
     assert repos == ["web", "api"]
 
 
-def test_scope_repos_falls_back_when_configured_dirs_are_not_git_repos(tmp_path: Path) -> None:
+def test_scope_repos_uses_repo_local_map_for_configured_scope(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    marketing = tmp_path / "marketing"
+    (workspace / "product" / "backend" / ".git").mkdir(parents=True)
+    (marketing / "site" / ".git").mkdir(parents=True)
+    (workspace / "product" / "ignored" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        ALFRED_REPO_LOCAL_MAP=f"acme-backend=backend,acme-site=../../{marketing.name}/site",
+        ALFRED_CODE_MEMORY_REPOS="acme-site,acme-backend",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "__scope-repos"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    repos = [Path(line) for line in res.stdout.splitlines()]
+    assert repos == [marketing / "site", workspace / "product" / "backend"]
+
+
+def test_scope_repos_does_not_auto_discover_when_configured_dirs_are_stale(
+    tmp_path: Path,
+) -> None:
     workspace = tmp_path / "workspace"
     (workspace / "docs").mkdir(parents=True)
     (workspace / "api" / ".git").mkdir(parents=True)
@@ -282,8 +310,32 @@ def test_scope_repos_falls_back_when_configured_dirs_are_not_git_repos(tmp_path:
     )
 
     assert res.returncode == 0, res.stderr
-    repos = [Path(line).relative_to(workspace).as_posix() for line in res.stdout.splitlines()]
-    assert repos == ["api"]
+    assert res.stdout == ""
+
+
+def test_doctor_reports_stale_configured_scope_without_auto_discovery(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    (workspace / "docs").mkdir(parents=True)
+    (workspace / "api" / ".git").mkdir(parents=True)
+    env = _launcher_env(
+        tmp_path,
+        WORKSPACE_ROOT=str(workspace),
+        WORKSPACE_SUBDIR="",
+        ALFRED_CODE_MEMORY_AUTOFETCH="0",
+        ALFRED_CODE_MEMORY_REPOS="docs",
+        ALFRED_CODE_MAP_REPOS="",
+    )
+
+    res = subprocess.run(
+        ["bash", str(SCRIPT), "doctor"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert res.returncode == 0, res.stderr
+    assert "repos:       configured scope not found: docs" in res.stderr
+    assert "auto-discovered" not in res.stderr
 
 
 def test_scope_repos_discovers_top_level_repos_before_nested_repos(tmp_path: Path) -> None:
@@ -526,7 +578,7 @@ def test_launcher_loads_runtime_env_code_memory_scope(tmp_path: Path) -> None:
     )
 
     assert res.returncode == 0, res.stderr
-    assert "repos:       org/new" in res.stderr
+    assert "repos:       configured scope not found: org/new" in res.stderr
 
 
 def test_launcher_preserves_process_code_memory_over_runtime_env(tmp_path: Path) -> None:
@@ -552,7 +604,7 @@ def test_launcher_preserves_process_code_memory_over_runtime_env(tmp_path: Path)
     )
 
     assert res.returncode == 0, res.stderr
-    assert "repos:       org/process" in res.stderr
+    assert "repos:       configured scope not found: org/process" in res.stderr
     assert "org/new" not in res.stderr
 
 
@@ -613,7 +665,7 @@ def test_launcher_empty_alfred_home_loads_default_home_for_code_memory(tmp_path:
 
     assert res.returncode == 0, res.stderr
     assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
-    assert "repos:       org/runtime" in res.stderr
+    assert "repos:       configured scope not found: org/runtime" in res.stderr
 
 
 def test_launcher_ignores_explicit_alfredrc_for_code_memory(tmp_path: Path) -> None:
@@ -678,7 +730,7 @@ def test_launcher_strips_env_file_comments_before_code_memory_filter(
 
     assert res.returncode == 0, res.stderr
     assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
-    assert "repos:       org/commented" in res.stderr
+    assert "repos:       configured scope not found: org/commented" in res.stderr
 
 
 def test_launcher_ignores_indirect_pointer_for_default_code_memory_runtime(
@@ -719,7 +771,7 @@ def test_launcher_ignores_indirect_pointer_for_default_code_memory_runtime(
     assert res.returncode == 0, res.stderr
     assert "env-file:" in res.stderr
     assert f"index-dir:   {default_runtime}/state/code-memory" in res.stderr
-    assert "repos:       org/default" in res.stderr
+    assert "repos:       configured scope not found: org/default" in res.stderr
     assert "org/stale" not in res.stderr
     assert "org/pointed" not in res.stderr
     assert str(pointed_runtime) not in res.stderr
@@ -765,7 +817,7 @@ def test_launcher_ignores_pointed_rc_memory_when_process_home_is_active(
     assert res.returncode == 0, res.stderr
     assert "env-file:" in res.stderr
     assert f"index-dir:   {runtime}/state/code-memory" in res.stderr
-    assert "repos:       org/runtime" in res.stderr
+    assert "repos:       configured scope not found: org/runtime" in res.stderr
     assert str(stale_runtime) not in res.stderr
     assert "org/stale" not in res.stderr
 
