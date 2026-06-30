@@ -58,7 +58,10 @@ Without the codename, "the test agent" tends to creep: "well, while it's there, 
 
 ## Pick your own cast
 
-The shipped examples use Batman side-characters because Alfred started with that cast. Pick anything coherent:
+The default install ships the Batman cast, and Alfred Desktop can re-skin the
+visible roster with preset themes or custom display names without changing the
+underlying role codenames, scheduler labels, or GitHub state machine. If you are
+authoring a new fleet configuration, pick anything coherent:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).

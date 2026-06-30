@@ -63,7 +63,7 @@ Batman is the architect agent that leads a whole feature across repos. Where Luc
 
 This is what makes Alfred different from single-repo coding agents. A backend service change that needs a frontend page and a mobile screen and a data-infra job becomes one Batman plan with four children, instead of four manual context-rebuilds in a chat window.
 
-Batman is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`. `BATMAN_PARENT_REPO` halts after the plan with the default `BATMAN_AUTO_EXECUTE=0`; set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
+Batman is part of the public fleet and runs on the same local schedule model as the other agents, but execution is deliberately gated. A fresh full install configures Batman and keeps it behind `alfred enable batman`. `BATMAN_PARENT_REPO` selects the repo where Batman reads `agent:large-feature` parent issues; the default `BATMAN_AUTO_EXECUTE=0` halts after the plan. Set `BATMAN_AUTO_EXECUTE=approval-gate` when you want Batman to file child issues only after Slack approval, or `1` only for fleets that intentionally skip the gate.
 
 See [Multi-repo planning](/multi-repo/) for the marketing-side overview, and [Worked example: Batman across three repos](/guides/multi-repo-worked-example/) for an end-to-end walkthrough from large-feature issue to merged children.
 
