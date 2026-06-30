@@ -934,8 +934,17 @@ def test_count_github_items_agent_labeled_only_past_500_cap(brain: FleetBrain) -
             labels=["bug"],
             url=f"u/{n}",
         )
+    n += 1
+    brain.upsert_github_item(
+        repo="org/api",
+        number=n,
+        kind="issue",
+        state="closed",
+        labels=["agent:large-feature", "batman:fanout-complete"],
+        url=f"u/{n}",
+    )
 
-    assert brain.count_github_items(kind="issue") == agent_issues + unlabeled_issues
+    assert brain.count_github_items(kind="issue") == agent_issues + unlabeled_issues + 1
     assert brain.count_github_items(kind="issue", agent_labeled_only=True) == agent_issues
 
 

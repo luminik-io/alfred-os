@@ -38,9 +38,10 @@ def _load_runner():
     return mod
 
 
-def test_batman_pickup_blocks_done_large_features():
+def test_batman_pickup_blocks_completed_large_features():
     runner = _load_runner()
     assert runner._has_batman_pickup_blocker({"agent:large-feature", "agent:done"})
+    assert runner._has_batman_pickup_blocker({"agent:large-feature", "batman:fanout-complete"})
 
 
 def test_main_noops_when_parent_repo_unconfigured(monkeypatch, capsys):
@@ -228,6 +229,1328 @@ def test_lifecycle_prints_awaiting_approval_sentinel(monkeypatch, capsys):
     assert "parent=myorg/parent#83" in captured.out
     assert "message_ts=1700.0001" in captured.out
     assert "timeout_s=60" in captured.out
+
+
+def test_lifecycle_finalizes_parent_after_full_child_fanout(monkeypatch, capsys):
+    runner = _load_runner()
+    edits = []
+    closes = []
+    ensured = []
+    order = []
+    reports = []
+    plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(SimpleNamespace(repo="myorg/backend"),),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+    result = SimpleNamespace(
+        executed=True,
+        reason=runner.EXEC_OK,
+        created_issue_urls=("https://github.com/myorg/backend/issues/44",),
+        failed_repos=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, _plan):
+            assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+            return result
+
+        def report(self, _plan, reported):
+            order.append("report")
+            reports.append(reported)
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        runner,
+        "gh_issue_edit",
+        lambda repo, number, **kw: (
+            order.append("label") or edits.append((repo, number, kw)) or True
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "ensure_labels",
+        lambda repo, labels=None: order.append("ensure") or ensured.append((repo, labels)),
+    )
+    monkeypatch.setattr(
+        runner,
+        "_close_parent_issue",
+        lambda repo, number: (
+            order.append("close")
+            or closes.append((repo, number))
+            or (True, f"{repo}#{number} closed")
+        ),
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-ready",
+    )
+
+    captured = capsys.readouterr()
+    assert out == 0
+    assert order == ["ensure", "label", "close", "report"]
+    assert reports == [result]
+    assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
+    assert edits == [
+        (
+            "myorg/parent",
+            83,
+            {
+                "add_labels": ["batman:fanout-complete"],
+                "remove_labels": ["agent:large-feature"],
+            },
+        )
+    ]
+    assert closes == [("myorg/parent", 83)]
+    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
+    assert "[BATMAN-PARENT-CLOSED]" in captured.out
+
+
+def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeypatch, capsys):
+    runner = _load_runner()
+    edits = []
+    closes = []
+    ensured = []
+    reports = []
+    plan = SimpleNamespace(
+        bundle_slug="complete-plan",
+        children=(SimpleNamespace(repo="myorg/backend"),),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+    result = SimpleNamespace(
+        executed=True,
+        reason=runner.EXEC_OK,
+        created_issue_urls=("https://github.com/myorg/backend/issues/44",),
+        failed_repos=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, _plan):
+            assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+            return result
+
+        def report(self, _plan, _reported):
+            reports.append(runner._completed_fanout_marker_state("myorg/parent", 83))
+
+    def fail_label(repo, number, **kw):
+        edits.append((repo, number, kw))
+        raise RuntimeError("github unavailable")
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        runner,
+        "ensure_labels",
+        lambda repo, labels=None: ensured.append((repo, labels)),
+    )
+    monkeypatch.setattr(runner, "gh_issue_edit", fail_label)
+    monkeypatch.setattr(
+        runner,
+        "_close_parent_issue",
+        lambda repo, number: closes.append((repo, number)) or (True, f"{repo}#{number} closed"),
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-finalize-fail",
+    )
+
+    captured = capsys.readouterr()
+    assert out == 1
+    assert reports == ["completed"]
+    assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
+    assert edits == [
+        (
+            "myorg/parent",
+            83,
+            {
+                "add_labels": ["batman:fanout-complete"],
+                "remove_labels": ["agent:large-feature"],
+            },
+        )
+    ]
+    assert closes == []
+    assert runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "completed"
+    assert "[BATMAN-PARENT-FANOUT-COMPLETE-WARN]" in captured.err
+
+
+def test_lifecycle_completed_marker_uses_executed_children(monkeypatch):
+    runner = _load_runner()
+    plan = SimpleNamespace(
+        bundle_slug="complete-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:complete-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:complete-plan",),
+                repo="myorg/mobile",
+                title="Implement mobile slice",
+            ),
+        ),
+        affected_repos=("myorg/backend", "myorg/mobile"),
+        readiness_blockers=(),
+    )
+    executed_child = SimpleNamespace(
+        labels=("agent:bundle:complete-plan",),
+        repo="myorg/backend",
+        title="Implement backend slice",
+    )
+    result = SimpleNamespace(
+        children=(executed_child,),
+        executed=True,
+        reason=runner.EXEC_OK,
+        created_issue_urls=("https://github.com/myorg/backend/issues/44",),
+        failed_repos=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, _plan):
+            return result
+
+        def report(self, _plan, _reported):
+            pass
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(runner, "ensure_labels", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner,
+        "gh_issue_edit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("github unavailable")),
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-executed-children",
+    )
+
+    payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+    assert out == 1
+    assert payload is not None
+    assert payload["children"] == [
+        {
+            "labels": ["agent:bundle:complete-plan"],
+            "repo": "myorg/backend",
+            "title": "Implement backend slice",
+        }
+    ]
+
+
+def test_completed_fanout_marker_retries_finalize_without_requeue(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-done",
+        reason=runner.EXEC_OK,
+        state="completed",
+    )
+
+    monkeypatch.setattr(runner, "gh_json", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or True,
+    )
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == []
+    assert finalize_calls == [("myorg/parent", 83)]
+    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert "[BATMAN-PARENT-FINALIZE-RETRY]" in captured.out
+
+
+def test_main_fails_when_completed_marker_finalization_retry_fails(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-done",
+        reason=runner.EXEC_OK,
+        state="completed",
+    )
+
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(runner, "preflight", lambda _spec: None)
+    monkeypatch.setattr(runner, "with_lock", lambda _codename: None)
+    monkeypatch.setattr(
+        runner.BatmanLifecycleConfig,
+        "from_env",
+        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="myorg/parent")),
+    )
+    monkeypatch.setattr(runner, "gh_json", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or False,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_lifecycle",
+        lambda **_kwargs: pytest.fail("must not start new fanout while retry is stuck"),
+    )
+
+    out = runner.main()
+
+    captured = capsys.readouterr()
+    assert out == 1
+    assert finalize_calls == [("myorg/parent", 83)]
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "completed"
+    assert "[BATMAN-PARENT-FINALIZE-RETRY]" in captured.out
+    assert "[BATMAN-PARENT-FINALIZE-RETRY-FAILED] pending=myorg/parent#83" in captured.err
+
+
+def test_executing_fanout_marker_skips_refanout_without_finalize(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+    )
+
+    monkeypatch.setattr(runner, "gh_json", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or True,
+    )
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == []
+    assert finalize_calls == []
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "state=executing; skipping re-fanout" in captured.err
+
+
+def test_stale_executing_fanout_marker_keeps_marker_and_requeues(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    monkeypatch.setenv(runner.ENV_EXECUTING_FANOUT_STALE_AFTER_S, "0")
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+        children=[
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/backend",
+                "title": "Implement backend slice",
+            }
+        ],
+    )
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        if repo == "myorg/parent":
+            return rows
+        assert repo == "myorg/backend"
+        return []
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or True,
+    )
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == rows
+    assert finalize_calls == []
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
+
+
+def test_stale_executing_fanout_marker_records_existing_children(monkeypatch, capsys):
+    runner = _load_runner()
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    monkeypatch.setenv(runner.ENV_EXECUTING_FANOUT_STALE_AFTER_S, "0")
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+        children=[
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/backend",
+                "title": "Implement backend slice",
+            },
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/frontend",
+                "title": "Implement frontend slice",
+            },
+        ],
+    )
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        if repo == "myorg/parent":
+            return rows
+        if repo == "myorg/backend":
+            return [
+                {
+                    "body": (
+                        "## Parent\n\n"
+                        "- Parent issue: [myorg/parent#83]"
+                        "(https://github.com/myorg/parent/issues/83)\n"
+                    ),
+                    "title": "Implement backend slice",
+                    "url": "https://github.com/myorg/backend/issues/44",
+                }
+            ]
+        assert repo == "myorg/frontend"
+        return []
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == rows
+    assert eligible[0][runner.EXISTING_FANOUT_CHILDREN_KEY] == [
+        ("myorg/backend", "Implement backend slice")
+    ]
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
+
+
+def test_stale_executing_fanout_marker_survives_when_picker_chooses_other_parent(
+    monkeypatch, capsys
+):
+    runner = _load_runner()
+    rows = [
+        {
+            "number": 82,
+            "title": "older ready",
+            "url": "https://github.com/myorg/parent/issues/82",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: older",
+        },
+        {
+            "number": 83,
+            "title": "stale marker ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-02T00:00:00Z",
+            "body": "Bundle: stale",
+        },
+    ]
+
+    monkeypatch.setenv(runner.ENV_EXECUTING_FANOUT_STALE_AFTER_S, "0")
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+        children=[
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/backend",
+                "title": "Implement backend slice",
+            }
+        ],
+    )
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        if repo == "myorg/parent":
+            return rows
+        assert repo == "myorg/backend"
+        return []
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+    picked = runner._pick_parent_issue(eligible)
+
+    captured = capsys.readouterr()
+    assert picked is not None
+    assert picked["number"] == 82
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
+
+
+def test_unknown_fanout_marker_clears_and_requeues(monkeypatch, capsys):
+    runner = _load_runner()
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+    marker_path = runner._completed_fanout_path("myorg/parent", 83)
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text("{not-json", encoding="utf-8")
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        assert repo == "myorg/parent"
+        return rows
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == rows
+    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert "[BATMAN-PARENT-FANOUT-MARKER-UNKNOWN]" in captured.err
+
+
+def test_executing_fanout_marker_recovers_when_all_children_exist(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+        children=[
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/backend",
+                "title": "Implement backend slice",
+            }
+        ],
+    )
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        if repo == "myorg/parent":
+            return rows
+        assert repo == "myorg/backend"
+        assert "--search" not in cmd
+        assert "agent:bundle:ready-plan" in cmd
+        return [
+            {
+                "body": (
+                    "## Parent\n\n"
+                    "- Parent issue: [myorg/parent#83]"
+                    "(https://github.com/myorg/parent/issues/83)\n"
+                ),
+                "title": "Implement backend slice",
+                "url": "https://github.com/myorg/backend/issues/44",
+            }
+        ]
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or True,
+    )
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == []
+    assert finalize_calls == [("myorg/parent", 83)]
+    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert "[BATMAN-PARENT-FINALIZE-RECOVER]" in captured.out
+
+
+def test_executing_fanout_marker_does_not_recover_from_old_child(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-executing",
+        reason="fanout-started",
+        state="executing",
+        children=[
+            {
+                "labels": ["agent:bundle:ready-plan"],
+                "repo": "myorg/backend",
+                "title": "Implement backend slice",
+            }
+        ],
+    )
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        if repo == "myorg/parent":
+            return rows
+        assert repo == "myorg/backend"
+        return [
+            {
+                "body": (
+                    "## Parent\n\n"
+                    "- Parent issue: [myorg/parent#12]"
+                    "(https://github.com/myorg/parent/issues/12)\n"
+                ),
+                "title": "Implement backend slice",
+                "url": "https://github.com/myorg/backend/issues/44",
+            }
+        ]
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or True,
+    )
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == []
+    assert finalize_calls == []
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "state=executing; skipping re-fanout" in captured.err
+
+
+def test_child_issue_parent_match_rejects_issue_number_prefixes():
+    runner = _load_runner()
+
+    assert runner._child_issue_body_matches_parent(
+        "Parent: https://github.com/myorg/parent/issues/83)",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+    assert runner._child_issue_body_matches_parent(
+        "Parent: myorg/parent#83.",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+    assert not runner._child_issue_body_matches_parent(
+        "Parent: https://github.com/myorg/parent/issues/830",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+    assert not runner._child_issue_body_matches_parent(
+        "Parent: myorg/parent#830",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+
+
+def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch, capsys):
+    runner = _load_runner()
+    from batman import EXEC_PARTIAL
+
+    edits = []
+    closes = []
+    plan = SimpleNamespace(
+        bundle_slug="partial-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:partial-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:partial-plan",),
+                repo="myorg/frontend",
+                title="Implement frontend slice",
+            ),
+        ),
+        affected_repos=("myorg/backend", "myorg/frontend"),
+        readiness_blockers=(),
+    )
+    result = SimpleNamespace(
+        executed=True,
+        reason=EXEC_PARTIAL,
+        created_issue_urls=("https://github.com/myorg/backend/issues/44",),
+        failed_repos=("myorg/frontend",),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, _plan):
+            assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+            return result
+
+        def report(self, _plan, _reported):
+            pass
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        runner,
+        "gh_issue_edit",
+        lambda repo, number, **kw: edits.append((repo, number, kw)) or True,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_close_parent_issue",
+        lambda repo, number: closes.append((repo, number)) or (True, f"{repo}#{number} closed"),
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-partial",
+    )
+
+    assert out == 0
+    assert edits == []
+    assert closes == []
+    payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+    assert payload is not None
+    assert payload["state"] == "executing"
+    assert payload["children"] == [
+        {
+            "labels": ["agent:bundle:partial-plan"],
+            "repo": "myorg/backend",
+            "title": "Implement backend slice",
+        },
+        {
+            "labels": ["agent:bundle:partial-plan"],
+            "repo": "myorg/frontend",
+            "title": "Implement frontend slice",
+        },
+    ]
+    assert "[BATMAN-PARTIAL-FANOUT-MARKER-KEPT]" in capsys.readouterr().err
+
+
+def test_lifecycle_aborts_before_fanout_when_marker_save_fails(monkeypatch):
+    runner = _load_runner()
+    reports = []
+    plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(SimpleNamespace(repo="myorg/backend"),),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, _plan):
+            raise AssertionError("fanout should not run without a durable marker")
+
+        def report(self, _plan, reported):
+            reports.append(reported.reason)
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(runner, "_save_completed_fanout_marker", lambda *_args, **_kwargs: False)
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-marker-fails",
+    )
+
+    assert out == 1
+    assert reports == ["failure-parent-fanout-marker-failed"]
+
+
+def test_lifecycle_preserves_executing_marker_when_fanout_raises(monkeypatch, capsys):
+    runner = _load_runner()
+    reports = []
+    plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+        ),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, _plan):
+            assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+            raise RuntimeError("fanout crashed")
+
+        def report(self, _plan, reported):
+            reports.append(reported)
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+
+    with pytest.raises(RuntimeError, match="fanout crashed"):
+        runner._run_lifecycle(
+            config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+            parent_issue={"number": 83, "title": "ready", "body": ""},
+            firing_id="fid-fanout-crash",
+        )
+
+    assert reports == []
+    captured = capsys.readouterr()
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "[BATMAN-FANOUT-CRASH-MARKER-KEPT]" in captured.err
+
+
+def test_lifecycle_executing_marker_uses_execution_plan(monkeypatch):
+    runner = _load_runner()
+    from batman import EXEC_PARTIAL
+
+    reports = []
+    original_plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/mobile",
+                title="Implement mobile slice",
+            ),
+        ),
+        affected_repos=("myorg/backend", "myorg/mobile"),
+        readiness_blockers=(),
+    )
+    execution_plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/admin",
+                title="Implement admin slice",
+            ),
+        ),
+        affected_repos=("myorg/backend", "myorg/admin"),
+        readiness_blockers=(),
+    )
+    result = SimpleNamespace(
+        executed=True,
+        reason=EXEC_PARTIAL,
+        created_issue_urls=("https://github.com/myorg/backend/issues/44",),
+        failed_repos=("myorg/admin",),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return original_plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execution_plan(self, plan):
+            assert plan is original_plan
+            return execution_plan
+
+        def execute(self, plan):
+            assert plan is execution_plan
+            payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+            assert payload is not None
+            assert payload["children"] == [
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/backend",
+                    "title": "Implement backend slice",
+                },
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/admin",
+                    "title": "Implement admin slice",
+                },
+            ]
+            return result
+
+        def report(self, plan, reported):
+            reports.append((plan, reported))
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-execution-plan",
+    )
+
+    assert out == 0
+    assert reports == [(execution_plan, result)]
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+
+
+def test_lifecycle_skips_existing_children_from_stale_marker_retry(monkeypatch):
+    runner = _load_runner()
+    reports = []
+    finalized = []
+    original_plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/frontend",
+                title="Implement frontend slice",
+            ),
+        ),
+        affected_repos=("myorg/backend", "myorg/frontend"),
+        readiness_blockers=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return original_plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, plan):
+            assert [child.repo for child in plan.children] == ["myorg/frontend"]
+            assert plan.affected_repos == ("myorg/frontend",)
+            payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+            assert payload is not None
+            assert payload["children"] == [
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/backend",
+                    "title": "Implement backend slice",
+                },
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/frontend",
+                    "title": "Implement frontend slice",
+                },
+            ]
+            return SimpleNamespace(
+                executed=True,
+                reason=runner.EXEC_OK,
+                created_issue_urls=("https://github.com/myorg/frontend/issues/45",),
+                failed_repos=(),
+                children=tuple(plan.children),
+            )
+
+        def report(self, plan, reported):
+            reports.append((plan, reported))
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalized.append((repo, number)) or True,
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={
+            "number": 83,
+            "title": "ready",
+            "body": "",
+            runner.EXISTING_FANOUT_CHILDREN_KEY: [("myorg/backend", "Implement backend slice")],
+        },
+        firing_id="fid-stale-retry",
+    )
+
+    assert out == 0
+    assert finalized == [("myorg/parent", 83)]
+    assert len(reports) == 1
+    reported_plan, reported_result = reports[0]
+    assert [child.repo for child in reported_plan.children] == ["myorg/frontend"]
+    assert reported_result.reason == runner.EXEC_OK
+    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+
+
+def test_lifecycle_preserves_full_marker_when_stale_retry_files_nothing(monkeypatch, capsys):
+    runner = _load_runner()
+    from batman import EXEC_PARTIAL
+
+    reports = []
+    finalized = []
+    original_plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/frontend",
+                title="Implement frontend slice",
+            ),
+        ),
+        affected_repos=("myorg/backend", "myorg/frontend"),
+        readiness_blockers=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return original_plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, plan):
+            assert [child.repo for child in plan.children] == ["myorg/frontend"]
+            payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+            assert payload is not None
+            assert payload["children"] == [
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/backend",
+                    "title": "Implement backend slice",
+                },
+                {
+                    "labels": ["agent:bundle:ready-plan"],
+                    "repo": "myorg/frontend",
+                    "title": "Implement frontend slice",
+                },
+            ]
+            return SimpleNamespace(
+                executed=False,
+                reason=EXEC_PARTIAL,
+                created_issue_urls=(),
+                failed_repos=("myorg/frontend",),
+                children=tuple(plan.children),
+            )
+
+        def report(self, plan, reported):
+            reports.append((plan, reported))
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalized.append((repo, number)) or True,
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={
+            "number": 83,
+            "title": "ready",
+            "body": "",
+            runner.EXISTING_FANOUT_CHILDREN_KEY: [("myorg/backend", "Implement backend slice")],
+        },
+        firing_id="fid-stale-retry-zero",
+    )
+
+    assert out == 0
+    assert finalized == []
+    assert len(reports) == 1
+    reported_plan, reported_result = reports[0]
+    assert [child.repo for child in reported_plan.children] == ["myorg/frontend"]
+    assert reported_result.reason == EXEC_PARTIAL
+    payload = runner._completed_fanout_marker_payload("myorg/parent", 83)
+    assert payload is not None
+    assert payload["state"] == "executing"
+    assert payload["children"] == [
+        {
+            "labels": ["agent:bundle:ready-plan"],
+            "repo": "myorg/backend",
+            "title": "Implement backend slice",
+        },
+        {
+            "labels": ["agent:bundle:ready-plan"],
+            "repo": "myorg/frontend",
+            "title": "Implement frontend slice",
+        },
+    ]
+    assert "filed=0 failed=1 existing=1" in capsys.readouterr().err
+
+
+def test_lifecycle_warns_when_completed_marker_upgrade_fails(monkeypatch, capsys):
+    runner = _load_runner()
+    real_save = runner._save_completed_fanout_marker
+    reports = []
+    plan = SimpleNamespace(
+        bundle_slug="ready-plan",
+        children=(
+            SimpleNamespace(
+                labels=("agent:bundle:ready-plan",),
+                repo="myorg/backend",
+                title="Implement backend slice",
+            ),
+        ),
+        affected_repos=("myorg/backend",),
+        readiness_blockers=(),
+    )
+    result = SimpleNamespace(
+        executed=True,
+        reason=runner.EXEC_OK,
+        created_issue_urls=("https://github.com/myorg/backend/issues/44",),
+        failed_repos=(),
+    )
+
+    class FakeLifecycle:
+        def __init__(self, **_kwargs):
+            pass
+
+        def plan(self, **_kwargs):
+            return plan
+
+        def request_approval(self, _plan):
+            return None
+
+        def execute(self, _plan):
+            return result
+
+        def report(self, _plan, _reported):
+            reports.append(runner._completed_fanout_marker_state("myorg/parent", 83))
+
+    def flaky_save(*args, **kwargs):
+        if kwargs["state"] == "completed":
+            return False
+        return real_save(*args, **kwargs)
+
+    monkeypatch.setattr(runner, "BatmanLifecycle", FakeLifecycle)
+    monkeypatch.setattr(runner, "SlackReporter", lambda **_kwargs: object())
+    monkeypatch.setattr(runner, "_save_completed_fanout_marker", flaky_save)
+    monkeypatch.setattr(runner, "ensure_labels", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner,
+        "gh_issue_edit",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("github unavailable")),
+    )
+
+    out = runner._run_lifecycle(
+        config=runner.BatmanLifecycleConfig(parent_repo="myorg/parent", auto_execute="1"),
+        parent_issue={"number": 83, "title": "ready", "body": ""},
+        firing_id="fid-upgrade-fails",
+    )
+
+    captured = capsys.readouterr()
+    assert out == 1
+    assert reports == ["executing"]
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "executing"
+    assert "[BATMAN-COMPLETED-FANOUT-UPGRADE-WARN]" in captured.err
+
+
+def test_finalize_parent_treats_close_failure_as_best_effort(monkeypatch, capsys):
+    runner = _load_runner()
+    edits = []
+    closes = []
+
+    monkeypatch.setattr(runner, "ensure_labels", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        runner,
+        "gh_issue_edit",
+        lambda repo, number, **kw: edits.append((repo, number, kw)) or True,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_close_parent_issue",
+        lambda repo, number: closes.append((repo, number)) or (False, "close refused"),
+    )
+
+    ok = runner._finalize_parent_after_child_fanout("myorg/parent", 83)
+
+    captured = capsys.readouterr()
+    assert ok is True
+    assert edits == [
+        (
+            "myorg/parent",
+            83,
+            {
+                "add_labels": ["batman:fanout-complete"],
+                "remove_labels": ["agent:large-feature"],
+            },
+        )
+    ]
+    assert closes == [("myorg/parent", 83)]
+    assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
+    assert "[BATMAN-PARENT-CLOSE-WARN]" in captured.err
+
+
+def test_close_parent_issue_uses_configured_parent_repo(monkeypatch):
+    runner = _load_runner()
+    calls = []
+
+    monkeypatch.setattr(runner, "is_dry_run", lambda: False)
+
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(runner, "run", fake_run)
+
+    ok, detail = runner._close_parent_issue("myorg/specs", 83)
+
+    assert ok is True
+    assert detail == "myorg/specs#83 closed"
+    assert calls == [
+        (
+            ["gh", "issue", "close", "83", "-R", "myorg/specs"],
+            {"timeout": 30},
+        )
+    ]
 
 
 def test_lifecycle_file_approval_mode_waits_without_slack_gate(monkeypatch, capsys):

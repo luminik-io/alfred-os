@@ -20,6 +20,7 @@ def test_lifecycle_label_strings_are_stable():
     assert labels.IN_FLIGHT == "agent:in-flight"
     assert labels.PR_OPEN == "agent:pr-open"
     assert labels.DONE == "agent:done"
+    assert labels.FANOUT_COMPLETE == "batman:fanout-complete"
 
 
 def test_sticky_label_strings_are_stable():
@@ -80,6 +81,7 @@ def test_has_blocker_detects_each_blocker():
         labels.NEEDS_INFO,
         labels.DONE,
         labels.DONE_ALREADY,
+        labels.FANOUT_COMPLETE,
         labels.LARGE_FEATURE,
         labels.PLAN_PENDING_APPROVAL,
     ):
@@ -218,6 +220,7 @@ def test_lifecycle_label_defs_have_all_required_names():
     assert labels.DO_NOT_PICKUP in names
     assert labels.NEEDS_HUMAN_SCOPE in names
     assert labels.LARGE_FEATURE in names
+    assert labels.FANOUT_COMPLETE in names
     assert labels.AUTHORED in names
 
 

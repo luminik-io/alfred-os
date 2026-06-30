@@ -56,7 +56,7 @@ Items with active work and a committed IC.
 Committed for the following quarter. Design first, then code.
 
 - **Multi-engine routing v2.** Add Gemini and Ollama adapters alongside the current Claude and Codex engines. Per-codename engine selection stays the existing surface; the work is the adapter contract plus auth probes plus billing posture docs. Effort: M. Issue: TBD.
-- **Better Batman v2.** Bundle-completion tracking after approval: Batman keeps watch on child issues and PRs, reports per-repo progress, and closes the bundle once every child has landed or been explicitly dropped. Effort: M. Issue: TBD.
+- **Better Batman v2.** Bundle-completion tracking after approval: Batman keeps watch on child issues and PRs, reports per-repo progress, and posts a final shipped rollup once every child has landed or been explicitly dropped. Effort: M. Issue: TBD.
 - **Native lifecycle dry-run for every shipped runner.** `alfred dry-run <codename>` now resolves every codename safely; next step is making every individual runner support the full synthetic lifecycle, not just the safe simulation. Effort: S. Issue: TBD.
 - **`alfred serve` API hardening.** v0.5.1 ships the local control surface used by Alfred Desktop. Next work is a versioned API contract, compatibility tests, richer event-stream traces, and clearer error payloads for native clients. Effort: S. Issue: TBD.
 

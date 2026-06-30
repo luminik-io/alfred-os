@@ -358,15 +358,17 @@ and never collide.
 ```
 
 Each gets its own review pass, its own Nightwing fixes if needed, its own
-automerge. The labels on the original `agent:large-feature` issue are
-unchanged; the bundle is tracked by the `agent:bundle:add-org-slug` label
-that every child carries.
+automerge. After every child issue is filed, Batman removes the parent's
+`agent:large-feature` queue label, adds `batman:fanout-complete`, and closes the
+original parent issue so the same parent cannot be picked up twice without
+counting the planning parent as shipped work. The bundle is tracked by the
+`agent:bundle:add-org-slug` label that every child carries.
 
 ## Step 9: final bundle rollup
 
-When the last child PR in the bundle merges, the operator (or a custom
-extension to Batman) posts a closing rollup. The OSS package does not
-auto-close the parent `agent:large-feature` issue; the operator does it.
+When the last child PR in the bundle merges, you (or a custom extension to
+Batman) posts a closing rollup. The OSS package closes the parent after
+successful child fan-out, but does not yet watch every child PR through merge.
 
 Example closing rollup post:
 

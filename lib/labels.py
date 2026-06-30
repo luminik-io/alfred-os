@@ -72,6 +72,9 @@ BUNDLE_LABEL_PREFIX: Final[str] = "agent:bundle:"
 PLAN_PENDING_APPROVAL: Final[str] = "agent:plan-pending-approval"
 """Set on a bundle parent while Batman waits on operator approval before execute."""
 
+FANOUT_COMPLETE: Final[str] = "batman:fanout-complete"
+"""Batman filed every child issue for this parent. Not shipped-work evidence."""
+
 NEEDS_HUMAN_REVIEW: Final[str] = "agent:needs-human-review"
 """Human review is required before any autonomous pickup."""
 
@@ -146,6 +149,7 @@ PICKUP_BLOCKING_LABEL_SET: Final[frozenset[str]] = frozenset(
         DONE_ALREADY,
         LARGE_FEATURE,
         PLAN_PENDING_APPROVAL,
+        FANOUT_COMPLETE,
     }
 )
 """Static labels that make an issue ineligible for autonomous pickup."""
@@ -297,6 +301,11 @@ LIFECYCLE_LABEL_DEFS: Final[tuple[LabelDef, ...]] = (
         LARGE_FEATURE,
         "ff6b00",
         "Multi-repo feature; picked up as a bundle by Batman.",
+    ),
+    LabelDef(
+        FANOUT_COMPLETE,
+        "5319e7",
+        "Batman filed every child issue for this parent; not shipped-work evidence.",
     ),
     LabelDef(
         AUTHORED,
