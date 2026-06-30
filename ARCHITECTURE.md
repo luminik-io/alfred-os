@@ -76,7 +76,7 @@ Alfred is built for one operator. One always-on Mac or Debian/Ubuntu host, one C
 
 ## The codename pattern
 
-Codenames are Batman side-characters in the shipped defaults: Batman for multi-repo coordination, Lucius for feature dev, Drake for issue planning, Bane for tests, Robin for triage, Nightwing for review-fix, Huntress for E2E smoke, Gordon for deployment health, and Ra's al Ghul for code review. The naming is deliberate: codenames appear in PR titles, Slack messages, and commit authorship, so they must be memorable and internally consistent.
+Codenames are Batman side-characters in the shipped defaults: Batman for multi-repo coordination, Lucius for feature dev, Drake for issue planning, Bane for tests, Robin for triage, Nightwing for review-fix, Huntress for E2E smoke, Gordon for deployment health, and Ra's al Ghul for code review. The naming is deliberate: codenames appear in PR titles, Slack messages, and commit authorship, so they must be memorable and internally consistent. Alfred Desktop can layer preset or custom display names over those stable codenames for the desktop and Slack, but scheduler labels, worktrees, GitHub labels, and merge gates still use the runtime codename.
 
 Same codename across repos means "same role applied to that repo's code," not "one agent spans repos." Lucius in `<your-backend-repo>` and Lucius in `<your-frontend-repo>` are two separate processes running the same prompt against different codebases. They never share state.
 

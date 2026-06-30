@@ -21,7 +21,7 @@ Current map of the public docs. Trust code first, then this index.
 
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md): design rationale for host scheduling, worktrees, IAM, spend guards, and plan review.
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): the diagram companion. Mermaid diagrams for the agent lifecycle, model dispatch and tiers, distributed locking, the Slack conversational flow, the desktop app, the disk guardian, and the layered install and distribution.
-- [`AGENTS.md`](AGENTS.md): default agent roles, codenames, and how custom codenames map to stable role scripts.
+- [`AGENTS.md`](AGENTS.md): default agent roles, stable runtime codenames, and custom display-name themes.
 - [`STATE_MACHINE.md`](STATE_MACHINE.md): issue claim lifecycle and stale-claim recovery.
 - [`STATE_AND_MEMORY.md`](STATE_AND_MEMORY.md): what Alfred remembers between firings, where every state file lives, and the local fleet-brain memory layer.
 - [`FLEET_BRAIN.md`](FLEET_BRAIN.md): local memory schema, reviewable lesson candidates, failure history, CLI, and read-only MCP bridge.

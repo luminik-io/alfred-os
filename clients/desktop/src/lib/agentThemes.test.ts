@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveAgentRole, type WorkflowRole } from "./agentRoster";
+import {
+  deriveAgentRole,
+  scheduleRoleLabelForEditor,
+  type WorkflowRole,
+} from "./agentRoster";
 import {
   editableAgents,
   isRosterThemeId,
@@ -27,6 +31,18 @@ describe("deriveAgentRole", () => {
     );
     expect(deriveAgentRole({ codename: "newbot", roleTitle: "Senior Developer" })).toBe(
       "implement",
+    );
+  });
+
+  it("maps generated alfred-init schedule role strings before fuzzy keywords", () => {
+    expect(deriveAgentRole({ codename: "q-branch", roleTitle: "feature dev" })).toBe(
+      "implement",
+    );
+    expect(deriveAgentRole({ codename: "repo-cartographer", roleTitle: "code map refresh" })).toBe(
+      "ops",
+    );
+    expect(deriveAgentRole({ codename: "merge-bot", roleTitle: "PR automerge" })).toBe(
+      "ship",
     );
   });
 
@@ -66,6 +82,38 @@ describe("deriveAgentRole", () => {
     for (const [codename, lane] of Object.entries(PRIOR_LANES)) {
       expect(deriveAgentRole({ codename })).toBe(lane);
     }
+  });
+});
+
+describe("scheduleRoleLabelForEditor", () => {
+  it("does not surface generated schedule roles as labels for known shipped agents", () => {
+    expect(
+      scheduleRoleLabelForEditor({
+        codename: "lucius",
+        role: "feature dev",
+        roleTitle: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("preserves agents.conf descriptors for schedule-only custom agents", () => {
+    expect(
+      scheduleRoleLabelForEditor({
+        codename: "release-captain",
+        role: "Release conductor",
+        roleTitle: null,
+      }),
+    ).toBe("Release conductor");
+  });
+
+  it("prefers explicit role_title when the server has profile metadata", () => {
+    expect(
+      scheduleRoleLabelForEditor({
+        codename: "release-captain",
+        role: "Release conductor",
+        roleTitle: "Launch lead",
+      }),
+    ).toBe("Launch lead");
   });
 });
 
@@ -171,6 +219,20 @@ describe("custom roster theme", () => {
     });
     expect(id.name).toBe("Optimus Prime");
   });
+
+  it("can name a future custom agent without adding it to the preset cast", () => {
+    const id = resolveThemedIdentity(
+      { codename: "security-scout", roleTitle: "Code Reviewer" },
+      "custom",
+      {
+        names: { "security-scout": "Sentinel" },
+        roles: { "security-scout": "Security reviewer" },
+      },
+    );
+    expect(id.role).toBe("review");
+    expect(id.name).toBe("Sentinel");
+    expect(id.roleLabel).toBe("Security reviewer");
+  });
 });
 
 describe("editableAgents", () => {
@@ -189,5 +251,37 @@ describe("editableAgents", () => {
     expect(agents.some((a) => a.codename === "batman")).toBe(true);
     expect(agents.some((a) => a.codename === "memory-auto-promote")).toBe(true);
     expect(agents.some((a) => a.codename === "shipped-summary-weekly")).toBe(true);
+  });
+
+  it("adds live custom agents to the editable roster", () => {
+    const agents = editableAgents([
+      {
+        codename: "security-scout",
+        displayName: "Sentinel",
+        roleLabel: "Security reviewer",
+        roleTitle: "Code Reviewer",
+      },
+    ]);
+    expect(agents).toContainEqual({
+      codename: "security-scout",
+      role: "review",
+      defaultName: "Sentinel",
+      defaultRoleLabel: "Security reviewer",
+    });
+  });
+
+  it("keeps Batman-base placeholders for known agents even when runtime reports a themed name", () => {
+    const agents = editableAgents([
+      {
+        codename: "lucius",
+        displayName: "Ironhide",
+        roleLabel: "implement",
+        roleTitle: "implement",
+      },
+    ]);
+    expect(agents.find((agent) => agent.codename === "lucius")).toMatchObject({
+      defaultName: "Lucius",
+      defaultRoleLabel: "Senior developer",
+    });
   });
 });

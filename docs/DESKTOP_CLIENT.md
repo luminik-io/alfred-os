@@ -90,7 +90,7 @@ The app visibly separates promoted lessons from candidates and raw logs.
 
 ### Setup in detail
 
-Setup is a guided doctor and onboarding flow: discover existing Alfred files, install or repair the CLI, start or reconnect the local runtime, GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, labels, full-fleet config, roster theme or custom codenames, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Failures tell you what Alfred checked, why it matters, and the smallest next step.
+Setup is a guided doctor and onboarding flow: discover existing Alfred files, install or repair the CLI, start or reconnect the local runtime, GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, labels, full-fleet config, roster theme or custom display names, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Failures tell you what Alfred checked, why it matters, and the smallest next step.
 
 ## How it talks to the fleet
 
