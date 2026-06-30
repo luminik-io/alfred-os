@@ -585,6 +585,37 @@ def test_stale_executing_fanout_marker_clears_and_requeues(monkeypatch, capsys):
     assert "[BATMAN-PARENT-FANOUT-MARKER-STALE]" in captured.err
 
 
+def test_unknown_fanout_marker_clears_and_requeues(monkeypatch, capsys):
+    runner = _load_runner()
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+    marker_path = runner._completed_fanout_path("myorg/parent", 83)
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text("{not-json", encoding="utf-8")
+
+    def fake_gh_json(cmd, **_kwargs):
+        repo = cmd[cmd.index("-R") + 1]
+        assert repo == "myorg/parent"
+        return rows
+
+    monkeypatch.setattr(runner, "gh_json", fake_gh_json)
+
+    eligible = runner._list_parent_repo_large_features("myorg/parent")
+
+    captured = capsys.readouterr()
+    assert eligible == rows
+    assert not runner._has_completed_fanout_marker("myorg/parent", 83)
+    assert "[BATMAN-PARENT-FANOUT-MARKER-UNKNOWN]" in captured.err
+
+
 def test_executing_fanout_marker_recovers_when_all_children_exist(monkeypatch, capsys):
     runner = _load_runner()
     finalize_calls = []

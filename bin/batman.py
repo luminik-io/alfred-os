@@ -160,13 +160,23 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
                 _clear_completed_fanout_marker(parent_repo, issue_number)
                 if _has_completed_fanout_marker(parent_repo, issue_number):
                     continue
-            else:
+            elif marker_state == "executing":
                 print(
                     f"[BATMAN-PARENT-FANOUT-MARKER] parent={parent_repo}#{issue_number} "
-                    f"state={marker_state}; skipping re-fanout",
+                    f"state=executing; skipping re-fanout",
                     file=sys.stderr,
                 )
                 continue
+            else:
+                print(
+                    f"[BATMAN-PARENT-FANOUT-MARKER-UNKNOWN] "
+                    f"parent={parent_repo}#{issue_number} state={marker_state!r}; "
+                    f"clearing unreadable marker and retrying fanout",
+                    file=sys.stderr,
+                )
+                _clear_completed_fanout_marker(parent_repo, issue_number)
+                if _has_completed_fanout_marker(parent_repo, issue_number):
+                    continue
         labels = {label.get("name") for label in r.get("labels", []) if isinstance(label, dict)}
         if _has_batman_pickup_blocker(labels):
             continue
