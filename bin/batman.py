@@ -21,6 +21,7 @@ Wiring:
 from __future__ import annotations
 
 import os
+import re
 import sys
 from contextlib import suppress
 from dataclasses import is_dataclass, replace
@@ -852,7 +853,10 @@ def _child_issue_body_matches_parent(
         return False
     parent_url = f"https://github.com/{parent_repo}/issues/{parent_issue_number}"
     parent_ref = f"{parent_repo}#{parent_issue_number}"
-    return parent_url in text or parent_ref in text
+    return bool(
+        re.search(rf"{re.escape(parent_url)}(?!\d)", text)
+        or re.search(rf"{re.escape(parent_ref)}(?!\d)", text)
+    )
 
 
 def _clear_completed_fanout_marker(parent_repo: str, parent_issue_number: int) -> None:

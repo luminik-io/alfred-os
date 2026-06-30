@@ -880,6 +880,31 @@ def test_executing_fanout_marker_does_not_recover_from_old_child(monkeypatch, ca
     assert "state=executing; skipping re-fanout" in captured.err
 
 
+def test_child_issue_parent_match_rejects_issue_number_prefixes():
+    runner = _load_runner()
+
+    assert runner._child_issue_body_matches_parent(
+        "Parent: https://github.com/myorg/parent/issues/83)",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+    assert runner._child_issue_body_matches_parent(
+        "Parent: myorg/parent#83.",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+    assert not runner._child_issue_body_matches_parent(
+        "Parent: https://github.com/myorg/parent/issues/830",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+    assert not runner._child_issue_body_matches_parent(
+        "Parent: myorg/parent#830",
+        parent_repo="myorg/parent",
+        parent_issue_number=83,
+    )
+
+
 def test_lifecycle_leaves_parent_open_after_partial_child_fanout(monkeypatch):
     runner = _load_runner()
     from batman import EXEC_PARTIAL
