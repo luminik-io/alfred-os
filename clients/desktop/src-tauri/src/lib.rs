@@ -2119,7 +2119,6 @@ mod tests {
         restore_var("ALFRED_BIN", prev_alfred_bin);
     }
 
-
     #[test]
     fn alfred_resolver_ignores_legacy_alfredrc() {
         let _guard = ENV_LOCK.lock().unwrap();
@@ -2284,7 +2283,6 @@ mod tests {
             ""
         );
     }
-
 
     #[test]
     fn native_subprocess_env_strips_inline_comments_before_stop_controls() {

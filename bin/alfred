@@ -207,6 +207,7 @@ SUPPORT_SCHEDULER_SCRIPTS = {"proof-telemetry.py"}
 ALFRED_INIT_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
+ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 def _switch_value(raw: str) -> str:
@@ -456,7 +457,7 @@ def _read_env_values(path: Path) -> dict[str, str]:
             continue
         key, _, value = line.partition("=")
         key = key.strip()
-        if not key:
+        if not ENV_KEY_RE.match(key):
             continue
         value = value.strip()
         try:
@@ -465,6 +466,28 @@ def _read_env_values(path: Path) -> dict[str, str]:
             parsed = []
         out[key] = parsed[0] if len(parsed) == 1 else value.strip("'").strip('"')
     return out
+
+
+def _hydrate_cli_env_from_runtime_env() -> None:
+    """Load the canonical runtime ``.env`` before CLI command dispatch.
+
+    The installer no longer writes shell-rc exports, so operator commands must
+    see the same single source that scheduled agents see. Values present in
+    ``$ALFRED_HOME/.env`` intentionally win over inherited shell exports; old
+    shell state is no longer part of the runtime contract.
+    """
+
+    os.environ.pop("ALFREDRC", None)
+    for key in tuple(os.environ):
+        if (key.startswith("ALFRED_") and key.endswith("_REPOS")) or key in {
+            "LABEL_STATE_SWEEP_REPOS",
+            "ALFRED_CLAIM_SWEEP_REPOS",
+        }:
+            os.environ.pop(key, None)
+    if not os.environ.get("ALFRED_HOME", "").strip():
+        os.environ["ALFRED_HOME"] = str(_home_child(".alfred"))
+    for key, value in _read_env_values(_runtime_env_path()).items():
+        os.environ[key] = value
 
 
 def _telemetry_values() -> dict[str, str]:
@@ -1357,7 +1380,9 @@ def _codex_status() -> int:
         resolved = shutil.which(binary)
     if not resolved:
         print(f"codex: not found on PATH ({binary})", file=sys.stderr)
-        print("Set CODEX_BIN in $ALFRED_HOME/.env or install/sign in to Codex CLI.", file=sys.stderr)
+        print(
+            "Set CODEX_BIN in $ALFRED_HOME/.env or install/sign in to Codex CLI.", file=sys.stderr
+        )
         return 1
 
     print(f"codex binary: {resolved}")
@@ -2272,6 +2297,17 @@ def cmd_auth(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    previous_env = os.environ.copy()
+    _hydrate_cli_env_from_runtime_env()
+
+    try:
+        return _main_hydrated(argv)
+    finally:
+        os.environ.clear()
+        os.environ.update(previous_env)
+
+
+def _main_hydrated(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="alfred", description="Alfred operator CLI")
     sub = p.add_subparsers(dest="command", required=True)
 

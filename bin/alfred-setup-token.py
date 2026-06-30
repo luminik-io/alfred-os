@@ -12,7 +12,7 @@ The supported fix is a long-lived OAuth token that ``claude`` reads from
 the ``CLAUDE_CODE_OAUTH_TOKEN`` env var, bypassing the credential store.
 This script wraps the ``claude setup-token`` flow:
 
-  1. Detect whether a token is already set (env var or ``$ALFRED_HOME/.env``).
+  1. Detect whether a token is already set in ``$ALFRED_HOME/.env``.
      Exit early when already configured, unless ``--force`` is given.
   2. Spawn ``claude setup-token`` so the operator can approve the
      browser flow once.
@@ -119,12 +119,9 @@ def existing_token_source() -> str | None:
     """Return a human-readable description of where the token is already set,
     or ``None`` if it is unset.
 
-    Checks process env first (covers shell exports), then the canonical
+    Checks only the canonical scheduler/runtime source,
     ``$ALFRED_HOME/.env``. Does not validate the value, only reports presence.
-    Does not validate the value, only reports presence.
     """
-    if os.environ.get(TOKEN_ENV, "").strip():
-        return f"env var {TOKEN_ENV}"
     env_file = env_path()
     if _file_defines_token(env_file):
         return str(env_file)
@@ -297,6 +294,12 @@ def main(argv: list[str] | None = None) -> int:
         if source:
             info(f"{TOKEN_ENV} is set in {source}.")
             return 0
+        if os.environ.get(TOKEN_ENV, "").strip():
+            warn(
+                f"{TOKEN_ENV} is only present in the process environment. "
+                f"Scheduled agents read {env_path()}, so write the token there "
+                "with `alfred setup-token --token <value>` or rerun setup."
+            )
         info(f"{TOKEN_ENV} is NOT set. Run `alfred setup-token` to configure.")
         return 1
 

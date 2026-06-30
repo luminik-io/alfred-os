@@ -4,7 +4,7 @@ The script wraps ``claude setup-token`` to mint a long-lived OAuth token
 for scheduled (launchd / systemd) firings. We verify the parts the
 operator interacts with directly:
 
-* token-presence detection (env vs $ALFRED_HOME/.env vs unset),
+* token-presence detection ($ALFRED_HOME/.env vs unset),
 * the rotate-in-place semantics of ``write_token`` (no duplicates,
   unrelated lines preserved, 0600 perms applied),
 * ``--check-only`` exit-code contract,
@@ -60,12 +60,11 @@ def test_existing_token_source_returns_none_when_unset(env_file):
     assert mod.existing_token_source() is None
 
 
-def test_existing_token_source_reports_env(env_file, monkeypatch):
+def test_existing_token_source_ignores_process_env(env_file, monkeypatch):
+    """A process-only token is not scheduler-ready after the .env cutover."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxxxx")
     mod = _load_module()
-    src = mod.existing_token_source()
-    assert src is not None
-    assert "env var" in src
+    assert mod.existing_token_source() is None
 
 
 def test_existing_token_source_reports_env_file(env_file):
@@ -161,13 +160,23 @@ def test_token_line_regex_rejects_short_or_malformed():
     assert mod.TOKEN_LINE_RE.search("sk-ant-api01-not-an-oauth-token") is None
 
 
-def test_main_check_only_exits_zero_when_set(env_file, monkeypatch, capsys):
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxx")
+def test_main_check_only_exits_zero_when_set(env_file, capsys):
+    env_file.write_text("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-xxx\n", encoding="utf-8")
     mod = _load_module()
     rc = mod.main(["--check-only"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "is set" in out
+
+
+def test_main_check_only_rejects_process_env_only_token(env_file, monkeypatch, capsys):
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxx")
+    mod = _load_module()
+    rc = mod.main(["--check-only"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert "only present in the process environment" in captured.err
+    assert "is NOT set" in captured.out
 
 
 def test_main_check_only_exits_one_when_unset(env_file, capsys):
@@ -178,10 +187,10 @@ def test_main_check_only_exits_one_when_unset(env_file, capsys):
     assert "is NOT set" in out
 
 
-def test_main_no_args_exits_zero_when_already_set(env_file, monkeypatch, capsys):
+def test_main_no_args_exits_zero_when_already_set(env_file, capsys):
     """Without ``--force``, the default path should not re-spawn ``claude
     setup-token`` when a token is already configured."""
-    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-xxx")
+    env_file.write_text("CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-xxx\n", encoding="utf-8")
     mod = _load_module()
     rc = mod.main([])
     assert rc == 0

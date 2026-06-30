@@ -86,9 +86,13 @@ def test_labels_bootstrap_creates_missing_labels(
 
 
 def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = Path(os.environ["ALFRED_HOME"])
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\nALFRED_RASALGHUL_REPOS=web,mobile\n",
+        encoding="utf-8",
+    )
     repos: list[str] = []
-    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "api,web")
-    monkeypatch.setenv("ALFRED_RASALGHUL_REPOS", "web,mobile")
     monkeypatch.setattr(
         cli_module,
         "_labels_bootstrap_one",
@@ -97,6 +101,49 @@ def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyP
 
     assert cli_module.main(["labels", "check", "--all"]) == 0
     assert repos == ["api", "web", "mobile"]
+
+
+def test_labels_all_hydrates_fleet_repo_env_from_runtime_env(
+    cli_module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = Path(os.environ["ALFRED_HOME"])
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\nALFRED_RASALGHUL_REPOS=web,mobile\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("ALFRED_LUCIUS_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_RASALGHUL_REPOS", raising=False)
+    repos: list[str] = []
+    monkeypatch.setattr(
+        cli_module,
+        "_labels_bootstrap_one",
+        lambda repo, *, check, force: repos.append(repo) or 0,
+    )
+
+    assert cli_module.main(["labels", "check", "--all"]) == 0
+    assert repos == ["api", "web", "mobile"]
+
+
+def test_labels_all_runtime_env_overrides_stale_shell_repo_env(
+    cli_module, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = Path(os.environ["ALFRED_HOME"])
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "stale/repo")
+    repos: list[str] = []
+    monkeypatch.setattr(
+        cli_module,
+        "_labels_bootstrap_one",
+        lambda repo, *, check, force: repos.append(repo) or 0,
+    )
+
+    assert cli_module.main(["labels", "check", "--all"]) == 0
+    assert repos == ["api", "web"]
 
 
 def test_capabilities_command_does_not_import_agent_runner(tmp_path: Path) -> None:
