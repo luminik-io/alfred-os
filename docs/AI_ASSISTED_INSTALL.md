@@ -119,7 +119,8 @@ Steps:
 
 4. Install prerequisites:
    ALFRED_NONINTERACTIVE=1 GH_ORG="$GH_ORG" OPERATOR_NAME="$OPERATOR_NAME" OPERATOR_EMAIL="$OPERATOR_EMAIL" bash install.sh
-   . "${ALFRED_HOME:-$HOME/.alfred}/.env"
+   export ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
+   export PATH="$HOME/.local/bin:$PATH"
 
 5. Check auth and pause for me if login is needed:
    gh auth status || { echo "GitHub auth needed. Run: gh auth login --hostname github.com --git-protocol https --web"; exit 1; }

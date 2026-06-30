@@ -122,7 +122,7 @@ The supported fix is a long-lived OAuth token that `claude` reads from an env va
 alfred setup-token
 ```
 
-This detects whether the token is already configured, runs `claude setup-token` for you, captures the printed token, appends `export CLAUDE_CODE_OAUTH_TOKEN=...` to `$ALFRED_HOME/.env`, and chmods the file to 0600. Rotate later with `alfred setup-token --force`. Check status without touching auth with `alfred setup-token --check-only`. The interactive browser approval step still happens. That part Anthropic owns and we cannot automate.
+This detects whether the token is already configured, runs `claude setup-token` for you, captures the printed token, writes `CLAUDE_CODE_OAUTH_TOKEN=...` to `$ALFRED_HOME/.env`, and chmods the file to 0600. Rotate later with `alfred setup-token --force`. Check status without touching auth with `alfred setup-token --check-only`. The interactive browser approval step still happens. That part Anthropic owns and we cannot automate.
 
 The `alfred-init` wizard offers to run this for you on first install, so most operators never need to invoke it directly.
 
@@ -134,10 +134,10 @@ If you'd rather drive the flow yourself:
 claude setup-token
 ```
 
-Approve in the browser, copy the printed token. Add it to `$ALFRED_HOME/.env` (which `agent-launch` sources on every firing):
+Approve in the browser, copy the printed token. Add it to `$ALFRED_HOME/.env` (which `agent-launch` parses on every firing):
 
 ```sh
-export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
 ```
 
 Tighten permissions so other accounts on the host cannot read it:
