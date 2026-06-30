@@ -385,7 +385,7 @@ export type RosterThemeWrite = {
   custom_roles?: Record<string, string>;
 };
 
-// Read-only GET, no token: any surface may learn the active cast.
+// Read-only GET, no token: any surface may learn the active roster theme.
 export async function loadRosterTheme(baseUrl: string): Promise<RosterThemeResponse> {
   return readAlfredJson<RosterThemeResponse>(baseUrl, "/api/roster-theme");
 }

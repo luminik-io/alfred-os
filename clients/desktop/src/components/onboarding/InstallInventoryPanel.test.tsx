@@ -138,10 +138,10 @@ describe("InstallInventoryPanel", () => {
               optional: true,
             },
             {
-              key: "cast",
-              label: "Agent cast",
+              key: "roster-theme",
+              label: "Roster theme",
               ok: true,
-              detail: "Custom cast active with 2 names and 1 role label.",
+              detail: "Custom roster active with 2 names and 1 role label.",
               path: "/tmp/alfred-home/state/roster-theme/roster-theme.json",
             },
           ],
@@ -152,7 +152,7 @@ describe("InstallInventoryPanel", () => {
     expect(screen.getByText(/repo local map/i)).toBeInTheDocument();
     expect(screen.getByText("acme/site")).toBeInTheDocument();
     expect(screen.getByText("../marketing/site")).toBeInTheDocument();
-    expect(screen.getByText(/agent cast/i)).toBeInTheDocument();
-    expect(screen.getByText(/custom cast active with 2 names and 1 role label/i)).toBeInTheDocument();
+    expect(screen.getByText(/roster theme/i)).toBeInTheDocument();
+    expect(screen.getByText(/custom roster active with 2 names and 1 role label/i)).toBeInTheDocument();
   });
 });

@@ -75,7 +75,7 @@ export function FleetControlView({
   schedule?: ScheduledRun[];
   service: FleetServiceState;
   nativeBusy: string | null;
-  // The active roster theme (name + role-label cast). Defaults to the shipped
+  // The active roster theme (name + role-label display layer). Defaults to the shipped
   // Batman roster so an omitted prop renders exactly as before.
   rosterTheme?: RosterThemeId;
   // Operator-authored names/roles for the `custom` theme; ignored by presets.

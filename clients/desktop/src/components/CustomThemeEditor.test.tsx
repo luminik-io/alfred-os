@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { CustomThemeEditor } from "./CustomThemeEditor";
 
 describe("CustomThemeEditor", () => {
-  it("renders live custom agents beyond the shipped preset cast", () => {
+  it("renders live custom agents beyond the shipped preset roster", () => {
     render(
       <CustomThemeEditor
         open

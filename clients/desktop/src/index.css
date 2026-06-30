@@ -1592,7 +1592,7 @@ body {
 }
 
 /* Plain role label shown after the themed name, so the role always reads
-   independent of whatever cast the roster theme applies. */
+   independent of whatever roster theme applies. */
 .agents-deck__row-role {
   margin-left: 0.5rem;
   display: inline-block;

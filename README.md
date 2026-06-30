@@ -459,7 +459,7 @@ Rendered version: https://alfred.luminik.io/.
 ## Codename pattern
 
 The framework expects one agent script per narrow specialist, named after a
-coherent fictional cast, coordinating via labels and gh state rather than
+coherent fictional team, coordinating via labels and gh state rather than
 in-process calls. The shipped examples use Batman side-characters:
 
 - **Batman** (architect)
@@ -472,15 +472,16 @@ in-process calls. The shipped examples use Batman side-characters:
 - **Huntress** (post-deploy smoke)
 - **Gordon** (deploy health)
 
-Pick whatever cast fits. The cast matters for two reasons. Codenames appear in PR
-titles, Slack messages, and commit-trailer metadata, so a coherent cast makes the
-fleet's channel scannable. And narrow scopes per codename force design quality:
-"what does Bane do?" is a sharper question than "what does the test agent do?".
+Pick whatever fictional roster fits. The naming pattern matters for two reasons.
+Codenames appear in PR titles, Slack messages, and commit-trailer metadata, so a
+coherent roster makes the fleet's channel scannable. And narrow scopes per
+codename force design quality: "what does Bane do?" is a sharper question than
+"what does the test agent do?".
 
 In the desktop app, roster themes and custom names are display identity only.
 They change the names and role labels shown in Agents, onboarding, and Slack,
 while stable runtime codenames, scheduler labels, GitHub labels, worktrees, and
-merge gates stay unchanged. If you add a new agent script later, the custom cast
+merge gates stay unchanged. If you add a new agent script later, the custom roster
 editor can name that live agent too.
 
 See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/) for more.

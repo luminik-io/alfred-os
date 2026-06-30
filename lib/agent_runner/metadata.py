@@ -46,7 +46,7 @@ def codename_with_role(codename: str) -> str:
     """Format ``"<codename> (<role>)"`` when a role is set, else the bare codename.
 
     Slack post prefixes and CLI status output use this so a reader who
-    hasn't memorised the agent cast still gets operational context next
+    hasn't memorised the roster still gets operational context next
     to every codename.
     """
     role = agent_role(codename)

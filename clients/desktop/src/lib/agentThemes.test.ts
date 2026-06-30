@@ -220,7 +220,7 @@ describe("custom roster theme", () => {
     expect(id.name).toBe("Optimus Prime");
   });
 
-  it("can name a future custom agent without adding it to the preset cast", () => {
+  it("can name a future custom agent without adding it to the preset roster", () => {
     const id = resolveThemedIdentity(
       { codename: "security-scout", roleTitle: "Code Reviewer" },
       "custom",
@@ -236,7 +236,7 @@ describe("custom roster theme", () => {
 });
 
 describe("editableAgents", () => {
-  it("lists the full default cast with a role, name, and role label each", () => {
+  it("lists the full default roster with a role, name, and role label each", () => {
     const agents = editableAgents();
     expect(agents.length).toBeGreaterThan(0);
     for (const agent of agents) {

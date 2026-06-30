@@ -3,7 +3,7 @@
 // theme maps each canonical role to a plain role label, and maps each known
 // fleet codename to a themed persona name. The default theme reproduces the
 // shipped Batman roster exactly (no visible change unless the operator picks
-// another theme); presets re-skin the SAME fleet with a matched cast while the
+// another theme); presets re-skin the SAME fleet with matched display names while the
 // roles stay identical.
 //
 // The desktop picker, server persistence, custom-name editor, and Slack
@@ -48,7 +48,7 @@ export type RosterTheme = {
 };
 
 // The canonical fleet codenames the presets re-skin. Kept in one place so every
-// theme covers the same cast and a missing entry is obvious.
+// theme covers the same roster and a missing entry is obvious.
 const ROLE_LABELS_DEFAULT: Record<WorkflowRole, string> = {
   triage: "Triage lead",
   architect: "Architect",
@@ -185,7 +185,7 @@ export const EMPTY_CUSTOM_NAMES: CustomRosterNames = { names: {}, roles: {} };
 
 const CUSTOM_THEME_META = {
   label: "Custom",
-  blurb: "Your own cast. Rename each agent; blanks keep the Batman name.",
+  blurb: "Your own roster. Rename each agent; blanks keep default names.",
 } as const;
 
 // Build the `custom` theme by overlaying the operator's names/roles on the
@@ -296,7 +296,7 @@ export function resolveThemedIdentity(
 
 // The known fleet codenames the custom-theme editor lets the operator rename,
 // each with its canonical role and the shipped Batman name as the placeholder.
-// Drawn from the Batman base so the editor always covers the full default cast.
+// Drawn from the Batman base so the editor always covers the full default roster.
 export type EditableAgent = {
   codename: string;
   role: WorkflowRole;

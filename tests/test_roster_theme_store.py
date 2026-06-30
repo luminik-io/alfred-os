@@ -78,7 +78,7 @@ def test_dotted_codename_normalizes_to_bare_slug(tmp_path: Path) -> None:
 
 def test_preset_theme_does_not_expose_custom_names(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    # Under a preset, the authored cast is never exposed (display_name_for is
+    # Under a preset, the authored roster is never exposed (display_name_for is
     # None), even though the names are retained on disk for a later switch back.
     store.save(theme="custom", custom_names={"batman": "Sherlock"})
     store.save(theme="batman")
@@ -87,9 +87,9 @@ def test_preset_theme_does_not_expose_custom_names(tmp_path: Path) -> None:
     assert loaded.display_name_for("batman") is None
 
 
-def test_preset_switch_retains_custom_cast_for_later_restore(tmp_path: Path) -> None:
+def test_preset_switch_retains_custom_roster_for_later_restore(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    # Author a custom cast, then temporarily switch to a preset with no payload.
+    # Author a custom roster, then temporarily switch to a preset with no payload.
     store.save(
         theme="custom",
         custom_names={"batman": "Sherlock"},
@@ -97,7 +97,7 @@ def test_preset_switch_retains_custom_cast_for_later_restore(tmp_path: Path) -> 
     )
     store.save(theme="justice-league")
 
-    # The preset is active and exposes nothing, but the authored cast survives on
+    # The preset is active and exposes nothing, but the authored roster survives on
     # disk so a restart (fresh load) does not lose it.
     reloaded = _store(tmp_path).load()
     assert reloaded.theme == "justice-league"
@@ -105,7 +105,7 @@ def test_preset_switch_retains_custom_cast_for_later_restore(tmp_path: Path) -> 
     assert dict(reloaded.custom_names) == {"batman": "Sherlock"}
     assert dict(reloaded.custom_roles) == {"batman": "Lead detective"}
 
-    # Switching back to custom (no payload) restores the authored cast intact.
+    # Switching back to custom (no payload) restores the authored roster intact.
     store.save(theme="custom")
     restored = _store(tmp_path).load()
     assert restored.theme == "custom"
@@ -113,10 +113,10 @@ def test_preset_switch_retains_custom_cast_for_later_restore(tmp_path: Path) -> 
     assert restored.role_label_for("batman") == "Lead detective"
 
 
-def test_explicit_custom_payload_replaces_retained_cast(tmp_path: Path) -> None:
+def test_explicit_custom_payload_replaces_retained_roster(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.save(theme="custom", custom_names={"batman": "Sherlock"})
-    # An explicit (even empty) custom payload on a preset write clears the cast,
+    # An explicit (even empty) custom payload on a preset write clears the roster,
     # so the operator can deliberately discard it rather than have it linger.
     store.save(theme="batman", custom_names={}, custom_roles={})
     loaded = _store(tmp_path).load()
@@ -231,14 +231,14 @@ def test_load_unknown_theme_falls_back_to_default(tmp_path: Path) -> None:
     assert RosterThemeStore.from_state_root(tmp_path / "state").load().theme == "batman"
 
 
-def test_preset_maps_cover_the_same_cast_as_batman_base() -> None:
+def test_preset_maps_cover_the_same_roster_as_batman_base() -> None:
     # Every preset re-skins the SAME fleet as the Batman base. If a new agent is
     # added to BATMAN_BASE_NAMES without a matching entry in each preset, Slack
     # would render that agent's bare codename under a preset while the desktop
     # shows a themed name. Hold the codename sets identical so that cannot ship.
     base = set(BATMAN_BASE_NAMES)
     for theme, names in PRESET_DISPLAY_NAMES.items():
-        assert set(names) == base, f"{theme} preset cast drifted from the Batman base"
+        assert set(names) == base, f"{theme} preset roster drifted from the Batman base"
 
 
 def test_batman_base_uses_canonical_scheduled_codenames() -> None:

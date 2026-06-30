@@ -14,7 +14,7 @@ const PRIMARY_ITEMS = [
   "agents",
   "repos",
   "repo-map",
-  "cast",
+  "roster-theme",
   "slack",
   "memory",
   "token",

@@ -54,7 +54,7 @@ export function firingChip(firing: FiringRecord): Chip {
 }
 
 // ---------------------------------------------------------------------------
-// Agents (the cast, not a stage). idle is gray, never green or "Running".
+// Agents (the roster, not a stage). idle is gray, never green or "Running".
 // ---------------------------------------------------------------------------
 
 export function agentChip(agent: { status?: string; paused?: boolean }): Chip {

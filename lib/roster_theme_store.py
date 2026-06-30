@@ -1,7 +1,7 @@
 """Server-side persistence for the active roster theme and custom names.
 
-The roster theme is the named cast applied to the agent roster: the shipped
-Batman roster by default, plus presets (Transformers, Justice League) and an
+The roster theme is the named display layer applied to the agent roster: the
+shipped Batman roster by default, plus presets (Transformers, Justice League) and an
 operator-authored ``custom`` theme. The desktop client picked themes in #303 but
 only persisted the choice to ``localStorage``, so the choice never reached other
 surfaces. This module gives the choice one inspectable home under the runtime
@@ -123,7 +123,7 @@ BATMAN_BASE_ROLES: dict[str, str] = {
 }
 
 
-# The preset rosters re-skin the SAME cast as the Batman base, so each preset
+# The preset rosters re-skin the SAME fleet as the Batman base, so each preset
 # names every codename ``BATMAN_BASE_NAMES`` does. The presets share the Batman
 # role labels (agentThemes.ts gives every preset ``ROLE_LABELS_DEFAULT`` with no
 # per-codename override), so a preset's role label is ``BATMAN_BASE_ROLES`` for
@@ -346,11 +346,11 @@ class RosterThemeStore:
         roles = _validate_label_map(custom_roles, field="custom_roles")
         # A theme switch that carries no custom payload (the desktop sends only a
         # ``theme`` when it flips presets) must NOT delete the authored custom
-        # cast: retain whatever the operator last saved. Under a preset the names
+        # roster: retain whatever the operator last saved. Under a preset the names
         # are kept on disk but never exposed (display_name_for/role_label_for
         # return None for any non-custom theme); switching back to ``custom`` (or
         # a restart) then restores them. Only an explicit custom payload on this
-        # write replaces the retained cast, so the operator can still clear it.
+        # write replaces the retained roster, so the operator can still clear it.
         retain_existing = custom_names is None and custom_roles is None
         with self._locked():
             if retain_existing:

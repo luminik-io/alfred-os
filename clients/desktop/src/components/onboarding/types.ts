@@ -6,7 +6,7 @@ import type { TabKey } from "../../lib/uiTypes";
 //   engine  -> detect installed Claude / Codex CLIs (no API keys)
 //   github  -> reuse the gh sign-in
 //   repos   -> pick repos by name + description
-//   team    -> choose the display cast for agents while roles stay stable
+//   team    -> choose roster display names while roles stay stable
 //   slack   -> optional approvals in Slack (clearly skippable)
 //   request -> the payoff: a real first Request, or a labelled demo
 export type OnboardingStepKey =

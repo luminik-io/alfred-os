@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
  *   1 Tools          detect Claude / Codex (no API keys)
  *   2 GitHub         reuse the gh sign-in (auto-advance when signed in)
  *   3 Repositories   pick by name + description (private badge)
- *   4 Team           pick the agent cast / custom names
+ *   4 Team           pick roster theme / custom names
  *   5 Slack          optional approvals, clearly skippable
  *   6 First request  a real Request, or a labelled sample
  *
@@ -145,7 +145,7 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
     key: "team",
     title: "Name your team",
     railTitle: "Team",
-    blurb: "Pick a cast for the same senior-engineering roles.",
+    blurb: "Pick visible names for the same senior-engineering roles.",
     icon: Users,
     optional: false,
   },
@@ -504,7 +504,7 @@ export function OnboardingView({
         case "repos":
           return reposSelected;
         case "team":
-          // The shipped Batman cast is already valid. Keeping the default is a
+          // The shipped Batman roster is already valid. Keeping the default is a
           // complete state only after the operator continues past Team.
           return reachedIndex > ONBOARDING_STEP_ORDER.indexOf("team");
         case "slack":
@@ -864,7 +864,7 @@ function RosterThemeStep({
       />
       <div className="grid gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="rounded-lg border border-border/70 bg-card/60 p-4">
-          <p className="text-xs font-medium uppercase text-muted-foreground">Active cast</p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">Active roster</p>
           <h3 className="mt-1 text-lg font-medium text-foreground">
             {rosterThemeLabel(rosterTheme)}
           </h3>

@@ -1298,8 +1298,8 @@ def install_inventory(
             optional=True,
         ),
         _inventory_item(
-            "cast",
-            "Agent cast",
+            "roster-theme",
+            "Roster theme",
             True,
             _roster_theme_detail(roster_theme),
             _roster_theme_store_path(home) if roster_theme["path"] else None,
@@ -1420,11 +1420,11 @@ def _roster_theme_detail(theme: dict[str, Any]) -> str:
         role_count = int(theme.get("custom_roles_count") or 0)
         if name_count or role_count:
             return (
-                f"Custom cast active with {name_count} name"
+                f"Custom roster active with {name_count} name"
                 f"{'' if name_count == 1 else 's'} and {role_count} role label"
                 f"{'' if role_count == 1 else 's'}."
             )
-        return "Custom cast active; unnamed agents keep the Batman defaults."
+        return "Custom roster active; unnamed agents keep the default names."
     return f"{label} roster active."
 
 
