@@ -35,19 +35,110 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-# The preset ids the client ships. ``custom`` is the operator-authored theme
-# whose names/roles live in this store. Kept in lockstep with the desktop
-# ``agentThemes.ts`` RosterThemeId union; a value outside this set is rejected so
-# a typo can never silently persist an unknown theme.
-PRESET_THEME_IDS: tuple[str, ...] = ("batman", "transformers", "justice-league")
-CUSTOM_THEME_ID = "custom"
-VALID_THEME_IDS: tuple[str, ...] = (*PRESET_THEME_IDS, CUSTOM_THEME_ID)
-DEFAULT_THEME_ID = "batman"
+_BATMAN_BASE_THEME_ID = "batman"
 
 # A fleet codename is a short slug (``batman``, ``fleet-doctor``). We never store
 # anything that does not look like one, so the map can never be abused to carry
 # free text. Length is bounded to keep a single entry small.
 _CODENAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+
+
+def _load_roster_manifest() -> dict[str, Any]:
+    path = Path(__file__).with_name("roster_manifest.json")
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    return _validate_roster_manifest(payload, path)
+
+
+def _manifest_error(path: Path, message: str) -> RuntimeError:
+    return RuntimeError(f"invalid roster manifest {path}: {message}")
+
+
+def _validate_roster_manifest(payload: Any, path: Path) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise _manifest_error(path, "top-level payload must be an object")
+
+    preset_ids_raw = payload.get("preset_theme_ids")
+    if (
+        not isinstance(preset_ids_raw, list)
+        or not preset_ids_raw
+        or not all(isinstance(theme_id, str) and theme_id.strip() for theme_id in preset_ids_raw)
+    ):
+        raise _manifest_error(path, "preset_theme_ids must be a non-empty string array")
+    preset_ids = tuple(theme_id.strip() for theme_id in preset_ids_raw)
+    if _BATMAN_BASE_THEME_ID not in preset_ids:
+        raise _manifest_error(path, f"preset_theme_ids must include {_BATMAN_BASE_THEME_ID!r}")
+
+    default_theme = payload.get("default_theme")
+    if not isinstance(default_theme, str) or default_theme not in preset_ids:
+        raise _manifest_error(path, "default_theme must be one of preset_theme_ids")
+
+    role_labels = payload.get("role_labels")
+    if not isinstance(role_labels, Mapping) or not role_labels:
+        raise _manifest_error(path, "role_labels must be a non-empty object")
+    for role, label in role_labels.items():
+        if not isinstance(role, str) or not role.strip():
+            raise _manifest_error(path, "role_labels keys must be non-empty strings")
+        if not isinstance(label, str) or not label.strip():
+            raise _manifest_error(path, f"role_labels[{role!r}] must be a non-empty string")
+
+    themes = payload.get("themes")
+    if not isinstance(themes, Mapping):
+        raise _manifest_error(path, "themes must be an object keyed by preset theme id")
+    for theme_id in preset_ids:
+        meta = themes.get(theme_id)
+        if not isinstance(meta, Mapping):
+            raise _manifest_error(path, f"themes[{theme_id!r}] must be an object")
+        for field in ("label", "blurb"):
+            value = meta.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise _manifest_error(path, f"themes[{theme_id!r}].{field} must be non-empty")
+
+    agents = payload.get("agents")
+    if not isinstance(agents, list) or not agents:
+        raise _manifest_error(path, "agents must be a non-empty array")
+    seen: set[str] = set()
+    for index, agent in enumerate(agents):
+        if not isinstance(agent, Mapping):
+            raise _manifest_error(path, f"agents[{index}] must be an object")
+        codename = agent.get("codename")
+        if not isinstance(codename, str) or not _CODENAME_RE.fullmatch(codename):
+            raise _manifest_error(path, f"agents[{index}].codename is not a valid codename")
+        if codename in seen:
+            raise _manifest_error(path, f"duplicate agent codename {codename!r}")
+        seen.add(codename)
+        role = agent.get("role")
+        if not isinstance(role, str) or role not in role_labels:
+            raise _manifest_error(path, f"agents[{index}].role must reference role_labels")
+        names = agent.get("names")
+        if not isinstance(names, Mapping):
+            raise _manifest_error(path, f"agents[{index}].names must be an object")
+        for theme_id in preset_ids:
+            name = names.get(theme_id)
+            if not isinstance(name, str) or not name.strip():
+                raise _manifest_error(
+                    path, f"agents[{index}].names[{theme_id!r}] must be non-empty"
+                )
+
+    return payload
+
+
+_ROSTER_MANIFEST = _load_roster_manifest()
+_MANIFEST_AGENTS: tuple[dict[str, Any], ...] = tuple(_ROSTER_MANIFEST.get("agents") or ())
+_ROLE_LABELS_DEFAULT: dict[str, str] = {
+    str(role): str(label) for role, label in dict(_ROSTER_MANIFEST.get("role_labels") or {}).items()
+}
+
+# The preset ids the client ships. ``custom`` is the operator-authored theme
+# whose names/roles live in this store. Kept in lockstep with the desktop
+# ``agentThemes.ts`` RosterThemeId union; a value outside this set is rejected so
+# a typo can never silently persist an unknown theme.
+PRESET_THEME_IDS: tuple[str, ...] = tuple(
+    str(theme_id) for theme_id in (_ROSTER_MANIFEST.get("preset_theme_ids") or ())
+)
+CUSTOM_THEME_ID = "custom"
+VALID_THEME_IDS: tuple[str, ...] = (*PRESET_THEME_IDS, CUSTOM_THEME_ID)
+DEFAULT_THEME_ID = str(_ROSTER_MANIFEST.get("default_theme") or "batman")
 
 # Operator-chosen display names and role labels are short, human, single-line.
 # We strip control characters and bound the length so a name can never carry a
@@ -60,126 +151,26 @@ _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _MAX_CUSTOM_ENTRIES = 128
 
 # The shipped Batman display name per known fleet codename. The desktop builds a
-# ``custom`` theme on top of this base (agentThemes.ts ``BATMAN_THEME``), so an
-# agent the operator has NOT renamed still shows its Batman-base name there. This
-# table mirrors that base so the Slack path resolves the same name for an unnamed
-# agent under a custom theme, instead of falling back to the bare codename and
-# diverging from the desktop. Kept in lockstep with ``agentThemes.ts``.
+# ``custom`` theme on top of this base, so an agent the operator has NOT renamed
+# still shows its Batman-base name there. Derived from ``roster_manifest.json``
+# so Python and the desktop share one roster contract.
 BATMAN_BASE_NAMES: dict[str, str] = {
-    "robin": "Robin",
-    "drake": "Drake",
-    "damian": "Damian",
-    "batman": "Batman",
-    "lucius": "Lucius",
-    "bane": "Bane",
-    "nightwing": "Nightwing",
-    "rasalghul": "Ra's al Ghul",
-    "huntress": "Huntress",
-    "automerge": "Auto-merge",
-    "gordon": "Gordon",
-    "fleet-doctor": "Fleet doctor",
-    "agent-cleanup": "Agent cleanup",
-    "memory-harvest": "Memory harvest",
-    "memory-auto-promote": "Memory auto-promote",
-    "code-map-refresh": "Code map",
-    "agent-morning-brief": "Morning brief",
-    "fleet-recap-morning": "Fleet recap morning",
-    "fleet-recap-evening": "Fleet recap evening",
-    "shipped-summary-daily": "Shipped summary daily",
-    "shipped-summary-weekly": "Shipped summary weekly",
-    "proof-telemetry": "Telemetry",
+    str(agent["codename"]): str(agent["names"][_BATMAN_BASE_THEME_ID]) for agent in _MANIFEST_AGENTS
 }
 
-# The shipped Batman role label per known fleet codename. The desktop custom
-# theme falls back to this Batman-base role label (agentThemes.ts
-# ``ROLE_LABELS_DEFAULT`` keyed via ``CODENAME_ROLE_HINTS``) when the operator
-# names an agent but sets no per-agent role label. The Slack path must resolve
-# the SAME label there, instead of falling back to the ``ALFRED_<CODENAME>_ROLE``
-# env label, so a saved ``batman -> Sherlock`` without a custom role renders
-# identically on both surfaces. Kept in lockstep with ``agentThemes.ts``.
+# The shipped Batman role label per known fleet codename. Derived from the
+# manifest's canonical role for the codename plus its role label table.
 BATMAN_BASE_ROLES: dict[str, str] = {
-    "robin": "Triage lead",
-    "drake": "Triage lead",
-    "damian": "Triage lead",
-    "batman": "Architect",
-    "lucius": "Senior developer",
-    "bane": "Senior developer",
-    "nightwing": "Senior developer",
-    "rasalghul": "Reviewer",
-    "automerge": "Release",
-    "gordon": "Ops & health",
-    "fleet-doctor": "Ops & health",
-    "huntress": "Ops & health",
-    "agent-cleanup": "Ops & health",
-    "memory-harvest": "Ops & health",
-    "memory-auto-promote": "Ops & health",
-    "code-map-refresh": "Ops & health",
-    "agent-morning-brief": "Ops & health",
-    "fleet-recap-morning": "Ops & health",
-    "fleet-recap-evening": "Ops & health",
-    "shipped-summary-daily": "Release",
-    "shipped-summary-weekly": "Release",
-    "proof-telemetry": "Ops & health",
+    str(agent["codename"]): _ROLE_LABELS_DEFAULT[str(agent["role"])] for agent in _MANIFEST_AGENTS
 }
 
-
-# The preset rosters re-skin the SAME fleet as the Batman base, so each preset
-# names every codename ``BATMAN_BASE_NAMES`` does. The presets share the Batman
-# role labels (agentThemes.ts gives every preset ``ROLE_LABELS_DEFAULT`` with no
-# per-codename override), so a preset's role label is ``BATMAN_BASE_ROLES`` for
-# the codename; only the display name changes. Kept in lockstep with the
-# desktop ``agentThemes.ts`` preset ``nameByCodename`` maps; a parity test holds
-# the codename set identical to ``BATMAN_BASE_NAMES`` so a new agent cannot be
-# named under Batman without also being named under every preset.
+# The preset rosters re-skin the SAME fleet as the Batman base; only the display
+# name changes. Derived from the manifest so new codenames/themes cannot drift
+# between Python Slack rendering and the desktop.
 PRESET_DISPLAY_NAMES: dict[str, dict[str, str]] = {
-    "transformers": {
-        "robin": "Bumblebee",
-        "drake": "Hot Rod",
-        "damian": "Blurr",
-        "batman": "Optimus Prime",
-        "lucius": "Ironhide",
-        "bane": "Grimlock",
-        "nightwing": "Sideswipe",
-        "rasalghul": "Ratchet",
-        "huntress": "Arcee",
-        "automerge": "Jazz",
-        "gordon": "Wheeljack",
-        "fleet-doctor": "Perceptor",
-        "agent-cleanup": "Cosmos",
-        "memory-harvest": "Brainstorm",
-        "memory-auto-promote": "Chromia",
-        "code-map-refresh": "Beachcomber",
-        "agent-morning-brief": "Prowl",
-        "fleet-recap-morning": "Trailbreaker",
-        "fleet-recap-evening": "Mirage",
-        "shipped-summary-daily": "Sunstreaker",
-        "shipped-summary-weekly": "Wheelie",
-        "proof-telemetry": "Blaster",
-    },
-    "justice-league": {
-        "robin": "The Flash",
-        "drake": "Green Arrow",
-        "damian": "Hawkgirl",
-        "batman": "Batman",
-        "lucius": "Superman",
-        "bane": "Shazam",
-        "nightwing": "Aquaman",
-        "rasalghul": "Wonder Woman",
-        "huntress": "Martian Manhunter",
-        "automerge": "Green Lantern",
-        "gordon": "Cyborg",
-        "fleet-doctor": "Doctor Fate",
-        "agent-cleanup": "Atom",
-        "memory-harvest": "Zatanna",
-        "memory-auto-promote": "Mister Miracle",
-        "code-map-refresh": "Vixen",
-        "agent-morning-brief": "Oracle",
-        "fleet-recap-morning": "Blue Beetle",
-        "fleet-recap-evening": "Black Canary",
-        "shipped-summary-daily": "Hawkman",
-        "shipped-summary-weekly": "Booster Gold",
-        "proof-telemetry": "Firestorm",
-    },
+    theme_id: {str(agent["codename"]): str(agent["names"][theme_id]) for agent in _MANIFEST_AGENTS}
+    for theme_id in PRESET_THEME_IDS
+    if theme_id != _BATMAN_BASE_THEME_ID
 }
 
 

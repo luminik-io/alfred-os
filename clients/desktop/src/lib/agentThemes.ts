@@ -11,20 +11,15 @@
 // roster by role/engine metadata, not fork the naming model.
 
 import {
-  CODENAME_ROLE_HINTS,
   deriveAgentRole,
   type RoleSource,
   type WorkflowRole,
 } from "./agentRoster";
-
-// Canonical role per known fleet codename, used to map an operator's per-agent
-// custom role label back onto the canonical role the theme keys on.
-const BATMAN_ROLE_BY_CODENAME: Record<string, WorkflowRole> = CODENAME_ROLE_HINTS;
+import { ROSTER_MANIFEST, type PresetRosterThemeId } from "./rosterManifest";
 
 // The preset ids re-skin the shipped fleet. `custom` is the operator-authored
 // theme whose names + role labels are persisted server-side (and mirrored to
 // localStorage), so the choice is shared across the desktop and the Slack path.
-export type PresetRosterThemeId = "batman" | "transformers" | "justice-league";
 export type RosterThemeId = PresetRosterThemeId | "custom";
 
 export type RosterTheme = {
@@ -47,123 +42,59 @@ export type RosterTheme = {
   roleLabelByCodename?: Record<string, string>;
 };
 
-// The canonical fleet codenames the presets re-skin. Kept in one place so every
-// theme covers the same roster and a missing entry is obvious.
-const ROLE_LABELS_DEFAULT: Record<WorkflowRole, string> = {
-  triage: "Triage lead",
-  architect: "Architect",
-  implement: "Senior developer",
-  review: "Reviewer",
-  ship: "Release",
-  ops: "Ops & health",
-};
+// Canonical role per known fleet codename, used to map an operator's per-agent
+// custom role label back onto the canonical role the theme keys on.
+const BATMAN_ROLE_BY_CODENAME: Record<string, WorkflowRole> = Object.fromEntries(
+  ROSTER_MANIFEST.agents.map((agent) => [agent.codename, agent.role]),
+);
 
-const BATMAN_THEME: RosterTheme = {
-  id: "batman",
-  label: "Batman",
-  blurb: "The shipped Gotham roster. Roles stay plain; names are the codenames.",
-  roleLabels: ROLE_LABELS_DEFAULT,
-  nameByCodename: {
-    robin: "Robin",
-    drake: "Drake",
-    damian: "Damian",
-    batman: "Batman",
-    lucius: "Lucius",
-    bane: "Bane",
-    nightwing: "Nightwing",
-    rasalghul: "Ra's al Ghul",
-    huntress: "Huntress",
-    automerge: "Auto-merge",
-    gordon: "Gordon",
-    "fleet-doctor": "Fleet doctor",
-    "agent-cleanup": "Agent cleanup",
-    "memory-harvest": "Memory harvest",
-    "memory-auto-promote": "Memory auto-promote",
-    "code-map-refresh": "Code map",
-    "agent-morning-brief": "Morning brief",
-    "fleet-recap-morning": "Fleet recap morning",
-    "fleet-recap-evening": "Fleet recap evening",
-    "shipped-summary-daily": "Shipped summary daily",
-    "shipped-summary-weekly": "Shipped summary weekly",
-    "proof-telemetry": "Telemetry",
-  },
-};
+// The canonical role labels the presets share. Kept in the manifest so Python
+// Slack rendering and the desktop resolve the same role text.
+const ROLE_LABELS_DEFAULT: Record<WorkflowRole, string> = ROSTER_MANIFEST.role_labels;
 
-const TRANSFORMERS_THEME: RosterTheme = {
-  id: "transformers",
-  label: "Transformers",
-  blurb: "Autobots on the line. Optimus Prime leads the architecture.",
-  roleLabels: ROLE_LABELS_DEFAULT,
-  nameByCodename: {
-    robin: "Bumblebee",
-    drake: "Hot Rod",
-    damian: "Blurr",
-    batman: "Optimus Prime",
-    lucius: "Ironhide",
-    bane: "Grimlock",
-    nightwing: "Sideswipe",
-    rasalghul: "Ratchet",
-    huntress: "Arcee",
-    automerge: "Jazz",
-    gordon: "Wheeljack",
-    "fleet-doctor": "Perceptor",
-    "agent-cleanup": "Cosmos",
-    "memory-harvest": "Brainstorm",
-    "memory-auto-promote": "Chromia",
-    "code-map-refresh": "Beachcomber",
-    "agent-morning-brief": "Prowl",
-    "fleet-recap-morning": "Trailbreaker",
-    "fleet-recap-evening": "Mirage",
-    "shipped-summary-daily": "Sunstreaker",
-    "shipped-summary-weekly": "Wheelie",
-    "proof-telemetry": "Blaster",
-  },
-};
+function fallbackThemeLabel(themeId: string): string {
+  return themeId
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
-const JUSTICE_LEAGUE_THEME: RosterTheme = {
-  id: "justice-league",
-  label: "Justice League",
-  blurb: "The League takes the pipeline. Batman architects, the others ship.",
-  roleLabels: ROLE_LABELS_DEFAULT,
-  nameByCodename: {
-    robin: "The Flash",
-    drake: "Green Arrow",
-    damian: "Hawkgirl",
-    batman: "Batman",
-    lucius: "Superman",
-    bane: "Shazam",
-    nightwing: "Aquaman",
-    rasalghul: "Wonder Woman",
-    huntress: "Martian Manhunter",
-    automerge: "Green Lantern",
-    gordon: "Cyborg",
-    "fleet-doctor": "Doctor Fate",
-    "agent-cleanup": "Atom",
-    "memory-harvest": "Zatanna",
-    "memory-auto-promote": "Mister Miracle",
-    "code-map-refresh": "Vixen",
-    "agent-morning-brief": "Oracle",
-    "fleet-recap-morning": "Blue Beetle",
-    "fleet-recap-evening": "Black Canary",
-    "shipped-summary-daily": "Hawkman",
-    "shipped-summary-weekly": "Booster Gold",
-    "proof-telemetry": "Firestorm",
-  },
-};
+function manifestThemeMeta(themeId: PresetRosterThemeId): { label: string; blurb: string } {
+  const meta = ROSTER_MANIFEST.themes[themeId];
+  const label = meta?.label?.trim() || fallbackThemeLabel(themeId);
+  const blurb = meta?.blurb?.trim() || "Preset roster theme.";
+  return { label, blurb };
+}
+
+function manifestNameByCodename(themeId: PresetRosterThemeId): Record<string, string> {
+  return Object.fromEntries(
+    ROSTER_MANIFEST.agents.map((agent) => [agent.codename, agent.names[themeId]]),
+  );
+}
+
+function buildPresetTheme(themeId: PresetRosterThemeId): RosterTheme {
+  const meta = manifestThemeMeta(themeId);
+  return {
+    id: themeId,
+    label: meta.label,
+    blurb: meta.blurb,
+    roleLabels: ROLE_LABELS_DEFAULT,
+    nameByCodename: manifestNameByCodename(themeId),
+  };
+}
+
+const BATMAN_THEME: RosterTheme = buildPresetTheme("batman");
 
 // The preset themes only (the `custom` theme is built at runtime from the
 // operator's persisted names, so it has no static entry here).
-export const PRESET_ROSTER_THEMES: Record<PresetRosterThemeId, RosterTheme> = {
-  batman: BATMAN_THEME,
-  transformers: TRANSFORMERS_THEME,
-  "justice-league": JUSTICE_LEAGUE_THEME,
-};
+export const PRESET_ROSTER_THEMES: Record<PresetRosterThemeId, RosterTheme> =
+  Object.fromEntries(
+    ROSTER_MANIFEST.preset_theme_ids.map((themeId) => [themeId, buildPresetTheme(themeId)]),
+  ) as Record<PresetRosterThemeId, RosterTheme>;
 
-export const PRESET_ROSTER_THEME_IDS: readonly PresetRosterThemeId[] = [
-  "batman",
-  "transformers",
-  "justice-league",
-];
+export const PRESET_ROSTER_THEME_IDS: readonly PresetRosterThemeId[] =
+  ROSTER_MANIFEST.preset_theme_ids;
 
 // The full set the picker offers, custom last so the presets read first.
 export const ROSTER_THEME_IDS: readonly RosterThemeId[] = [
@@ -171,7 +102,7 @@ export const ROSTER_THEME_IDS: readonly RosterThemeId[] = [
   "custom",
 ];
 
-export const DEFAULT_ROSTER_THEME: RosterThemeId = "batman";
+export const DEFAULT_ROSTER_THEME: RosterThemeId = ROSTER_MANIFEST.default_theme;
 
 // The operator's authored maps for the `custom` theme: codename -> display
 // name and codename -> role label. Anything the operator has not named falls

@@ -8,9 +8,12 @@ import {
 import {
   editableAgents,
   isRosterThemeId,
+  PRESET_ROSTER_THEME_IDS,
   resolveThemedIdentity,
   ROSTER_THEME_IDS,
+  rosterThemeBlurb,
   rosterThemeFor,
+  rosterThemeLabel,
 } from "./agentThemes";
 
 describe("deriveAgentRole", () => {
@@ -156,6 +159,23 @@ describe("isRosterThemeId", () => {
     }
     expect(isRosterThemeId("nope")).toBe(false);
     expect(isRosterThemeId(null)).toBe(false);
+  });
+});
+
+describe("shared roster manifest", () => {
+  it("gives every preset the same codename coverage and nonblank names", () => {
+    const base = Object.keys(rosterThemeFor("batman").nameByCodename).sort();
+    expect(base.length).toBeGreaterThan(0);
+
+    for (const themeId of PRESET_ROSTER_THEME_IDS) {
+      const names = rosterThemeFor(themeId).nameByCodename;
+      expect(rosterThemeLabel(themeId).trim().length).toBeGreaterThan(0);
+      expect(rosterThemeBlurb(themeId).trim().length).toBeGreaterThan(0);
+      expect(Object.keys(names).sort()).toEqual(base);
+      for (const name of Object.values(names)) {
+        expect(name.trim().length).toBeGreaterThan(0);
+      }
+    }
   });
 });
 
