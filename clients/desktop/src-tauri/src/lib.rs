@@ -1207,11 +1207,10 @@ fn read_child_output(child: &mut Child) -> (Vec<u8>, Vec<u8>) {
 fn terminate_child_tree(mut child: Child) {
     #[cfg(unix)]
     {
-        let group = format!("-{}", child.id());
-        let _ = Command::new("/bin/kill").arg("-TERM").arg(&group).status();
+        signal_child_group(&child, libc::SIGTERM);
         thread::sleep(Duration::from_millis(200));
         if matches!(child.try_wait(), Ok(None)) {
-            let _ = Command::new("/bin/kill").arg("-KILL").arg(&group).status();
+            signal_child_group(&child, libc::SIGKILL);
         }
     }
     let _ = child.kill();
@@ -1228,6 +1227,16 @@ fn wait_for_child_exit(child: &mut Child, timeout: Duration) -> bool {
             Ok(None) if started.elapsed() >= timeout => return false,
             Ok(None) => thread::sleep(Duration::from_millis(20)),
         }
+    }
+}
+
+#[cfg(unix)]
+fn signal_child_group(child: &Child, signal: libc::c_int) {
+    let Ok(pid) = libc::pid_t::try_from(child.id()) else {
+        return;
+    };
+    unsafe {
+        let _ = libc::kill(-pid, signal);
     }
 }
 
@@ -1974,8 +1983,8 @@ mod tests {
     fn native_command_timeout_returns_bounded_failure() {
         let started = Instant::now();
         let result = run_native_command_blocking(
-            "/bin/sh".to_string(),
-            vec!["-c".to_string(), "sleep 2".to_string()],
+            "/bin/sleep".to_string(),
+            vec!["2".to_string()],
             Duration::from_millis(50),
         )
         .expect("timeout result should be captured");
