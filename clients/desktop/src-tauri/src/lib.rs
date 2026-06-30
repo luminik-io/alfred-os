@@ -639,7 +639,11 @@ fn is_allowed_conversation_control(path: &str) -> bool {
 fn is_allowed_setup_action(path: &str) -> bool {
     matches!(
         path,
-        "/api/setup/repos" | "/api/setup/playbook" | "/api/setup/demo" | "/api/setup/demo/clear"
+        "/api/setup/repos"
+            | "/api/setup/playbook"
+            | "/api/setup/demo"
+            | "/api/setup/demo/clear"
+            | "/api/setup/roster-theme"
     )
 }
 
@@ -1674,6 +1678,7 @@ mod tests {
         for write in [
             "/api/setup/repos",
             "/api/setup/playbook",
+            "/api/setup/roster-theme",
             "/api/setup/demo",
             "/api/setup/demo/clear",
         ] {
