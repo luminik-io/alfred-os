@@ -2,8 +2,9 @@
 
 `alfred capabilities` is a read-only inventory of the local features that make
 the fleet useful beyond a bare scheduler. It does not install packages or make
-network calls. The native onboarding flow can use the same payload to show what
-is already present and what needs repair.
+network calls. The native onboarding flow uses the same payload on the Tools
+step, so a user can see whether code graph memory, context compression, and
+engineering skill packs are ready before they let the fleet run real work.
 
 ```sh
 alfred capabilities
@@ -30,4 +31,6 @@ The JSON shape is versioned:
 
 Each row has a stable `key`, `state`, `detail`, `detected` object, and
 `install_hint`. A future repair action can install or configure a missing row,
-but the doctor itself stays read-only.
+but the doctor itself stays read-only. The desktop intentionally displays the
+hint and source attribution rather than hiding a missing capability behind a
+generic setup warning.

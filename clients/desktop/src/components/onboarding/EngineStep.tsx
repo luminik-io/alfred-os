@@ -1,4 +1,4 @@
-import { CheckCircle2, MemoryStick, RefreshCw, XCircle } from "lucide-react";
+import { CheckCircle2, MemoryStick, RefreshCw, Wrench, XCircle } from "lucide-react";
 
 import type { NativeActionRequest } from "../../lib/uiTypes";
 import type { SetupStatus } from "../../types";
@@ -31,6 +31,18 @@ export function EngineStep({
   const engines = status?.engines ?? [];
   const readyEngine = engines.find((engine) => engine.installed);
   const codeMemory = status?.code_memory;
+  const capabilityPlane = status?.capability_plane;
+  const capabilityBadgeLabel = capabilityPlane
+    ? capabilityPlane.summary.actionable > 0
+      ? "needs attention"
+      : capabilityPlane.summary.ready === capabilityPlane.summary.total
+        ? "ready"
+        : capabilityPlane.summary.disabled === capabilityPlane.summary.total
+          ? "optional"
+          : "partly ready"
+    : null;
+  const capabilityBadgeVariant =
+    capabilityBadgeLabel === "ready" ? ("secondary" as const) : ("outline" as const);
   const codeMemoryReady = Boolean(
     codeMemory?.enabled && codeMemory.binary.resolved && codeMemory.index_present,
   );
@@ -105,6 +117,88 @@ export function EngineStep({
       </div>
 
       <p className="text-sm text-muted-foreground">No API keys needed.</p>
+
+      {capabilityPlane ? (
+        <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">
+          <CardContent className="grid gap-3 px-3 text-sm">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <strong className="block text-foreground">Local capabilities</strong>
+                <span className="text-muted-foreground">
+                  {capabilityPlane.summary.ready} of {capabilityPlane.summary.total} ready
+                  {capabilityPlane.summary.actionable
+                    ? `, ${capabilityPlane.summary.actionable} to finish`
+                    : ""}
+                  .
+                </span>
+              </div>
+              <Badge variant={capabilityBadgeVariant}>{capabilityBadgeLabel}</Badge>
+            </div>
+            <ul className="grid gap-2" aria-label="Local Alfred capabilities">
+              {capabilityPlane.capabilities.map((capability) => {
+                const ready = capability.state === "ready";
+                const actionable = !ready && capability.state !== "disabled";
+                return (
+                  <li
+                    key={capability.key}
+                    className="grid gap-1 rounded-md border border-border/60 bg-card/50 px-2.5 py-2"
+                  >
+                    <span className="flex min-w-0 items-start gap-2">
+                      {ready ? (
+                        <CheckCircle2
+                          size={15}
+                          aria-hidden="true"
+                          className="mt-0.5 shrink-0 text-primary"
+                        />
+                      ) : (
+                        <Wrench
+                          size={15}
+                          aria-hidden="true"
+                          className="mt-0.5 shrink-0 text-muted-foreground"
+                        />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <strong className="font-medium text-foreground">
+                            {capability.title}
+                          </strong>
+                          <Badge variant={ready ? "secondary" : "outline"}>
+                            {capability.state.replace(/_/g, " ")}
+                          </Badge>
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {capability.detail}
+                        </span>
+                        {actionable ? (
+                          <code className="mt-1 block break-words text-[11px] text-muted-foreground">
+                            {capability.install_hint}
+                          </code>
+                        ) : null}
+                      </span>
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Source:{" "}
+                      {capability.source.url ? (
+                        <a
+                          className="underline-offset-2 hover:underline"
+                          href={capability.source.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {capability.source.source}
+                        </a>
+                      ) : (
+                        capability.source.source
+                      )}
+                      {capability.source.license ? ` (${capability.source.license})` : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {codeMemory ? (
         <Card size="sm" className="rounded-lg border-border/70 bg-background/55 shadow-none">

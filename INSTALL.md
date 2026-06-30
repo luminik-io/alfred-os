@@ -168,9 +168,12 @@ Run the wizard to choose agents, repos, codenames, Slack settings, and schedules
 ```
 
 Pressing Enter at the agent-selection step chooses the full engineering roster.
-Use `starter` only when you deliberately want a small lab setup. If multiple
-repos are visible, pick the repo numbers explicitly; the wizard no longer
-silently assigns every repo to every agent.
+Use `starter` only when you deliberately want a small lab harness, not as the
+normal product path. The full roster includes Batman, Bane, and Nightwing from
+the start; high-impact execution is gated by configuration rather than by
+installing those agents later. If multiple repos are visible, pick the repo
+numbers explicitly; the wizard no longer silently assigns every repo to every
+agent.
 
 `alfred-init.py` now does the boring setup work for you:
 

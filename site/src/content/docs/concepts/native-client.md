@@ -31,7 +31,9 @@ The client is for trust and operations:
 2. Open Alfred Desktop. Setup detects an existing Alfred core install when one
    is present, or guides you through installing the local runtime.
 3. Connect GitHub and Claude or Codex, choose repos, configure the full fleet,
-   pick a roster theme or custom display names, and run doctor.
+   check the local capability plane (code graph memory, context compression,
+   and engineering skills), pick a roster theme or custom display names, and
+   run doctor.
 4. When the runtime is reachable, the app connects to `http://127.0.0.1` or
    `http://localhost` and reads the same local state as the CLI.
 
@@ -70,7 +72,7 @@ The core tabs are:
 | Ask | Draft or refine work, open Slack thread context, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
 | Work | Manage queued work, active work, shipped cards, saved plans, and issue queue controls. |
 | Agents | Inspect roster state, activity, latest runs, memory candidates, safe dry-runs, pause, resume, and run-once actions. |
-| Setup | Detect or install the local runtime, configure the full fleet, choose roster naming, and run fleet/auth/agent/memory/Slack checks in the command console. |
+| Setup | Detect or install the local runtime, configure the full fleet, choose roster naming, and run fleet/auth/agent/memory/capability/Slack checks in the command console. |
 
 Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail

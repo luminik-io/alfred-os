@@ -67,10 +67,10 @@ import { cn } from "@/lib/utils";
  *
  * Every step is skippable for the Dev persona, has honest empty/error states,
  * an Enter-key continue flow (suppressed inside text fields), and auto-advance
- * on a detected gh / engine. The mutating steps (repos, playbook, demo, Slack)
- * need the per-launch token the native bridge attaches; the browser preview
- * cannot, so it degrades to a clear read-only note with copy-paste fallback. The
- * read steps work either way.
+ * on a detected GitHub sign-in / fully-ready Tools step. The mutating steps
+ * (repos, playbook, demo, Slack) need the per-launch token the native bridge
+ * attaches; the browser preview cannot, so it degrades to a clear read-only note
+ * with copy-paste fallback. The read steps work either way.
  *
  * "Advanced setup" (onOpenConnection) hands off to SetupView for the non-takeover
  * connection + diagnostics surface, which onboarding and Settings share.
@@ -475,6 +475,8 @@ export function OnboardingView({
 
   const githubConnected = Boolean(status?.github.ok);
   const engineReady = Boolean(status?.engine_ready) || Boolean(nativeResult?.success);
+  const capabilityActionableCount = status?.capability_plane?.summary.actionable ?? 0;
+  const toolsReady = engineReady && capabilityActionableCount === 0;
   const reposSelected = (status?.repos.count ?? 0) > 0;
 
   const currentIndex = ONBOARDING_STEP_ORDER.indexOf(stepKey);
@@ -498,7 +500,7 @@ export function OnboardingView({
           // Welcome is satisfied the moment the user steps off it (or finishes).
           return reachedIndex > 0 || requestDone;
         case "engine":
-          return engineReady;
+          return toolsReady;
         case "github":
           return githubConnected;
         case "repos":
@@ -519,7 +521,7 @@ export function OnboardingView({
           return false;
       }
     },
-    [engineReady, githubConnected, reachedIndex, reposSelected, requestDone, skipped, slackTouched],
+    [githubConnected, reachedIndex, reposSelected, requestDone, skipped, slackTouched, toolsReady],
   );
 
   // Per-step completion for the rail. A step is "done" only when the user has
@@ -598,14 +600,14 @@ export function OnboardingView({
   // it (DESIGN_SPEC: auto-advance on detected gh / engine). Never fights a Back.
   useEffect(() => {
     if (manualSteps.current.has(stepKey)) return;
-    if (stepKey === "engine" && engineReady && !autoAdvancedFrom.current.has("engine")) {
+    if (stepKey === "engine" && toolsReady && !autoAdvancedFrom.current.has("engine")) {
       autoAdvancedFrom.current.add("engine");
       goToStep("github");
     } else if (stepKey === "github" && githubConnected && !autoAdvancedFrom.current.has("github")) {
       autoAdvancedFrom.current.add("github");
       goToStep("repos");
     }
-  }, [stepKey, engineReady, githubConnected, goToStep]);
+  }, [stepKey, toolsReady, githubConnected, goToStep]);
 
   // Enter advances when the focus is not in a text field (so typing a server URL
   // or Slack id never triggers a jump). The step bodies own their own submits.

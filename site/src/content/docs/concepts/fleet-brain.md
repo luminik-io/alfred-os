@@ -135,7 +135,7 @@ reviewed lessons with `memory sync now`.
 
 For unattended fleets, schedule `memory-harvest.py` from launchd or systemd. It
 queues the same reviewable repeated-failure candidates and nudges Slack only
-when there is something to review. The starter fleet also schedules
+when there is something to review. The full fleet also schedules
 `memory-auto-promote.py`, which saves only judged, evidenced candidates.
 
 ## Autonomous capture and save

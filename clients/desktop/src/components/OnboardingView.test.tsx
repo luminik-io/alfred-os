@@ -374,18 +374,115 @@ describe("OnboardingView seven-step takeover", () => {
           repos: { configured: ["api", "web"], count: 2 },
           detail: "Code-memory binary and index are present.",
         },
+        capability_plane: {
+          version: 1,
+          summary: { ready: 2, actionable: 1, disabled: 0, total: 3 },
+          capabilities: [
+            {
+              key: "code_graph",
+              title: "Code graph memory",
+              category: "memory",
+              recommended: true,
+              state: "ready",
+              installed: true,
+              enabled: true,
+              detail: "Code graph index is ready for selected repos.",
+              detected: {},
+              install_hint: "Run `alfred code-memory doctor`, then `alfred code-memory index`.",
+              source: {
+                source: "DeusData/codebase-memory-mcp",
+                url: "https://github.com/DeusData/codebase-memory-mcp",
+                license: "MIT",
+              },
+            },
+            {
+              key: "context_compression",
+              title: "Context compression",
+              category: "tokens",
+              recommended: true,
+              state: "available",
+              installed: true,
+              enabled: false,
+              detail: "Headroom CLI is installed; runner integration is not wired yet.",
+              detected: {},
+              install_hint: "Run `headroom doctor`, then enable ALFRED_CONTEXT_COMPRESSION.",
+              source: {
+                source: "headroomlabs-ai/headroom",
+                url: "https://github.com/headroomlabs-ai/headroom",
+                license: "Apache-2.0",
+              },
+            },
+            {
+              key: "engineering_skills",
+              title: "Engineering skill packs",
+              category: "skills",
+              recommended: true,
+              state: "ready",
+              installed: true,
+              enabled: true,
+              detail: "At least one engineering skill pack is installed.",
+              detected: {},
+              install_hint: "Install gstack and the Vercel/Addy agent-skill packs.",
+              source: { source: "garrytan/gstack", url: "https://github.com/garrytan/gstack" },
+            },
+          ],
+        },
       }),
     );
     renderOnboarding();
     const user = userEvent.setup();
     await gotoStep(user, /^tools$/i);
 
-    expect(await screen.findByText(/code memory/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^code memory$/i)).toBeInTheDocument();
     expect(screen.getByText(/code-memory binary and index are present/i)).toBeInTheDocument();
+    expect(screen.getByText(/local capabilities/i)).toBeInTheDocument();
+    expect(screen.getByText(/2 of 3 ready, 1 to finish/i)).toBeInTheDocument();
+    expect(screen.getByText(/code graph index is ready for selected repos/i)).toBeInTheDocument();
+    expect(screen.getByText(/headroom cli is installed/i)).toBeInTheDocument();
+    expect(screen.getByText(/run `headroom doctor`/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /headroomlabs-ai\/headroom/i })).toHaveAttribute(
+      "href",
+      "https://github.com/headroomlabs-ai/headroom",
+    );
     await user.click(screen.getByText(/advanced: code-memory probe/i));
     expect(screen.getByText(/DeusData\/codebase-memory-mcp@v0.8.1/i)).toBeInTheDocument();
     expect(screen.getByText(/configured repos/i)).toBeInTheDocument();
     expect(screen.getByText(/api, web/i)).toBeInTheDocument();
+  });
+
+  it("labels disabled optional capabilities without calling setup ready", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        github: { ok: false, account: null, detail: "Not signed in to GitHub." },
+        capability_plane: {
+          version: 1,
+          summary: { ready: 0, actionable: 0, disabled: 1, total: 1 },
+          capabilities: [
+            {
+              key: "context_compression",
+              title: "Context compression",
+              category: "tokens",
+              recommended: false,
+              state: "disabled",
+              installed: false,
+              enabled: false,
+              detail: "Context compression is optional for this install.",
+              detected: {},
+              install_hint: "Install Headroom if you want token compression.",
+              source: { source: "headroomlabs-ai/headroom" },
+            },
+          ],
+        },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await gotoStep(user, /^tools$/i);
+
+    expect(await screen.findByText(/local capabilities/i)).toBeInTheDocument();
+    expect(screen.getByText(/0 of 1 ready/i)).toBeInTheDocument();
+    expect(screen.getByText(/^optional$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^ready$/i)).not.toBeInTheDocument();
   });
 
   it("handles older code-memory payloads without repo metadata", async () => {
@@ -450,6 +547,55 @@ describe("OnboardingView seven-step takeover", () => {
     expect(
       await screen.findByRole("button", { name: /load my repositories/i }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the user on Tools when local capabilities need attention", async () => {
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      makeStatus({
+        github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
+        engine_ready: true,
+        capability_plane: {
+          version: 1,
+          summary: { ready: 1, actionable: 1, disabled: 0, total: 2 },
+          capabilities: [
+            {
+              key: "code_graph",
+              title: "Code graph memory",
+              category: "memory",
+              recommended: true,
+              state: "ready",
+              installed: true,
+              enabled: true,
+              detail: "Code graph index is ready.",
+              detected: {},
+              install_hint: "Run `alfred code-memory doctor`.",
+              source: { source: "DeusData/codebase-memory-mcp" },
+            },
+            {
+              key: "context_compression",
+              title: "Context compression",
+              category: "tokens",
+              recommended: true,
+              state: "available",
+              installed: true,
+              enabled: false,
+              detail: "Headroom CLI is installed; runner integration is not wired yet.",
+              detected: {},
+              install_hint: "Run `headroom doctor`, then enable ALFRED_CONTEXT_COMPRESSION.",
+              source: { source: "headroomlabs-ai/headroom" },
+            },
+          ],
+        },
+      }),
+    );
+    renderOnboarding();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: /get started/i }));
+
+    expect(await screen.findByText(/local capabilities/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 of 2 ready, 1 to finish/i)).toBeInTheDocument();
+    expect(screen.getByText(/^needs attention$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /load my repositories/i })).not.toBeInTheDocument();
   });
 
   it("starts native GitHub web sign-in and polls until setup reports connected", async () => {
