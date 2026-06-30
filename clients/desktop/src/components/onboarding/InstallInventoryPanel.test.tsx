@@ -104,4 +104,55 @@ describe("InstallInventoryPanel", () => {
     expect(screen.getByText(/1 to finish/i)).toBeInTheDocument();
     expect(screen.queryByText(/ready to use/i)).not.toBeInTheDocument();
   });
+
+  it("shows detected roster theme and repo local map state", () => {
+    const base = inventory();
+    render(
+      <InstallInventoryPanel
+        inventory={{
+          ...base,
+          roster_theme: {
+            theme: "custom",
+            label: "Custom",
+            path: "/tmp/alfred-home/state/roster-theme/roster-theme.json",
+            custom_names_count: 2,
+            custom_roles_count: 1,
+            updated_at: "2026-06-30T12:00:00Z",
+          },
+          repo_local_map: {
+            present: true,
+            count: 2,
+            entries: [
+              { repo: "acme/api", path: "/Users/example/api" },
+              { repo: "acme/site", path: "../marketing/site" },
+            ],
+          },
+          items: [
+            ...base.items,
+            {
+              key: "repo-map",
+              label: "Repo local map",
+              ok: true,
+              detail: "2 repo local path mappings configured.",
+              path: "/tmp/alfred-home/.env",
+              optional: true,
+            },
+            {
+              key: "cast",
+              label: "Agent cast",
+              ok: true,
+              detail: "Custom cast active with 2 names and 1 role label.",
+              path: "/tmp/alfred-home/state/roster-theme/roster-theme.json",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/repo local map/i)).toBeInTheDocument();
+    expect(screen.getByText("acme/site")).toBeInTheDocument();
+    expect(screen.getByText("../marketing/site")).toBeInTheDocument();
+    expect(screen.getByText(/agent cast/i)).toBeInTheDocument();
+    expect(screen.getByText(/custom cast active with 2 names and 1 role label/i)).toBeInTheDocument();
+  });
 });

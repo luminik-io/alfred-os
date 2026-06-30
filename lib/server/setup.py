@@ -1233,6 +1233,8 @@ def install_inventory(
     board_env_present = any(_has_config_key(resolved_env, key) for key in _BOARD_REPO_ENV_KEYS)
     slack_configured = any(_has_config_value(resolved_env, key) for key in _SLACK_CONFIG_KEYS)
     memory_overridden = any(_has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS)
+    roster_theme = _install_roster_theme(home)
+    repo_local_map = _install_repo_local_map(resolved_env)
     memory_detail = (
         "Custom Redis Agent Memory settings found."
         if memory_overridden
@@ -1280,6 +1282,26 @@ def install_inventory(
                 )
             ),
             env_path if selected_env_present else None,
+        ),
+        _inventory_item(
+            "repo-map",
+            "Repo local map",
+            repo_local_map["present"],
+            (
+                f"{repo_local_map['count']} repo local path mapping"
+                f"{'' if repo_local_map['count'] == 1 else 's'} configured."
+                if repo_local_map["present"]
+                else "Optional. No repo slug-to-local-path map configured."
+            ),
+            env_path if repo_local_map["present"] else None,
+            optional=True,
+        ),
+        _inventory_item(
+            "cast",
+            "Agent cast",
+            True,
+            _roster_theme_detail(roster_theme),
+            roster_theme["path"],
         ),
         _inventory_item(
             "slack",
@@ -1333,8 +1355,73 @@ def install_inventory(
         "selected_repos_env_present": selected_env_present,
         "slack_configured": slack_configured,
         "memory_configured": memory_overridden,
+        "roster_theme": roster_theme,
+        "repo_local_map": repo_local_map,
         "initialized": initialized,
         "items": items,
+    }
+
+
+def _install_roster_theme(home: Path) -> dict[str, Any]:
+    try:
+        from roster_theme_store import RosterThemeStore
+
+        state = RosterThemeStore.from_state_root(home / "state").load()
+        path = home / "state" / "roster-theme" / "roster-theme.json"
+        theme = str(state.theme or "batman")
+        custom_names_count = len(state.custom_names)
+        custom_roles_count = len(state.custom_roles)
+        return {
+            "theme": theme,
+            "label": _roster_theme_label(theme),
+            "path": str(path) if path.is_file() else None,
+            "custom_names_count": custom_names_count,
+            "custom_roles_count": custom_roles_count,
+            "updated_at": state.updated_at,
+        }
+    except Exception:
+        return {
+            "theme": "batman",
+            "label": "Batman",
+            "path": None,
+            "custom_names_count": 0,
+            "custom_roles_count": 0,
+            "updated_at": None,
+        }
+
+
+def _roster_theme_label(theme: str) -> str:
+    labels = {
+        "batman": "Batman",
+        "transformers": "Transformers",
+        "justice-league": "Justice League",
+        "custom": "Custom",
+    }
+    return labels.get(theme, theme.replace("-", " ").title())
+
+
+def _roster_theme_detail(theme: dict[str, Any]) -> str:
+    label = str(theme.get("label") or "Batman")
+    if theme.get("theme") == "custom":
+        name_count = int(theme.get("custom_names_count") or 0)
+        role_count = int(theme.get("custom_roles_count") or 0)
+        if name_count or role_count:
+            return (
+                f"Custom cast active with {name_count} name"
+                f"{'' if name_count == 1 else 's'} and {role_count} role label"
+                f"{'' if role_count == 1 else 's'}."
+            )
+        return "Custom cast active; unnamed agents keep the Batman defaults."
+    return f"{label} roster active."
+
+
+def _install_repo_local_map(env: dict[str, str]) -> dict[str, Any]:
+    repo_map = _code_memory_repo_map(env)
+    entries = [{"repo": key, "path": value} for key, value in sorted(repo_map.items())]
+    return {
+        "present": bool(entries),
+        "count": len(entries),
+        "entries": entries,
     }
 
 

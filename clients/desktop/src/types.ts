@@ -532,6 +532,21 @@ export type SetupInstallItem = {
   optional?: boolean;
 };
 
+export type SetupRosterThemeInventory = {
+  theme: string;
+  label: string;
+  path: string | null;
+  custom_names_count: number;
+  custom_roles_count: number;
+  updated_at: string | null;
+};
+
+export type SetupRepoLocalMapInventory = {
+  present: boolean;
+  count: number;
+  entries: Array<{ repo: string; path: string }>;
+};
+
 export type SetupInstallInventory = {
   alfred_home: string;
   env_path: string;
@@ -543,6 +558,8 @@ export type SetupInstallInventory = {
   selected_repos_env_present: boolean;
   slack_configured: boolean;
   memory_configured: boolean;
+  roster_theme?: SetupRosterThemeInventory;
+  repo_local_map?: SetupRepoLocalMapInventory;
   initialized: boolean;
   items: SetupInstallItem[];
 };
