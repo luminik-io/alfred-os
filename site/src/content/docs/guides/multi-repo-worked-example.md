@@ -137,11 +137,12 @@ through the same label, lock, spend, review, and merge gates as any other work.
 
 ## Step 3: Batman files the child issues after approval
 
-In the public package, approved Batman plans can file the three child issues.
-Each inherits `agent:bundle:add-org-slug` so the bundle stays trackable, and
-each is labelled `agent:implement` so Lucius can claim it. Operators who prefer
-a stricter manual process can keep `BATMAN_AUTO_EXECUTE=0` and file the same
-children by hand after reviewing the plan.
+In the public package, Batman files the three child issues after approval when
+`BATMAN_AUTO_EXECUTE=approval-gate` is configured. Each inherits
+`agent:bundle:add-org-slug` so the bundle stays trackable, and each is labelled
+`agent:implement` so Lucius can claim it. Operators who prefer a stricter manual
+process can keep `BATMAN_AUTO_EXECUTE=0` and file the same children by hand
+after reviewing the plan.
 
 ### Child issue 1 (backend)
 
@@ -396,8 +397,8 @@ Total wall-clock: 6h 26m.
 - You file one `agent:large-feature` issue, not three.
 - Batman posts a plan and waits for approval before child issues are filed.
 - The child `agent:implement` issues each live in the repo that owns the change.
-  Batman can file them after approval, or you can file the same children
-  by hand in a stricter process.
+  Batman files them after approval when the approval-gated execution mode is
+  enabled, or you can file the same children by hand in a stricter process.
 - Lucius, Ra's al Ghul, Nightwing, and Bane act on whatever is in their
   inbox without knowing they are part of a bundle. The bundle label is for
   tracking, not coordination. They never call each other; they only see

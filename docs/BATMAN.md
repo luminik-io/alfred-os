@@ -321,10 +321,11 @@ and should be reserved for trusted parent issues.
 
 ## Safety story
 
-- Batman does not directly edit repo files in the OSS reference runner.
-  It owns the multi-repo execution lane by turning an approved plan into
-  scoped child issues. Lucius, Bane, and Nightwing do the code changes
-  in isolated worktrees.
+- Batman's multi-repo fan-out is public OSS code, not an internal-only path.
+  Batman owns the architect lane: it turns an approved `agent:large-feature`
+  parent into scoped child `agent:implement` issues across repos. Lucius, Bane,
+  Nightwing, reviewers, and your merge gate then carry those child issues to
+  PRs in isolated worktrees.
 - Approval is a hard gate when `BATMAN_AUTO_EXECUTE=approval-gate`: if
   Slack mode cannot capture a `message_ts`, Batman halts rather than
   executing without a captured approval anchor. In `file` mode, Batman
