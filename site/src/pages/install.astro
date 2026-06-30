@@ -13,7 +13,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
   <Hero
     eyebrow="INSTALL"
     headline="Install the full Alfred fleet."
-    sub="Use Alfred Desktop for the guided setup, or use the terminal path for a headless Mac or Linux host. Either path installs Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing, Robin, automerge, memory, code-map, cleanup, reports, and fleet doctor."
+    sub="Use Alfred Desktop for the guided setup, or use the terminal path for a headless Mac or Linux host. Either path installs Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing, Robin, Huntress, Gordon, automerge, memory, code-map, cleanup, reports, and fleet doctor."
     headlineSize="lg"
     primaryCta={{ label: "Download Desktop", href: "/download/" }}
     secondaryCta={{ label: "Terminal install", href: "/getting-started/install/" }}
@@ -86,7 +86,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
       <SectionHeader
         eyebrow="WHAT YOU END UP WITH"
         title="A full engineering team scheduled on your machine."
-        lede="The default setup enables the whole local engineering loop. Drake plans, Batman coordinates cross-repo work, Lucius builds, Ra's al Ghul reviews, Bane adds tests, Nightwing handles high-priority review feedback, and the reliability/reporting agents keep the system inspectable."
+        lede="The default setup enables the whole local engineering loop. Drake plans, Batman coordinates cross-repo work, Lucius builds, Ra's al Ghul reviews, Bane adds tests, Nightwing handles high-priority review feedback, Huntress and Gordon watch deploy health, and the reliability/reporting agents keep the system inspectable."
       />
       <ol class="checks">
         <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Drake</strong> reads your plans and files small, clear tasks.</li>
@@ -95,6 +95,10 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
         <li class="m-card"><span class="m-mono m-dot m-dot--warn">●</span><strong>Ra's al Ghul</strong> reviews pull requests and runs your tests.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Bane</strong> adds focused coverage where changes need tests.</li>
         <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Nightwing</strong> fixes high-priority review comments on agent-authored PRs.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Robin</strong> keeps quick issue triage moving.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Huntress</strong> watches app health when you provide a target URL.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--idle">●</span><strong>Gordon</strong> watches ECS deploy health when you provide a cluster.</li>
+        <li class="m-card"><span class="m-mono m-dot m-dot--live">●</span><strong>Reliability agents</strong> handle automerge, memory, code-map, cleanup, reports, and fleet doctor.</li>
       </ol>
     </div>
   </section>
