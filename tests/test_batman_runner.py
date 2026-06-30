@@ -495,6 +495,59 @@ def test_completed_fanout_marker_retries_finalize_without_requeue(monkeypatch, c
     assert "[BATMAN-PARENT-FINALIZE-RETRY]" in captured.out
 
 
+def test_main_fails_when_completed_marker_finalization_retry_fails(monkeypatch, capsys):
+    runner = _load_runner()
+    finalize_calls = []
+    rows = [
+        {
+            "number": 83,
+            "title": "ready",
+            "url": "https://github.com/myorg/parent/issues/83",
+            "labels": [{"name": runner.LARGE_FEATURE_LABEL}],
+            "createdAt": "2026-06-01T00:00:00Z",
+            "body": "Bundle: ready",
+        }
+    ]
+
+    assert runner._save_completed_fanout_marker(
+        "myorg/parent",
+        83,
+        firing_id="fid-done",
+        reason=runner.EXEC_OK,
+        state="completed",
+    )
+
+    monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "is_agent_enabled", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(runner, "preflight", lambda _spec: None)
+    monkeypatch.setattr(runner, "with_lock", lambda _codename: None)
+    monkeypatch.setattr(
+        runner.BatmanLifecycleConfig,
+        "from_env",
+        classmethod(lambda _cls: runner.BatmanLifecycleConfig(parent_repo="myorg/parent")),
+    )
+    monkeypatch.setattr(runner, "gh_json", lambda *_args, **_kwargs: rows)
+    monkeypatch.setattr(
+        runner,
+        "_finalize_parent_after_child_fanout",
+        lambda repo, number: finalize_calls.append((repo, number)) or False,
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_lifecycle",
+        lambda **_kwargs: pytest.fail("must not start new fanout while retry is stuck"),
+    )
+
+    out = runner.main()
+
+    captured = capsys.readouterr()
+    assert out == 1
+    assert finalize_calls == [("myorg/parent", 83)]
+    assert runner._completed_fanout_marker_state("myorg/parent", 83) == "completed"
+    assert "[BATMAN-PARENT-FINALIZE-RETRY]" in captured.out
+    assert "[BATMAN-PARENT-FINALIZE-RETRY-FAILED] pending=myorg/parent#83" in captured.err
+
+
 def test_executing_fanout_marker_skips_refanout_without_finalize(monkeypatch, capsys):
     runner = _load_runner()
     finalize_calls = []

@@ -121,6 +121,7 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
     """
     if not parent_repo:
         return []
+    _FINALIZATION_RETRY_FAILURES.clear()
     rows = gh_json(
         [
             "gh",
@@ -159,6 +160,8 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
                 print(f"[{event}] parent={parent_repo}#{issue_number}")
                 if _finalize_parent_after_child_fanout(parent_repo, issue_number):
                     _clear_completed_fanout_marker(parent_repo, issue_number)
+                else:
+                    _record_finalization_retry_failure(parent_repo, issue_number)
                 continue
             if marker_state == "executing" and _executing_fanout_marker_is_stale(
                 parent_repo, issue_number
@@ -524,6 +527,7 @@ def _run_lifecycle_body(
 
 _PENDING_APPROVAL_DIR = STATE_ROOT / "batman" / "pending-approvals"
 _COMPLETED_FANOUT_DIR = STATE_ROOT / "batman" / "completed-fanouts"
+_FINALIZATION_RETRY_FAILURES: list[tuple[str, int]] = []
 
 
 def _execution_plan(lifecycle: object, plan: object) -> object:
@@ -531,6 +535,14 @@ def _execution_plan(lifecycle: object, plan: object) -> object:
     if callable(get_execution_plan):
         return get_execution_plan(plan)
     return plan
+
+
+def _record_finalization_retry_failure(parent_repo: str, parent_issue_number: int) -> None:
+    _FINALIZATION_RETRY_FAILURES.append((parent_repo, parent_issue_number))
+
+
+def _finalization_retry_failures() -> tuple[tuple[str, int], ...]:
+    return tuple(_FINALIZATION_RETRY_FAILURES)
 
 
 def _pending_approval_path(parent_repo: str, parent_issue_number: int) -> Path:
@@ -1068,6 +1080,14 @@ def main() -> int:
     with_lock(CODENAME)
 
     parents = _list_parent_repo_large_features(lifecycle_config.parent_repo)
+    finalization_failures = _finalization_retry_failures()
+    if finalization_failures:
+        failures = ", ".join(f"{repo}#{number}" for repo, number in finalization_failures)
+        print(
+            f"[BATMAN-PARENT-FINALIZE-RETRY-FAILED] pending={failures}",
+            file=sys.stderr,
+        )
+        return 1
     parent_issue = _pick_parent_issue(parents, picker=lifecycle_config.picker)
     if parent_issue is None:
         print(
