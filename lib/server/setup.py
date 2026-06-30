@@ -1301,7 +1301,7 @@ def install_inventory(
             "Agent cast",
             True,
             _roster_theme_detail(roster_theme),
-            roster_theme["path"],
+            _roster_theme_store_path(home) if roster_theme["path"] else None,
         ),
         _inventory_item(
             "slack",
@@ -1365,29 +1365,37 @@ def install_inventory(
 def _install_roster_theme(home: Path) -> dict[str, Any]:
     try:
         from roster_theme_store import RosterThemeStore
+    except ImportError:
+        return _default_roster_theme_inventory()
 
-        state = RosterThemeStore.from_state_root(home / "state").load()
-        path = home / "state" / "roster-theme" / "roster-theme.json"
-        theme = str(state.theme or "batman")
-        custom_names_count = len(state.custom_names)
-        custom_roles_count = len(state.custom_roles)
-        return {
-            "theme": theme,
-            "label": _roster_theme_label(theme),
-            "path": str(path) if path.is_file() else None,
-            "custom_names_count": custom_names_count,
-            "custom_roles_count": custom_roles_count,
-            "updated_at": state.updated_at,
-        }
-    except Exception:
-        return {
-            "theme": "batman",
-            "label": "Batman",
-            "path": None,
-            "custom_names_count": 0,
-            "custom_roles_count": 0,
-            "updated_at": None,
-        }
+    state = RosterThemeStore.from_state_root(home / "state").load()
+    path = _roster_theme_store_path(home)
+    theme = str(state.theme or "batman")
+    custom_names_count = len(state.custom_names)
+    custom_roles_count = len(state.custom_roles)
+    return {
+        "theme": theme,
+        "label": _roster_theme_label(theme),
+        "path": str(path) if path.is_file() else None,
+        "custom_names_count": custom_names_count,
+        "custom_roles_count": custom_roles_count,
+        "updated_at": state.updated_at,
+    }
+
+
+def _default_roster_theme_inventory() -> dict[str, Any]:
+    return {
+        "theme": "batman",
+        "label": "Batman",
+        "path": None,
+        "custom_names_count": 0,
+        "custom_roles_count": 0,
+        "updated_at": None,
+    }
+
+
+def _roster_theme_store_path(home: Path) -> Path:
+    return home / "state" / "roster-theme" / "roster-theme.json"
 
 
 def _roster_theme_label(theme: str) -> str:

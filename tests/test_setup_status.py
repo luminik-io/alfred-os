@@ -465,6 +465,24 @@ def test_install_inventory_reports_roster_theme_and_repo_local_map(
     assert by_key["repo-map"]["detail"] == "2 repo local path mappings configured."
 
 
+def test_roster_theme_inventory_does_not_swallow_store_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import roster_theme_store
+
+    def fail_from_state_root(_state_root: Path) -> object:
+        raise RuntimeError("broken roster theme store")
+
+    monkeypatch.setattr(
+        roster_theme_store.RosterThemeStore,
+        "from_state_root",
+        fail_from_state_root,
+    )
+
+    with pytest.raises(RuntimeError, match="broken roster theme store"):
+        setup_mod._install_roster_theme(tmp_path)
+
+
 def test_bootstrap_status_uses_active_serve_home_for_code_memory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
