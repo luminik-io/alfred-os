@@ -6,9 +6,9 @@
 // another theme); presets re-skin the SAME fleet with a matched cast while the
 // roles stay identical.
 //
-// This is the client-side foundation only. Deferred to follow-ups: operator-
-// authored custom names via the Ask chat, applying themes to Slack rendering,
-// and persisting custom themes server-side. See the PR body.
+// The desktop picker, server persistence, custom-name editor, and Slack
+// rendering all use this same theme contract. Future work should extend the
+// roster by role/engine metadata, not fork the naming model.
 
 import {
   CODENAME_ROLE_HINTS,

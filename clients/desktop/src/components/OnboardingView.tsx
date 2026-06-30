@@ -8,12 +8,20 @@ import {
   Settings2,
   Sparkles,
   TerminalSquare,
+  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
 import { pollGithubAuthStatus } from "../lib/githubAuth";
+import {
+  type CustomRosterNames,
+  resolveThemedIdentity,
+  rosterThemeBlurb,
+  rosterThemeLabel,
+  type RosterThemeId,
+} from "../lib/agentThemes";
 import type { NativeActionRequest, TabKey } from "../lib/uiTypes";
 import type { NativeCommandResult, SetupStatus } from "../types";
 import { EngineStep } from "./onboarding/EngineStep";
@@ -31,12 +39,13 @@ import {
   type StepProgress,
 } from "./onboarding/types";
 import { WelcomeStep } from "./onboarding/WelcomeStep";
+import { RosterThemePicker } from "./RosterThemePicker";
 import { Button, Card, CardContent } from "./ui";
 import { cn } from "@/lib/utils";
 
 /**
  * The first-run onboarding takeover (DESIGN_SPEC section 7), built as a clean
- * stepper. A six-step journey a non-technical user (Maya) completes without a
+ * stepper. A seven-step journey a non-technical user (Maya) completes without a
  * terminal, ending on a populated Home via a real first request or a
  * clearly-labelled demo:
  *
@@ -44,8 +53,9 @@ import { cn } from "@/lib/utils";
  *   1 Tools          detect Claude / Codex (no API keys)
  *   2 GitHub         reuse the gh sign-in (auto-advance when signed in)
  *   3 Repositories   pick by name + description (private badge)
- *   4 Slack          optional approvals, clearly skippable
- *   5 First request  a real Request, or a labelled sample
+ *   4 Team           pick the agent cast / custom names
+ *   5 Slack          optional approvals, clearly skippable
+ *   6 First request  a real Request, or a labelled sample
  *
  * The journey lives inside a single glass shell that floats over the ambient
  * base. A persistent, minimal numbered Stepper sits at the top (current / done /
@@ -118,6 +128,14 @@ const STEP_META: Record<OnboardingStepKey, Omit<StepMeta, "index">> = {
     icon: Plug,
     optional: false,
   },
+  team: {
+    key: "team",
+    title: "Name your team",
+    railTitle: "Team",
+    blurb: "Pick a cast for the same senior-engineering roles.",
+    icon: Users,
+    optional: false,
+  },
   slack: {
     key: "slack",
     title: "Connect Slack",
@@ -143,9 +161,14 @@ export function OnboardingView({
   canRun,
   nativeBusy,
   nativeResult,
+  rosterTheme,
+  customNames,
+  rosterSaveError,
   onConnectServer,
   onStartRuntime,
   onRunLocalAction,
+  onRosterThemeChange,
+  onEditCustomTheme,
   onOpenConnection,
   onSwitch,
   onRefreshBoard,
@@ -157,9 +180,14 @@ export function OnboardingView({
   canRun: boolean;
   nativeBusy: string | null;
   nativeResult: NativeCommandResult | null;
+  rosterTheme: RosterThemeId;
+  customNames: CustomRosterNames;
+  rosterSaveError: string | null;
   onConnectServer: (url: string) => void;
   onStartRuntime: () => void;
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
+  onRosterThemeChange: (next: RosterThemeId) => void;
+  onEditCustomTheme: () => void;
   /** Jump to the full connection + diagnostics surface (the advanced handoff). */
   onOpenConnection: () => void;
   /** Navigate to another primary surface (e.g. Inbox, Ask) after an action. */
@@ -442,8 +470,8 @@ export function OnboardingView({
   // the "N of M done" count are anchored to this cursor, never to a background
   // signal that happens to be satisfied for a step the user has not seen yet. So
   // a fresh launch where Claude Code, gh, and repos are all already detected
-  // still opens on Welcome with 0 of 6 done, instead of the old "3 of 6 done"
-  // shown while sitting on step 1. The mark only ever moves forward.
+  // still opens on Welcome with 0 done, instead of a rail that makes first-run
+  // feel skipped. The mark only ever moves forward.
   const [reachedIndex, setReachedIndex] = useState(0);
   useEffect(() => {
     setReachedIndex((prev) => Math.max(prev, currentIndex));
@@ -462,6 +490,11 @@ export function OnboardingView({
           return githubConnected;
         case "repos":
           return reposSelected;
+        case "team":
+          // The shipped Batman cast is already valid. Reaching the Team step
+          // means the operator has seen the cast choice; keeping the default is
+          // a deliberate, complete state.
+          return reachedIndex >= ONBOARDING_STEP_ORDER.indexOf("team");
         case "slack":
           // Slack is optional and the server exposes no "approver added" flag on
           // SetupStatus, so it reads satisfied only when the user explicitly
@@ -597,7 +630,7 @@ export function OnboardingView({
             <p className="alfred-onboarding-shell__eyebrow">First run</p>
             <h1 className="alfred-onboarding-shell__title">Let's connect Alfred</h1>
             <p className="alfred-onboarding-shell__lede">
-              Six short steps, about two minutes. You will not need a terminal.
+              Seven short steps, about two minutes. You will not need a terminal.
             </p>
           </div>
           <Button
@@ -699,6 +732,18 @@ export function OnboardingView({
             </StepFrame>
           ) : null}
 
+          {stepKey === "team" ? (
+            <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb}>
+              <RosterThemeStep
+                customNames={customNames}
+                rosterTheme={rosterTheme}
+                saveError={rosterSaveError}
+                onChange={onRosterThemeChange}
+                onEditCustom={onEditCustomTheme}
+              />
+            </StepFrame>
+          ) : null}
+
           {stepKey === "slack" ? (
             <StepFrame icon={meta.icon} title={meta.title} blurb={meta.blurb} accentLabel="Optional">
               <SlackStep
@@ -772,5 +817,64 @@ export function OnboardingView({
         </footer>
       </div>
     </section>
+  );
+}
+
+function RosterThemeStep({
+  customNames,
+  rosterTheme,
+  saveError,
+  onChange,
+  onEditCustom,
+}: {
+  customNames: CustomRosterNames;
+  rosterTheme: RosterThemeId;
+  saveError: string | null;
+  onChange: (next: RosterThemeId) => void;
+  onEditCustom: () => void;
+}) {
+  const preview = useMemo(
+    () =>
+      ["batman", "lucius", "rasalghul", "bane"].map((codename) => ({
+        codename,
+        identity: resolveThemedIdentity({ codename }, rosterTheme, customNames),
+      })),
+    [customNames, rosterTheme],
+  );
+
+  return (
+    <div className="space-y-4">
+      <RosterThemePicker
+        value={rosterTheme}
+        onChange={onChange}
+        onEditCustom={onEditCustom}
+        saveError={saveError}
+      />
+      <div className="grid gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="rounded-lg border border-border/70 bg-card/60 p-4">
+          <p className="text-xs font-medium uppercase text-muted-foreground">Active cast</p>
+          <h3 className="mt-1 text-lg font-medium text-foreground">
+            {rosterThemeLabel(rosterTheme)}
+          </h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {rosterThemeBlurb(rosterTheme)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border/70 bg-card/60 p-4">
+          <p className="text-xs font-medium uppercase text-muted-foreground">Preview</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {preview.map(({ codename, identity }) => (
+              <div key={codename} className="rounded-md border border-border/60 bg-background/40 p-3">
+                <p className="text-sm font-medium text-foreground">{identity.name}</p>
+                <p className="text-xs text-muted-foreground">{identity.roleLabel}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Roles, permissions, schedules, labels, worktrees, and merge gates stay unchanged.
+      </p>
+    </div>
   );
 }
