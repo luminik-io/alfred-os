@@ -974,6 +974,54 @@ def test_upsert_env_file_updates_values(tmp_path, init_mod):
     assert "FOO=2" in text
 
 
+def test_upsert_env_file_preserves_later_runtime_blocks(tmp_path, init_mod):
+    rc = tmp_path / ".env"
+    rc.write_text(
+        "# operator preamble\n"
+        "OPERATOR_NAME=Prasad\n\n"
+        f"{init_mod.ALFRED_ENV_BANNER}\n"
+        "GH_ORG=old-org\n"
+        "ALFRED_LUCIUS_REPOS=old-org/api\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test\n"
+        "# alfred-batman-setup, generated below this line. Safe to re-run.\n"
+        "BATMAN_PARENT_REPO=old-org/specs\n",
+        encoding="utf-8",
+    )
+
+    init_mod.upsert_env_file(
+        rc,
+        {
+            "GH_ORG": "new-org",
+            "ALFRED_LUCIUS_REPOS": "new-org/api",
+        },
+    )
+
+    text = rc.read_text(encoding="utf-8")
+    assert "GH_ORG=old-org" not in text
+    assert "ALFRED_LUCIUS_REPOS=old-org/api" not in text
+    assert "GH_ORG=new-org" in text
+    assert "ALFRED_LUCIUS_REPOS=new-org/api" in text
+    assert "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test" in text
+    assert "alfred-batman-setup, generated" in text
+    assert "BATMAN_PARENT_REPO=old-org/specs" in text
+    assert text.index(init_mod.ALFRED_ENV_BANNER) < text.index("CLAUDE_CODE_OAUTH_TOKEN")
+    assert text.count("alfred-init, generated") == 1
+
+
+def test_read_managed_env_file_ignores_later_token_block(tmp_path, init_mod):
+    rc = tmp_path / ".env"
+    rc.write_text(
+        f"{init_mod.ALFRED_ENV_BANNER}\n"
+        "GH_ORG=acme\n"
+        "CLAUDE_CODE_OAUTH_TOKEN=runtime-token-for-test\n",
+        encoding="utf-8",
+    )
+
+    out = init_mod.read_managed_env_file(rc)
+
+    assert out == {"GH_ORG": "acme"}
+
+
 def test_upsert_env_file_quotes_shell_metacharacters(tmp_path, init_mod):
     rc = tmp_path / ".env"
     marker = tmp_path / "command-substitution-ran"

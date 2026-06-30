@@ -297,6 +297,35 @@ ALFRED_ENV_BANNER = "# alfred-init, generated below this line. Safe to re-run."
 ALFRED_ENV_BANNER_RE = re.compile(
     r"# alfred-init.{1,4}generated below this line\. Safe to re-run\."
 )
+ENV_ASSIGNMENT_RE = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")
+
+
+def alfred_init_managed_env_keys() -> frozenset[str]:
+    keys = {
+        "GH_ORG",
+        "SLACK_WEBHOOK_URL",
+        "SLACK_WEBHOOK_SECRET_ID",
+        "SLACK_WEBHOOK_SECRET_REGION",
+        "BATMAN_ROLLOUT_ORDER",
+        "ALFRED_MORNING_BRIEF_AGENTS",
+        "ALFRED_TELEMETRY_ENABLED",
+        "ALFRED_TELEMETRY_URL",
+        "ALFRED_TELEMETRY_TOKEN",
+        *MEMORY_AUTO_PROMOTE_CONTROL_ENVS,
+    }
+    for role, (default_codename, _, _, _) in AGENT_CATALOG.items():
+        default_slug = default_codename.upper().replace("-", "_")
+        keys.add(f"AGENT_CODENAME_{role.upper()}")
+        keys.add(f"ALFRED_{default_slug}_REPOS")
+        keys.add(f"ALFRED_{default_slug}_AWS_PROFILE")
+    for env_keys in ROLE_REPO_ENV_KEYS.values():
+        keys.update(env_keys)
+    for prompts in SPECIAL_PROMPTS.values():
+        keys.update(env_key for env_key, _ in prompts)
+    return frozenset(keys)
+
+
+ALFRED_INIT_MANAGED_ENV_KEYS = alfred_init_managed_env_keys()
 
 
 # ---------------------------------------------------------------------------
@@ -545,7 +574,15 @@ def read_managed_env_file(path: Path) -> dict[str, str]:
     managed = ALFRED_ENV_BANNER_RE.search(raw)
     if not managed:
         return {}
-    return _parse_env_text(raw[managed.end() :])
+    return _parse_env_text(
+        "\n".join(
+            _managed_env_assignment_lines(
+                raw,
+                managed,
+                ALFRED_INIT_MANAGED_ENV_KEYS,
+            )
+        )
+    )
 
 
 def quote_env_value(value: str) -> str:
@@ -561,7 +598,75 @@ def upsert_env_file(path: Path, kvs: dict[str, str]) -> None:
     Idempotent: rewrites the marker block on every call so re-running
     the wizard doesn't accumulate dupes.
     """
-    upsert_env_block(path, kvs, ALFRED_ENV_BANNER, ALFRED_ENV_BANNER_RE)
+    upsert_env_block(
+        path,
+        kvs,
+        ALFRED_ENV_BANNER,
+        ALFRED_ENV_BANNER_RE,
+        managed_keys=ALFRED_INIT_MANAGED_ENV_KEYS | frozenset(kvs),
+    )
+
+
+def env_assignment_key(line: str) -> str | None:
+    """Return the dotenv key assigned by a line, or None for non-assignments."""
+    match = ENV_ASSIGNMENT_RE.match(line.strip())
+    return match.group(1) if match else None
+
+
+def _line_after_match(text: str, match: re.Match[str]) -> int:
+    line_end = text.find("\n", match.end())
+    return len(text) if line_end == -1 else line_end + 1
+
+
+def _managed_env_assignment_lines(
+    text: str,
+    match: re.Match[str],
+    managed_keys: frozenset[str],
+) -> list[str]:
+    """Return contiguous assignment lines owned by the matched generated block."""
+    lines: list[str] = []
+    cursor = _line_after_match(text, match)
+    while cursor < len(text):
+        line_end = text.find("\n", cursor)
+        if line_end == -1:
+            line_end = len(text)
+            next_cursor = len(text)
+        else:
+            next_cursor = line_end + 1
+        line = text[cursor:line_end]
+        key = env_assignment_key(line)
+        if key not in managed_keys:
+            break
+        lines.append(line)
+        cursor = next_cursor
+    return lines
+
+
+def _managed_env_block_end(
+    text: str,
+    match: re.Match[str],
+    managed_keys: frozenset[str],
+) -> int:
+    cursor = _line_after_match(text, match)
+    while cursor < len(text):
+        line_end = text.find("\n", cursor)
+        if line_end == -1:
+            line_end = len(text)
+            next_cursor = len(text)
+        else:
+            next_cursor = line_end + 1
+        key = env_assignment_key(text[cursor:line_end])
+        if key not in managed_keys:
+            break
+        cursor = next_cursor
+    return cursor
+
+
+def _join_env_sections(*sections: str) -> str:
+    cleaned = [section.strip("\n") for section in sections if section.strip()]
+    if not cleaned:
+        return ""
+    return "\n\n".join(cleaned) + "\n"
 
 
 def upsert_env_block(
@@ -569,20 +674,29 @@ def upsert_env_block(
     kvs: dict[str, str],
     banner: str,
     banner_re: re.Pattern[str],
+    *,
+    managed_keys: frozenset[str] | None = None,
 ) -> None:
     """Add or update keys in an idempotent generated rc block."""
     if not kvs:
         return
     existing = path.read_text() if path.exists() else ""
-    # Strip any prior generated block for this marker so we re-emit fresh
-    # values instead of accumulating a duplicate section.
-    prior = banner_re.search(existing)
-    if prior:
-        existing = existing[: prior.start()].rstrip() + "\n"
     block = [banner]
     for k, v in kvs.items():
         block.append(f"{k}={quote_env_value(v)}")
-    new = existing.rstrip() + "\n\n" + "\n".join(block) + "\n"
+    block_text = "\n".join(block)
+    # Strip any prior generated block for this marker so we re-emit fresh
+    # values instead of accumulating a duplicate section. When a key allowlist
+    # is provided, remove only this block's managed assignment lines and keep
+    # later .env sections such as scheduler tokens and Batman setup intact.
+    prior = banner_re.search(existing)
+    if prior and managed_keys is not None:
+        block_end = _managed_env_block_end(existing, prior, managed_keys)
+        new = _join_env_sections(existing[: prior.start()], block_text, existing[block_end:])
+    elif prior:
+        new = _join_env_sections(existing[: prior.start()], block_text)
+    else:
+        new = _join_env_sections(existing, block_text)
     path.write_text(new)
     with contextlib.suppress(OSError):
         path.chmod(0o600)

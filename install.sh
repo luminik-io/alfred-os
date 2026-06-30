@@ -74,8 +74,12 @@ Environment overrides:
   GH_ORG          Pre-fill the GitHub org/user for your fleet
   OPERATOR_NAME   Display name used in agent prompts
   OPERATOR_EMAIL  Operator email used in agent prompts
-  ALFRED_HOME     Runtime root (default: \$HOME/.alfred)
+  ALFRED_HOME     Runtime root for this install (default: \$HOME/.alfred)
   WORKSPACE_ROOT  Where you check out repos (default: \$HOME/code)
+
+  Custom ALFRED_HOME/WORKSPACE_ROOT values are not written to shell startup
+  files. Keep exporting them, or copy the prefixed next-step commands printed
+  after install.
 
   ALFRED_NONINTERACTIVE=1   Same as --non-interactive
   ALFRED_SKIP_NPM=1         Skip Claude Code install via npm
@@ -109,6 +113,10 @@ ask() {
   fi
   IFS= read -r answer || answer=""
   printf '%s\n' "${answer:-$default}"
+}
+
+shell_quote() {
+  printf "%q" "$1"
 }
 
 # --------------------------------------------------------------------------
@@ -350,8 +358,10 @@ fi
 # 5. Runtime directories
 # --------------------------------------------------------------------------
 step "Runtime directories"
-ALFRED_HOME="${ALFRED_HOME:-$HOME/.alfred}"
-WORKSPACE_ROOT="${WORKSPACE_ROOT:-$HOME/code}"
+DEFAULT_ALFRED_HOME="$HOME/.alfred"
+DEFAULT_WORKSPACE_ROOT="$HOME/code"
+ALFRED_HOME="${ALFRED_HOME:-$DEFAULT_ALFRED_HOME}"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$DEFAULT_WORKSPACE_ROOT}"
 
 if [[ ! -d "$ALFRED_HOME" ]]; then
   mkdir -p "$ALFRED_HOME"/{bin,lib,state,worktrees}
@@ -541,8 +551,26 @@ ${C_GREEN}===> Install complete.${C_OFF}
 
 Next steps (run them in this order):
 
-  1. Open a fresh shell so ALFRED_HOME and WORKSPACE_ROOT are loaded:
-       ${C_BLUE}exec \$SHELL${C_OFF}
+EOF
+
+RUNTIME_ENV_PREFIX=""
+if [[ "$ALFRED_HOME" != "$DEFAULT_ALFRED_HOME" || "$WORKSPACE_ROOT" != "$DEFAULT_WORKSPACE_ROOT" ]]; then
+  RUNTIME_ENV_PREFIX="ALFRED_HOME=$(shell_quote "$ALFRED_HOME") WORKSPACE_ROOT=$(shell_quote "$WORKSPACE_ROOT") "
+  cat <<EOF
+  1. Keep the selected runtime in scope when you open a new shell:
+       ${C_BLUE}export ALFRED_HOME=$(shell_quote "$ALFRED_HOME")${C_OFF}
+       ${C_BLUE}export WORKSPACE_ROOT=$(shell_quote "$WORKSPACE_ROOT")${C_OFF}
+
+EOF
+else
+  cat <<EOF
+  1. No shell startup changes were made. Alfred commands read:
+       ${C_BLUE}$ALFRED_HOME/.env${C_OFF}
+
+EOF
+fi
+
+cat <<EOF
 
   2. Authenticate the CLIs that need it:
        ${C_BLUE}gh auth login${C_OFF}                     # GitHub
@@ -561,11 +589,11 @@ Next steps (run them in this order):
   4. Deploy the framework + verify (deploy.sh self-detects the host
      scheduler: launchd plists on macOS, systemd --user timers on Linux).
      Deploy also starts the local Redis Agent Memory Server:
-       ${C_BLUE}${DEPLOY_CMD}${C_OFF}
-       ${C_BLUE}${DOCTOR_CMD}${C_OFF}
+       ${C_BLUE}${RUNTIME_ENV_PREFIX}${DEPLOY_CMD}${C_OFF}
+       ${C_BLUE}${RUNTIME_ENV_PREFIX}${DOCTOR_CMD}${C_OFF}
 
   5. Configure your first fleet:
-       ${C_BLUE}${INIT_CMD}${C_OFF}
+       ${C_BLUE}${RUNTIME_ENV_PREFIX}${INIT_CMD}${C_OFF}
 
   6. Read ${C_BLUE}${INSTALL_DOC}${C_OFF} for the full first-fleet walkthrough,
      then ${C_BLUE}${BOOTSTRAP_DOC}${C_OFF} for the deeper-dive operations guide.
