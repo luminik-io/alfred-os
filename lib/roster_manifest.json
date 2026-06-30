@@ -1,0 +1,227 @@
+{
+  "schema_version": 1,
+  "default_theme": "batman",
+  "preset_theme_ids": ["batman", "transformers", "justice-league"],
+  "themes": {
+    "batman": {
+      "label": "Batman",
+      "blurb": "The shipped Gotham roster. Roles stay plain; names are the codenames."
+    },
+    "transformers": {
+      "label": "Transformers",
+      "blurb": "Autobots on the line. Optimus Prime leads the architecture."
+    },
+    "justice-league": {
+      "label": "Justice League",
+      "blurb": "The League takes the pipeline. Batman architects, the others ship."
+    }
+  },
+  "role_labels": {
+    "triage": "Triage lead",
+    "architect": "Architect",
+    "implement": "Senior developer",
+    "review": "Reviewer",
+    "ship": "Release",
+    "ops": "Ops & health"
+  },
+  "agents": [
+    {
+      "codename": "robin",
+      "role": "triage",
+      "names": {
+        "batman": "Robin",
+        "transformers": "Bumblebee",
+        "justice-league": "The Flash"
+      }
+    },
+    {
+      "codename": "drake",
+      "role": "triage",
+      "names": {
+        "batman": "Drake",
+        "transformers": "Hot Rod",
+        "justice-league": "Green Arrow"
+      }
+    },
+    {
+      "codename": "damian",
+      "role": "triage",
+      "names": {
+        "batman": "Damian",
+        "transformers": "Blurr",
+        "justice-league": "Hawkgirl"
+      }
+    },
+    {
+      "codename": "batman",
+      "role": "architect",
+      "names": {
+        "batman": "Batman",
+        "transformers": "Optimus Prime",
+        "justice-league": "Batman"
+      }
+    },
+    {
+      "codename": "lucius",
+      "role": "implement",
+      "names": {
+        "batman": "Lucius",
+        "transformers": "Ironhide",
+        "justice-league": "Superman"
+      }
+    },
+    {
+      "codename": "bane",
+      "role": "implement",
+      "names": {
+        "batman": "Bane",
+        "transformers": "Grimlock",
+        "justice-league": "Shazam"
+      }
+    },
+    {
+      "codename": "nightwing",
+      "role": "implement",
+      "names": {
+        "batman": "Nightwing",
+        "transformers": "Sideswipe",
+        "justice-league": "Aquaman"
+      }
+    },
+    {
+      "codename": "rasalghul",
+      "role": "review",
+      "names": {
+        "batman": "Ra's al Ghul",
+        "transformers": "Ratchet",
+        "justice-league": "Wonder Woman"
+      }
+    },
+    {
+      "codename": "automerge",
+      "role": "ship",
+      "names": {
+        "batman": "Auto-merge",
+        "transformers": "Jazz",
+        "justice-league": "Green Lantern"
+      }
+    },
+    {
+      "codename": "gordon",
+      "role": "ops",
+      "names": {
+        "batman": "Gordon",
+        "transformers": "Wheeljack",
+        "justice-league": "Cyborg"
+      }
+    },
+    {
+      "codename": "fleet-doctor",
+      "role": "ops",
+      "names": {
+        "batman": "Fleet doctor",
+        "transformers": "Perceptor",
+        "justice-league": "Doctor Fate"
+      }
+    },
+    {
+      "codename": "huntress",
+      "role": "ops",
+      "names": {
+        "batman": "Huntress",
+        "transformers": "Arcee",
+        "justice-league": "Martian Manhunter"
+      }
+    },
+    {
+      "codename": "agent-cleanup",
+      "role": "ops",
+      "names": {
+        "batman": "Agent cleanup",
+        "transformers": "Cosmos",
+        "justice-league": "Atom"
+      }
+    },
+    {
+      "codename": "memory-harvest",
+      "role": "ops",
+      "names": {
+        "batman": "Memory harvest",
+        "transformers": "Brainstorm",
+        "justice-league": "Zatanna"
+      }
+    },
+    {
+      "codename": "memory-auto-promote",
+      "role": "ops",
+      "names": {
+        "batman": "Memory auto-promote",
+        "transformers": "Chromia",
+        "justice-league": "Mister Miracle"
+      }
+    },
+    {
+      "codename": "code-map-refresh",
+      "role": "ops",
+      "names": {
+        "batman": "Code map",
+        "transformers": "Beachcomber",
+        "justice-league": "Vixen"
+      }
+    },
+    {
+      "codename": "agent-morning-brief",
+      "role": "ops",
+      "names": {
+        "batman": "Morning brief",
+        "transformers": "Prowl",
+        "justice-league": "Oracle"
+      }
+    },
+    {
+      "codename": "fleet-recap-morning",
+      "role": "ops",
+      "names": {
+        "batman": "Fleet recap morning",
+        "transformers": "Trailbreaker",
+        "justice-league": "Blue Beetle"
+      }
+    },
+    {
+      "codename": "fleet-recap-evening",
+      "role": "ops",
+      "names": {
+        "batman": "Fleet recap evening",
+        "transformers": "Mirage",
+        "justice-league": "Black Canary"
+      }
+    },
+    {
+      "codename": "shipped-summary-daily",
+      "role": "ship",
+      "names": {
+        "batman": "Shipped summary daily",
+        "transformers": "Sunstreaker",
+        "justice-league": "Hawkman"
+      }
+    },
+    {
+      "codename": "shipped-summary-weekly",
+      "role": "ship",
+      "names": {
+        "batman": "Shipped summary weekly",
+        "transformers": "Wheelie",
+        "justice-league": "Booster Gold"
+      }
+    },
+    {
+      "codename": "proof-telemetry",
+      "role": "ops",
+      "names": {
+        "batman": "Telemetry",
+        "transformers": "Blaster",
+        "justice-league": "Firestorm"
+      }
+    }
+  ]
+}
