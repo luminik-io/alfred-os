@@ -23,8 +23,10 @@ from __future__ import annotations
 import os
 import sys
 from contextlib import suppress
+from dataclasses import is_dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 _HERE = Path(__file__).resolve().parent
 for candidate in (
@@ -73,6 +75,7 @@ CODENAME = os.environ.get("AGENT_CODENAME", "batman")
 BATMAN_ENGINE = agent_engine(CODENAME, default="hybrid")
 ENV_EXECUTING_FANOUT_STALE_AFTER_S = "BATMAN_EXECUTING_FANOUT_STALE_AFTER_S"
 DEFAULT_EXECUTING_FANOUT_STALE_AFTER_S = 3600
+EXISTING_FANOUT_CHILDREN_KEY = "_batman_existing_fanout_children"
 BATMAN_PICKUP_BLOCKING_LABELS = {
     label_constants.IN_FLIGHT,
     label_constants.PR_OPEN,
@@ -160,6 +163,12 @@ def _list_parent_repo_large_features(parent_repo: str) -> list[dict]:
             if marker_state == "executing" and _executing_fanout_marker_is_stale(
                 parent_repo, issue_number
             ):
+                existing_child_keys = _executing_fanout_marker_existing_child_keys(
+                    parent_repo,
+                    issue_number,
+                )
+                if existing_child_keys:
+                    r[EXISTING_FANOUT_CHILDREN_KEY] = sorted(existing_child_keys)
                 print(
                     f"[BATMAN-PARENT-FANOUT-MARKER-STALE] parent={parent_repo}#{issue_number} "
                     f"state=executing; clearing marker and retrying fanout",
@@ -442,6 +451,10 @@ def _run_lifecycle_body(
         _unset_pending_approval_label(parent_repo, parent_issue_number)
 
     execution_plan = _execution_plan(lifecycle, plan)
+    execution_plan = _filter_existing_fanout_children(
+        execution_plan,
+        _existing_fanout_child_keys(parent_issue),
+    )
     planned_marker_children = _fanout_marker_children(execution_plan)
     marker_saved = _save_completed_fanout_marker(
         parent_repo,
@@ -544,6 +557,102 @@ def _fanout_marker_children(plan) -> list[dict[str, object]]:
         ]
         children.append({"labels": labels, "repo": repo, "title": title})
     return children
+
+
+def _child_marker_key(repo: object, title: object) -> tuple[str, str]:
+    return (str(repo or "").strip().lower(), str(title or "").strip())
+
+
+def _existing_fanout_child_keys(parent_issue: dict) -> set[tuple[str, str]]:
+    raw_keys = parent_issue.get(EXISTING_FANOUT_CHILDREN_KEY)
+    if not isinstance(raw_keys, list):
+        return set()
+    keys = set()
+    for raw in raw_keys:
+        if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+            continue
+        key = _child_marker_key(raw[0], raw[1])
+        if all(key):
+            keys.add(key)
+    return keys
+
+
+def _executing_fanout_marker_existing_child_keys(
+    parent_repo: str,
+    parent_issue_number: int,
+) -> set[tuple[str, str]]:
+    payload = _completed_fanout_marker_payload(parent_repo, parent_issue_number)
+    if payload is None:
+        return set()
+    children = payload.get("children")
+    if not isinstance(children, list):
+        return set()
+
+    existing = set()
+    for child in children:
+        if not isinstance(child, dict):
+            continue
+        repo = str(child.get("repo") or "").strip()
+        title = str(child.get("title") or "").strip()
+        labels = [str(label).strip() for label in (child.get("labels") or []) if str(label).strip()]
+        key = _child_marker_key(repo, title)
+        if not all(key):
+            continue
+        if _child_issue_exists(
+            repo,
+            title=title,
+            labels=labels,
+            parent_repo=parent_repo,
+            parent_issue_number=parent_issue_number,
+        ):
+            existing.add(key)
+    return existing
+
+
+def _filter_existing_fanout_children(plan: object, existing_keys: set[tuple[str, str]]) -> object:
+    if not existing_keys:
+        return plan
+
+    children = tuple(getattr(plan, "children", ()) or ())
+    remaining_children = tuple(
+        child
+        for child in children
+        if _child_marker_key(getattr(child, "repo", ""), getattr(child, "title", ""))
+        not in existing_keys
+    )
+    if len(remaining_children) == len(children):
+        return plan
+
+    affected_repos = _affected_repos_for_children(plan, remaining_children)
+    if is_dataclass(plan) and not isinstance(plan, type):
+        return replace(plan, children=remaining_children, affected_repos=affected_repos)
+    if hasattr(plan, "__dict__"):
+        data = dict(vars(plan))
+        data["children"] = remaining_children
+        data["affected_repos"] = affected_repos
+        return SimpleNamespace(**data)
+    return plan
+
+
+def _affected_repos_for_children(plan: object, children: tuple[object, ...]) -> tuple[str, ...]:
+    remaining_repos = {
+        str(getattr(child, "repo", "") or "").strip().lower()
+        for child in children
+        if str(getattr(child, "repo", "") or "").strip()
+    }
+    affected_repos = tuple(str(repo) for repo in (getattr(plan, "affected_repos", ()) or ()))
+    if affected_repos:
+        return tuple(repo for repo in affected_repos if repo.strip().lower() in remaining_repos)
+
+    ordered = []
+    seen = set()
+    for child in children:
+        repo = str(getattr(child, "repo", "") or "").strip()
+        key = repo.lower()
+        if repo and key not in seen:
+            ordered.append(repo)
+            seen.add(key)
+    return tuple(ordered)
 
 
 def _save_completed_fanout_marker(
