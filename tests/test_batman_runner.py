@@ -304,7 +304,16 @@ def test_lifecycle_finalizes_parent_after_full_child_fanout(monkeypatch, capsys)
     assert order == ["ensure", "label", "close", "report"]
     assert reports == [result]
     assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
-    assert edits == [("myorg/parent", 83, {"add_labels": ["batman:fanout-complete"]})]
+    assert edits == [
+        (
+            "myorg/parent",
+            83,
+            {
+                "add_labels": ["batman:fanout-complete"],
+                "remove_labels": ["agent:large-feature"],
+            },
+        )
+    ]
     assert closes == [("myorg/parent", 83)]
     assert not runner._has_completed_fanout_marker("myorg/parent", 83)
     assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
@@ -375,7 +384,16 @@ def test_lifecycle_keeps_completed_marker_when_parent_finalization_fails(monkeyp
     assert out == 1
     assert reports == ["completed"]
     assert ensured == [("myorg/parent", runner.BATMAN_PARENT_FINALIZATION_LABELS)]
-    assert edits == [("myorg/parent", 83, {"add_labels": ["batman:fanout-complete"]})]
+    assert edits == [
+        (
+            "myorg/parent",
+            83,
+            {
+                "add_labels": ["batman:fanout-complete"],
+                "remove_labels": ["agent:large-feature"],
+            },
+        )
+    ]
     assert closes == []
     assert runner._has_completed_fanout_marker("myorg/parent", 83)
     assert runner._completed_fanout_marker_state("myorg/parent", 83) == "completed"
@@ -1278,7 +1296,16 @@ def test_finalize_parent_treats_close_failure_as_best_effort(monkeypatch, capsys
 
     captured = capsys.readouterr()
     assert ok is True
-    assert edits == [("myorg/parent", 83, {"add_labels": ["batman:fanout-complete"]})]
+    assert edits == [
+        (
+            "myorg/parent",
+            83,
+            {
+                "add_labels": ["batman:fanout-complete"],
+                "remove_labels": ["agent:large-feature"],
+            },
+        )
+    ]
     assert closes == [("myorg/parent", 83)]
     assert "[BATMAN-PARENT-FANOUT-COMPLETE]" in captured.out
     assert "[BATMAN-PARENT-CLOSE-WARN]" in captured.err

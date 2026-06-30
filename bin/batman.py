@@ -997,6 +997,7 @@ def _finalize_parent_after_child_fanout(parent_repo: str, parent_issue_number: i
             parent_repo,
             parent_issue_number,
             add_labels=[label_constants.FANOUT_COMPLETE],
+            remove_labels=[LARGE_FEATURE_LABEL],
         )
     except Exception as exc:
         ok = False

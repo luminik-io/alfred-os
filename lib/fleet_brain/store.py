@@ -484,6 +484,7 @@ AGENT_BRANCH_PREFIXES: Final[tuple[str, ...]] = (
     "rasalghul/",
     "robin/",
 )
+NON_WORK_ISSUE_LABELS: Final[tuple[str, ...]] = ("batman:fanout-complete",)
 
 
 def _to_iso(dt: datetime) -> str:
@@ -1637,7 +1638,12 @@ def _authored_predicate() -> tuple[str, list[object]]:
 def _agent_labeled_predicate() -> tuple[str, list[object]]:
     """Build a SQL fragment that matches rows with any ``agent:*`` label."""
 
-    return "labels_json GLOB ?", ['*"agent:[^"]*"*']
+    clauses = ["labels_json GLOB ?"]
+    params: list[object] = ['*"agent:[^"]*"*']
+    for label in NON_WORK_ISSUE_LABELS:
+        clauses.append("labels_json NOT GLOB ?")
+        params.append(f'*"{_glob_escape(label)}"*')
+    return "(" + " AND ".join(clauses) + ")", params
 
 
 def _glob_escape(text: str) -> str:

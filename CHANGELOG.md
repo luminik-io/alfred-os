@@ -11,7 +11,7 @@ Notable changes to Alfred. Format: [Keep a Changelog](https://keepachangelog.com
 ### Changed
 
 - Alfred Desktop now uses the exact local runtime URL the operator chooses instead of silently retrying or rewriting stale localhost ports. The setup console also shows the current `alfred brain doctor --json` command.
-- Batman now marks a fully fanned-out parent `agent:large-feature` issue with `batman:fanout-complete` and closes it after every child issue is filed, preventing duplicate fan-out without counting the planning parent as shipped work.
+- Batman now removes a fully fanned-out parent's `agent:large-feature` queue label, marks it with `batman:fanout-complete`, and closes it after every child issue is filed, preventing duplicate fan-out without counting the planning parent as shipped work.
 
 ### Removed
 

@@ -472,6 +472,7 @@ def _count_rows(
 # brain filters in SQL via count_github_items(authored_only=True).
 _AGENT_AUTHORED_LABEL = "agent:authored"
 _AGENT_LABEL_PREFIX = "agent:"
+_NON_WORK_ISSUE_LABELS = frozenset({"batman:fanout-complete"})
 _AGENT_BRANCH_PREFIXES = (
     "alfred/",
     "alfred-nightly/",
@@ -510,6 +511,8 @@ def _row_is_agent_labeled(row: Any) -> bool:
 
     labels = getattr(row, "labels", None) or []
     try:
+        if any(str(label) in _NON_WORK_ISSUE_LABELS for label in labels):
+            return False
         return any(str(label).startswith(_AGENT_LABEL_PREFIX) for label in labels)
     except TypeError:
         return False

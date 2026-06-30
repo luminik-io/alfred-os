@@ -358,10 +358,11 @@ and never collide.
 ```
 
 Each gets its own review pass, its own Nightwing fixes if needed, its own
-automerge. After every child issue is filed, Batman adds `batman:fanout-complete`
-and closes the original `agent:large-feature` issue so the same parent cannot be
-picked up twice without counting the planning parent as shipped work. The bundle
-is tracked by the `agent:bundle:add-org-slug` label that every child carries.
+automerge. After every child issue is filed, Batman removes the parent's
+`agent:large-feature` queue label, adds `batman:fanout-complete`, and closes the
+original parent issue so the same parent cannot be picked up twice without
+counting the planning parent as shipped work. The bundle is tracked by the
+`agent:bundle:add-org-slug` label that every child carries.
 
 ## Step 9: final bundle rollup
 
