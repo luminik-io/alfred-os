@@ -658,7 +658,7 @@ def test_approval_repo_feedback_changes_child_issue_scope():
     lifecycle.await_approval(envelope)
 
     execution_plan = lifecycle.execution_plan(plan)
-    result = lifecycle.execute(plan)
+    result = lifecycle.execute(execution_plan)
 
     assert [child.repo for child in execution_plan.children] == [
         "your-org/your-backend",
@@ -683,6 +683,52 @@ def test_approval_repo_feedback_changes_child_issue_scope():
     assert gh.issued[-1]["title"] == "your-admin: implement billing-v2"
     assert "Remove repository scope: mobile" in gh.issued[-1]["body"]
     assert "Add repository scope: your-org/your-admin" in gh.issued[-1]["body"]
+
+
+def test_execute_uses_approved_execution_plan_without_reapplying_scope_feedback():
+    from batman import EXEC_OK, BatmanLifecycle, BatmanLifecycleConfig, ChildIssue
+
+    gh = FakeGitHubClient()
+    lifecycle = BatmanLifecycle(
+        config=BatmanLifecycleConfig(
+            auto_execute="approval-gate",
+            parent_repo="your-org/your-product",
+            slack_channel="alfred-fleet",
+        ),
+        gh_client=gh,
+        reporter=FakeReporter(),
+    )
+    plan = lifecycle.plan(
+        body=SAMPLE_BODY,
+        title=SAMPLE_TITLE,
+        parent_repo="your-org/your-product",
+        parent_issue_number=42,
+    )
+    lifecycle.operator_feedback = ("add repo: your-org/your-admin",)
+    approved_plan = type(plan)(
+        bundle_slug=plan.bundle_slug,
+        parent_repo=plan.parent_repo,
+        parent_issue_number=plan.parent_issue_number,
+        parent_title=plan.parent_title,
+        affected_repos=("your-org/your-backend",),
+        children=(
+            ChildIssue(
+                repo="your-org/your-backend",
+                title="your-backend: implement billing-v2",
+                body="Backend-only approved scope.",
+                labels=("agent:implement", "agent:bundle:billing-v2"),
+            ),
+        ),
+        done_when=plan.done_when,
+        plan_markdown=plan.plan_markdown,
+        readiness_findings=(),
+    )
+
+    result = lifecycle.execute(approved_plan)
+
+    assert result.reason == EXEC_OK
+    assert [child.repo for child in result.children] == ["your-org/your-backend"]
+    assert [item["repo"] for item in gh.issued] == ["your-org/your-backend"]
 
 
 def test_approval_feedback_with_open_question_blocks_execution():

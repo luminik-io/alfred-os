@@ -2422,12 +2422,12 @@ class BatmanLifecycle:
     # ---- execute ----
 
     def execution_plan(self, plan: BundlePlan) -> BundlePlan:
-        """Return the plan that will be used for child issue creation."""
+        """Return the approved child-issue plan for execution."""
 
         return _apply_operator_feedback_to_plan(plan, self.operator_feedback)
 
     def execute(self, plan: BundlePlan) -> ExecuteResult:
-        """File every child issue declared in ``plan``.
+        """File every child issue in the already-approved execution plan.
 
         Partial failures do not abort: every target is attempted, and the
         outcome is recorded per-repo. Callers report the partial via
@@ -2440,7 +2440,6 @@ class BatmanLifecycle:
                 reason=EXEC_NEEDS_SCOPE,
                 detail="Slack feedback contains open questions.",
             )
-        plan = self.execution_plan(plan)
         if not plan.children:
             return ExecuteResult(executed=False, reason=EXEC_NO_CHILDREN)
         if plan.readiness_blockers:
