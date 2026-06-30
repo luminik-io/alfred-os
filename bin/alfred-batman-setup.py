@@ -255,8 +255,11 @@ class BatmanSetupState:
     def value(self, key: str, default: str = "") -> str:
         return env_or_config({**self.env, **self.updates}, self.config, key, default)
 
+    def runtime_value(self, key: str, default: str = "") -> str:
+        return (self.updates.get(key) or self.config.get(key) or default).strip()
+
     def has_token(self) -> bool:
-        return bool(self.value(TOKEN_ENV))
+        return bool(self.runtime_value(TOKEN_ENV))
 
 
 def required_missing(values: dict[str, str]) -> list[str]:
@@ -315,7 +318,7 @@ def collect_values(state: BatmanSetupState) -> dict[str, str]:
     )
     picker = state.value(BATMAN_PICKER_ENV, "oldest").lower() or "oldest"
     return {
-        TOKEN_ENV: state.value(TOKEN_ENV),
+        TOKEN_ENV: state.runtime_value(TOKEN_ENV),
         SLACK_BOT_TOKEN_ENV: state.value(SLACK_BOT_TOKEN_ENV),
         OPERATOR_USER_ENV: state.value(OPERATOR_USER_ENV),
         BATMAN_CHANNEL_ENV: normalize_channel(state.value(BATMAN_CHANNEL_ENV)),

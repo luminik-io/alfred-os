@@ -459,35 +459,73 @@ def _read_env_values(path: Path) -> dict[str, str]:
         key = key.strip()
         if not ENV_KEY_RE.match(key):
             continue
-        value = value.strip()
-        try:
-            parsed = shlex.split(value)
-        except ValueError:
-            parsed = []
-        out[key] = parsed[0] if len(parsed) == 1 else value.strip("'").strip('"')
+        value = _strip_env_inline_comment(value).strip()
+        single_quoted = len(value) >= 2 and value[0] == "'" and value[-1] == "'"
+        decoded = _decode_env_value(value)
+        if not single_quoted:
+            home = _safe_home()
+            if home is not None:
+                home_text = str(home)
+                decoded = decoded.replace("${HOME}", home_text).replace("$HOME", home_text)
+        out[key] = decoded
     return out
+
+
+def _strip_env_inline_comment(value: str) -> str:
+    quote = ""
+    escaped = False
+    previous = ""
+    for index, char in enumerate(value):
+        if escaped:
+            escaped = False
+            previous = char
+            continue
+        if char == "\\" and quote != "'":
+            escaped = True
+            previous = char
+            continue
+        if quote:
+            if char == quote:
+                quote = ""
+            previous = char
+            continue
+        if char in ("'", '"'):
+            quote = char
+            previous = char
+            continue
+        if char == "#" and previous and previous.isspace():
+            return value[:index]
+        previous = char
+    return value
+
+
+def _decode_env_value(value: str) -> str:
+    if len(value) >= 2 and value[0] == "'" and value[-1] == "'":
+        return value[1:-1].replace("'\"'\"'", "'")
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1]
+    return value
 
 
 def _hydrate_cli_env_from_runtime_env() -> None:
     """Load the canonical runtime ``.env`` before CLI command dispatch.
 
     The installer no longer writes shell-rc exports, so operator commands must
-    see the same single source that scheduled agents see. Values present in
-    ``$ALFRED_HOME/.env`` intentionally win over inherited shell exports; old
-    shell state is no longer part of the runtime contract.
+    see the same single source that scheduled agents see. Match
+    ``agent-launch`` precedence: parent-process env wins for ad hoc shell
+    overrides, and ``$ALFRED_HOME/.env`` fills the
+    scheduler-visible defaults.
     """
 
     os.environ.pop("ALFREDRC", None)
-    for key in tuple(os.environ):
-        if (key.startswith("ALFRED_") and key.endswith("_REPOS")) or key in {
-            "LABEL_STATE_SWEEP_REPOS",
-            "ALFRED_CLAIM_SWEEP_REPOS",
-        }:
-            os.environ.pop(key, None)
     if not os.environ.get("ALFRED_HOME", "").strip():
         os.environ["ALFRED_HOME"] = str(_home_child(".alfred"))
     for key, value in _read_env_values(_runtime_env_path()).items():
+        if key == "ALFREDRC" or key in os.environ:
+            continue
         os.environ[key] = value
+    if not os.environ.get("WORKSPACE_ROOT", "").strip():
+        os.environ["WORKSPACE_ROOT"] = str(_home_child("code"))
 
 
 def _telemetry_values() -> dict[str, str]:

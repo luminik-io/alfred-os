@@ -1028,9 +1028,9 @@ def step_1_claude(*, non_interactive: bool) -> None:
 def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
     """Detect missing ``CLAUDE_CODE_OAUTH_TOKEN`` and prompt to mint one.
 
-    Skips when the token is already set in the env or in
-    ``$ALFRED_HOME/.env``. Skips silently in ``--non-interactive`` mode (CI,
-    automation) where prompting for a browser flow would hang.
+    Skips when the token is already set in ``$ALFRED_HOME/.env``. Skips
+    silently in ``--non-interactive`` mode (CI, automation) where prompting
+    for a browser flow would hang.
 
     The token is what scheduled agents read instead of the host
     credential store, so without it every launchd / systemd-spawned
@@ -1039,22 +1039,16 @@ def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
     if non_interactive:
         return
 
-    # Env var set in the parent shell -> already configured.
-    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
-        ok("CLAUDE_CODE_OAUTH_TOKEN already set in env")
+    env_file = Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred")) / ".env"
+    if read_env_file(env_file).get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+        ok(f"CLAUDE_CODE_OAUTH_TOKEN already set in {env_file}")
         return
 
-    env_file = Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred")) / ".env"
-    if env_file.is_file():
-        try:
-            text = env_file.read_text(encoding="utf-8")
-        except OSError:
-            text = ""
-        for line in text.splitlines():
-            stripped = line.strip().removeprefix("export").strip()
-            if stripped.startswith("CLAUDE_CODE_OAUTH_TOKEN="):
-                ok(f"CLAUDE_CODE_OAUTH_TOKEN already set in {env_file}")
-                return
+    if os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip():
+        warn(
+            "CLAUDE_CODE_OAUTH_TOKEN is set only in this shell; scheduled firings "
+            f"need it in {env_file}."
+        )
 
     print(
         "\n  Scheduled firings (launchd / systemd --user) can't read the\n"

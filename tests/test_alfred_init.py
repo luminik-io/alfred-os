@@ -917,6 +917,39 @@ def test_read_env_file_strips_inline_comments_without_touching_quoted_hashes(tmp
     assert out["EMPTY"] == ""
 
 
+def test_maybe_offer_setup_token_treats_process_env_only_token_as_not_ready(
+    tmp_path, init_mod, monkeypatch, capsys
+):
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "shell-only-token")
+    prompts: list[str] = []
+    monkeypatch.setattr("builtins.input", lambda prompt: prompts.append(prompt) or "n")
+
+    init_mod._maybe_offer_setup_token(non_interactive=False)
+
+    captured = capsys.readouterr()
+    assert "scheduled firings need it" in captured.err
+    assert any("Run `alfred setup-token` now?" in prompt for prompt in prompts)
+
+
+def test_maybe_offer_setup_token_accepts_runtime_env_file_token(
+    tmp_path, init_mod, monkeypatch, capsys
+):
+    alfred_home = tmp_path / ".alfred"
+    alfred_home.mkdir()
+    (alfred_home / ".env").write_text("CLAUDE_CODE_OAUTH_TOKEN=runtime-token\n", encoding="utf-8")
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "shell-only-token")
+
+    init_mod._maybe_offer_setup_token(non_interactive=False)
+
+    captured = capsys.readouterr()
+    assert f"already set in {alfred_home / '.env'}" in captured.out
+    assert "Run `alfred setup-token` now?" not in captured.out
+
+
 def test_upsert_env_file_idempotent(tmp_path, init_mod):
     rc = tmp_path / ".env"
     rc.write_text("# pre-existing\nGH_ORG=acme\n")

@@ -93,6 +93,22 @@ def test_check_only_reports_missing_required_values(tmp_path, monkeypatch, capsy
     assert "BATMAN_PARENT_REPO" in captured.err
 
 
+def test_check_only_ignores_process_only_claude_token(tmp_path, monkeypatch, capsys):
+    mod = _load_module(monkeypatch, tmp_path)
+    alfred_home = tmp_path / "alfred-home"
+    env_file = alfred_home / ".env"
+    alfred_home.mkdir()
+    env_file.write_text("BATMAN_PARENT_REPO=acme/specs\n")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-present-only-in-shell")
+
+    out = mod.main(["--check-only", "--alfred-home", str(alfred_home)])
+
+    captured = capsys.readouterr()
+    assert out == 1
+    assert "missing CLAUDE_CODE_OAUTH_TOKEN" in captured.out
+    assert "CLAUDE_CODE_OAUTH_TOKEN" in captured.err
+
+
 def test_check_only_approval_gate_requires_slack_token_and_user(tmp_path, monkeypatch, capsys):
     mod = _load_module(monkeypatch, tmp_path)
     alfred_home = tmp_path / "alfred-home"

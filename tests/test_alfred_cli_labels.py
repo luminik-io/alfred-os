@@ -125,16 +125,38 @@ def test_labels_all_hydrates_fleet_repo_env_from_runtime_env(
     assert repos == ["api", "web", "mobile"]
 
 
-def test_labels_all_runtime_env_overrides_stale_shell_repo_env(
+def test_runtime_env_loader_expands_home_tokens_like_agent_launch(
+    cli_module, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    home = Path(os.environ["ALFRED_HOME"])
+    home.mkdir(parents=True)
+    env_file = home / ".env"
+    env_file.write_text(
+        "WORKSPACE_ROOT=$HOME/work\n"
+        "CODEX_HOME=${HOME}/codex\n"
+        "ALFRED_LITERAL='$HOME/not-expanded'\n",
+        encoding="utf-8",
+    )
+
+    values = cli_module._read_env_values(env_file)
+
+    assert values["WORKSPACE_ROOT"] == str(tmp_path / "work")
+    assert values["CODEX_HOME"] == str(tmp_path / "codex")
+    assert values["ALFRED_LITERAL"] == "$HOME/not-expanded"
+
+
+def test_runtime_env_file_does_not_clobber_process_overrides(
     cli_module, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     home = Path(os.environ["ALFRED_HOME"])
     home.mkdir(parents=True)
     (home / ".env").write_text(
-        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\n",
+        "GH_ORG=acme\nALFRED_LUCIUS_REPOS=api,web\nALFRED_TELEMETRY_ENABLED=1\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "stale/repo")
+    monkeypatch.setenv("ALFRED_LUCIUS_REPOS", "manual/repo")
+    monkeypatch.setenv("ALFRED_TELEMETRY_ENABLED", "0")
     repos: list[str] = []
     monkeypatch.setattr(
         cli_module,
@@ -143,7 +165,8 @@ def test_labels_all_runtime_env_overrides_stale_shell_repo_env(
     )
 
     assert cli_module.main(["labels", "check", "--all"]) == 0
-    assert repos == ["api", "web"]
+    assert repos == ["manual/repo"]
+    assert os.environ["ALFRED_TELEMETRY_ENABLED"] == "0"
 
 
 def test_capabilities_command_does_not_import_agent_runner(tmp_path: Path) -> None:
