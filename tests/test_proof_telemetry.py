@@ -803,6 +803,7 @@ def test_derive_counts_maps_states_correctly():
         issues=[
             FakeIssue(),
             FakeIssue("closed", labels=["agent:bundle:billing"]),
+            FakeIssue("closed", labels=["batman:fanout-complete"]),
             FakeIssue("closed", labels=["help wanted"]),
         ],
         touches=[FakeTouch()] * 7,

@@ -20,7 +20,7 @@ def test_lifecycle_label_strings_are_stable():
     assert labels.IN_FLIGHT == "agent:in-flight"
     assert labels.PR_OPEN == "agent:pr-open"
     assert labels.DONE == "agent:done"
-    assert labels.FANOUT_COMPLETE == "agent:fanout-complete"
+    assert labels.FANOUT_COMPLETE == "batman:fanout-complete"
 
 
 def test_sticky_label_strings_are_stable():

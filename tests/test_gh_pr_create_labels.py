@@ -31,7 +31,7 @@ def test_standard_labels_includes_batman_and_large_feature():
     names = {name for name, _, _ in ar.STANDARD_LABELS}
     assert "batman-pr-open" in names
     assert "agent:large-feature" in names
-    assert "agent:fanout-complete" in names
+    assert "batman:fanout-complete" in names
 
 
 def test_gh_pr_create_creates_adhoc_labels_not_in_standard(monkeypatch, tmp_path):

@@ -72,7 +72,7 @@ BUNDLE_LABEL_PREFIX: Final[str] = "agent:bundle:"
 PLAN_PENDING_APPROVAL: Final[str] = "agent:plan-pending-approval"
 """Set on a bundle parent while Batman waits on operator approval before execute."""
 
-FANOUT_COMPLETE: Final[str] = "agent:fanout-complete"
+FANOUT_COMPLETE: Final[str] = "batman:fanout-complete"
 """Batman filed every child issue for this parent. Not shipped-work evidence."""
 
 NEEDS_HUMAN_REVIEW: Final[str] = "agent:needs-human-review"

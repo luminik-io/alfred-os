@@ -973,7 +973,7 @@ def _finalize_parent_after_child_fanout(parent_repo: str, parent_issue_number: i
     Batman already filed every child issue at this point. Leaving the
     parent open without a blocker lets the next firing pick the same
     `agent:large-feature` issue again and duplicate the child fan-out.
-    The `agent:fanout-complete` label is the durable pickup blocker;
+    The `batman:fanout-complete` label is the durable pickup blocker;
     GitHub close is a best-effort convenience for the operator.
     """
     if not parent_repo or parent_issue_number <= 0:

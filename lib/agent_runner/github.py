@@ -130,7 +130,7 @@ STANDARD_LABELS: list[tuple[str, str, str]] = [
         "Multi-repo feature; picked up as a bundle by Batman.",
     ),
     (
-        "agent:fanout-complete",
+        "batman:fanout-complete",
         "5319e7",
         "Batman filed every child issue for this parent; not shipped-work evidence.",
     ),
