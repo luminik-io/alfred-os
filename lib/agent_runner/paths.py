@@ -16,7 +16,7 @@ This module owns the operator-facing filesystem and binary contract:
 What this module does NOT own:
 
 * Subprocess invocation -> ``process.py``.
-* The ``.alfredrc`` loader -> ``config.py``.
+* Runtime config loading -> ``config.py``.
 * GitHub state-machine label constants -> ``github.py``.
 
 The public surface is intentionally values (not classes): import the
@@ -246,10 +246,6 @@ def runtime_home() -> Path:
     return Path(os.path.expanduser("~/.alfred"))
 
 
-def _same_runtime_home(left: Path, right: Path) -> bool:
-    return left.expanduser().resolve(strict=False) == right.expanduser().resolve(strict=False)
-
-
 def config_value(key: str, default: str = "") -> str:
     """Resolve a config value from process env, then ``$ALFRED_HOME/.env``."""
 
@@ -265,64 +261,17 @@ def config_value(key: str, default: str = "") -> str:
 def launcher_env() -> dict[str, str]:
     """Return the env shape scheduler-spawned agents see through ``agent-launch``.
 
-    The shell launcher loads ``~/.alfredrc`` first, resolves ``ALFRED_HOME``,
-    then loads ``$ALFRED_HOME/.env`` in no-clobber mode. Keep this helper in
+    The shell launcher resolves ``ALFRED_HOME`` from process env/defaults, then
+    loads ``$ALFRED_HOME/.env`` in no-clobber mode. Keep this helper in
     lockstep with that order so server-side setup/status surfaces report the
     same config the scheduled fleet will enforce after a restart.
     """
 
-    home = Path(os.path.expanduser("~"))
     env = dict(os.environ)
+    env.pop("ALFREDRC", None)
     if not env.get("ALFRED_HOME", "").strip():
         env.pop("ALFRED_HOME", None)
     inherited_keys = set(env)
-    rc_path = _selected_alfredrc_path(env, home)
-    direct_selected_alfredrc = "ALFREDRC" in inherited_keys and bool(
-        env.get("ALFREDRC", "").strip()
-    )
-    env["ALFREDRC"] = str(rc_path)
-    rc_env: dict[str, str] = {}
-    load_env_file(rc_path, rc_env)
-    blocked_rc_keys = _blocked_setup_runtime_keys_for_rc(
-        env, rc_env, direct_selected_alfredrc, inherited_keys
-    )
-    if rc_env:
-        rc_clobber_keys = {"ALFREDRC"}
-        if direct_selected_alfredrc:
-            rc_clobber_keys.update({"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"})
-        load_env_file(
-            rc_path,
-            env,
-            no_clobber=True,
-            clobber_keys=rc_clobber_keys,
-            skip_keys=blocked_rc_keys,
-        )
-    if env.get("ALFREDRC", "").strip() and env["ALFREDRC"] != str(rc_path):
-        rc_path = _selected_alfredrc_path(env, home)
-        env["ALFREDRC"] = str(rc_path)
-        if not direct_selected_alfredrc and not env.get("ALFRED_HOME", "").strip():
-            env["ALFRED_HOME"] = str(home / ".alfred")
-        pointed_rc_env: dict[str, str] = {}
-        load_env_file(rc_path, pointed_rc_env)
-        blocked_rc_keys = _blocked_setup_runtime_keys_for_rc(
-            env, pointed_rc_env, direct_selected_alfredrc, inherited_keys
-        )
-        pointed_preserve_keys = set(inherited_keys)
-        if not direct_selected_alfredrc:
-            pointed_preserve_keys.add("ALFRED_HOME")
-        load_env_file(
-            rc_path,
-            env,
-            no_clobber=True,
-            clobber_keys={
-                "ALFRED_HOME",
-                "ALFRED_FLEET_BRAIN_DB",
-            }
-            | _SETUP_MANAGED_RUNTIME_ENV_KEYS,
-            preserve_keys=pointed_preserve_keys,
-            skip_keys=blocked_rc_keys,
-            file_overrides_existing=True,
-        )
     if not env.get("ALFRED_HOME", "").strip():
         env["ALFRED_HOME"] = os.path.expanduser("~/.alfred")
     else:
@@ -337,29 +286,6 @@ def launcher_env() -> dict[str, str]:
     if not env.get("WORKSPACE_ROOT", "").strip():
         env["WORKSPACE_ROOT"] = os.path.expanduser("~/code")
     return env
-
-
-def _selected_alfredrc_path(env: dict[str, str], home: Path) -> Path:
-    raw = env.get("ALFREDRC", "").strip()
-    if raw:
-        return Path(raw).expanduser()
-    return home / ".alfredrc"
-
-
-def _blocked_setup_runtime_keys_for_rc(
-    env: dict[str, str],
-    rc_env: dict[str, str],
-    direct_selected_alfredrc: bool,
-    inherited_keys: set[str],
-) -> set[str] | None:
-    process_home = env.get("ALFRED_HOME", "").strip()
-    if not process_home or direct_selected_alfredrc:
-        return None
-    effective_home = Path(process_home).expanduser()
-    rc_home = Path(rc_env.get("ALFRED_HOME", "") or "~/.alfred").expanduser()
-    if _same_runtime_home(effective_home, rc_home):
-        return None
-    return _SETUP_MANAGED_RUNTIME_ENV_KEYS
 
 
 def _env_key_matches(key: str, patterns: set[str]) -> bool:

@@ -54,7 +54,7 @@ def _render(tmp_path: Path, conf_text: str, env: dict[str, str] | None = None) -
     (launchd_dir / "agents.conf").write_text(conf_text)
     out_dir = tmp_path / "out"
     # A throwaway HOME keeps the %h substitution deterministic and stops
-    # render.sh from picking up the developer's real ~/.alfredrc.
+    # render.sh from picking up the developer's real runtime config.
     full_env = _render_env(tmp_path, env)
     res = subprocess.run(
         ["bash", str(systemd_dir / "render.sh"), str(out_dir)],
@@ -130,159 +130,58 @@ def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
     assert "Environment=LAUNCHD_LABEL=my.fleet.marshall" in service
 
 
-def test_render_passes_custom_alfredrc_to_systemd_environment(tmp_path):
-    custom_rc = tmp_path / "custom.alfredrc"
-    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
-
-    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert f"Environment=ALFREDRC={custom_rc}" in service
-
-
-def test_render_quotes_custom_alfredrc_with_spaces(tmp_path):
-    custom_dir = tmp_path / "custom rc"
-    custom_dir.mkdir()
-    custom_rc = custom_dir / ".alfredrc"
-    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
-
-    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert f'Environment=ALFREDRC="{custom_rc}"' in service
-
-
 def test_render_quotes_execstart_when_alfred_home_has_spaces(tmp_path):
-    custom_rc = tmp_path / "custom.alfredrc"
     custom_home = tmp_path / "runtime home"
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
+    custom_home.mkdir()
+    (custom_home / ".env").write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
     conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
 
-    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
+    out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(custom_home)})
 
     service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
     assert f'ExecStart="{custom_home}/bin/agent-launch" memory-auto-promote.py' in service
     assert f'Environment=ALFRED_HOME="{custom_home}"' in service
 
 
-def test_render_follows_persisted_alfredrc_pointer(tmp_path):
-    home = tmp_path / "fakehome"
-    home.mkdir()
+def test_render_ignores_legacy_alfredrc_environment(tmp_path):
     custom_rc = tmp_path / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc} # scheduler rc\n", encoding="utf-8")
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
+    custom_rc.write_text("ALFRED_HOME=/stale\nWORKSPACE_ROOT=/stale\n", encoding="utf-8")
     conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
 
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
+    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
 
     service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert f"Environment=ALFREDRC={custom_rc}" in service
-    assert f"Environment=ALFRED_HOME={custom_home}" in service
+    assert "Environment=ALFREDRC=" not in service
+    assert "Environment=ALFRED_HOME=/stale" not in service
+    assert "Environment=WORKSPACE_ROOT=/stale" not in service
+
+
+def test_render_loads_runtime_env_file(tmp_path):
+    runtime = tmp_path / "runtime"
+    workspace = tmp_path / "workspace"
+    runtime.mkdir()
+    (runtime / ".env").write_text(f"WORKSPACE_ROOT={workspace}\n", encoding="utf-8")
+    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
+
+    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
+    assert "Environment=ALFREDRC=" not in service
+    assert f"Environment=ALFRED_HOME={runtime}" in service
     assert f"Environment=WORKSPACE_ROOT={workspace}" in service
 
 
-def test_render_follows_pointer_from_explicit_alfredrc(tmp_path):
-    home = tmp_path / "fakehome"
-    home.mkdir()
-    launch_rc = tmp_path / "launch.alfredrc"
-    custom_rc = tmp_path / "custom.alfredrc"
-    stale_home = tmp_path / "stale-runtime"
-    stale_workspace = tmp_path / "stale-workspace"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    launch_rc.write_text(
-        f"ALFREDRC={custom_rc}\nALFRED_HOME={stale_home}\nWORKSPACE_ROOT={stale_workspace}\n",
-        encoding="utf-8",
-    )
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": str(launch_rc)})
-
-    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert f"Environment=ALFREDRC={custom_rc}" in service
-    assert f"Environment=ALFRED_HOME={custom_home}" in service
-    assert f"Environment=WORKSPACE_ROOT={workspace}" in service
-
-
-def test_render_expands_home_relative_persisted_alfredrc_pointer(tmp_path):
-    home = tmp_path / "fakehome"
-    home.mkdir()
-    custom_rc = home / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    (home / ".alfredrc").write_text("ALFREDRC=~/custom.alfredrc\n", encoding="utf-8")
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
-
-    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert "Environment=ALFREDRC=%h/custom.alfredrc" in service
-    assert f"Environment=ALFRED_HOME={custom_home}" in service
-    assert f"Environment=WORKSPACE_ROOT={workspace}" in service
-
-
-def test_render_expands_systemd_home_specifier_from_discovered_alfredrc(tmp_path):
-    home = tmp_path / "fakehome"
-    systemd_user = home / ".config" / "systemd" / "user"
-    systemd_user.mkdir(parents=True)
-    custom_rc = home / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    (systemd_user / "old.service").write_text(
-        "Environment=ALFREDRC=%h/custom.alfredrc\n",
-        encoding="utf-8",
-    )
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home)})
-
-    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert "Environment=ALFREDRC=%h/custom.alfredrc" in service
-    assert f"Environment=ALFRED_HOME={custom_home}" in service
-    assert f"Environment=WORKSPACE_ROOT={workspace}" in service
-
-
-def test_render_preserves_process_layout_over_alfredrc(tmp_path):
-    home = tmp_path / "fakehome"
-    home.mkdir()
-    rc_home = tmp_path / "rc-runtime"
-    rc_workspace = tmp_path / "rc-workspace"
+def test_render_preserves_process_layout_over_runtime_env(tmp_path):
     process_home = tmp_path / "process-runtime"
     process_workspace = tmp_path / "process-workspace"
-    (home / ".alfredrc").write_text(
-        f"ALFRED_HOME={rc_home}\nWORKSPACE_ROOT={rc_workspace}\n",
-        encoding="utf-8",
-    )
+    process_home.mkdir()
+    (process_home / ".env").write_text("WORKSPACE_ROOT=/stale\n", encoding="utf-8")
     conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
 
     out_dir = _render(
         tmp_path,
         conf,
         env={
-            "HOME": str(home),
-            "ALFREDRC": "",
             "ALFRED_HOME": str(process_home),
             "WORKSPACE_ROOT": str(process_workspace),
         },
@@ -291,50 +190,6 @@ def test_render_preserves_process_layout_over_alfredrc(tmp_path):
     service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
     assert f"Environment=ALFRED_HOME={process_home}" in service
     assert f"Environment=WORKSPACE_ROOT={process_workspace}" in service
-
-
-def test_render_follows_runtime_alfredrc_pointer_file(tmp_path):
-    home = tmp_path / "fakehome"
-    runtime = home / ".alfred"
-    (runtime / "launchd").mkdir(parents=True)
-    custom_rc = tmp_path / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    (runtime / "launchd" / "alfredrc.path").write_text(f"{custom_rc}\n", encoding="utf-8")
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
-
-    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert f"Environment=ALFREDRC={custom_rc}" in service
-    assert f"Environment=ALFRED_HOME={custom_home}" in service
-    assert f"Environment=WORKSPACE_ROOT={workspace}" in service
-
-
-def test_render_expands_home_specifier_from_runtime_alfredrc_pointer_file(tmp_path):
-    home = tmp_path / "fakehome"
-    runtime = home / ".alfred"
-    (runtime / "launchd").mkdir(parents=True)
-    custom_rc = home / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    (runtime / "launchd" / "alfredrc.path").write_text("%h/custom.alfredrc\n", encoding="utf-8")
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
-
-    service = (out_dir / "my.fleet.memory-auto-promote.service").read_text()
-    assert "Environment=ALFREDRC=%h/custom.alfredrc" in service
-    assert f"Environment=ALFRED_HOME={custom_home}" in service
-    assert f"Environment=WORKSPACE_ROOT={workspace}" in service
 
 
 def test_render_omits_java_home_when_needs_java_no(tmp_path):

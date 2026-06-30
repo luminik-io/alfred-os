@@ -13,7 +13,6 @@ Environment=PATH=__PATH__
 __JAVA_BLOCK__
 Environment=HOME=__HOME__
 Environment=ALFRED_HOME=__ALFRED_HOME__
-__ALFREDRC_ENV__
 Environment=WORKSPACE_ROOT=__WORKSPACE_ROOT__
 Environment=AGENT_CODENAME=__AGENT_SHORT__
 Environment=LAUNCHD_LABEL=__LABEL__

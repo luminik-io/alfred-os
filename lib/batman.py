@@ -1319,7 +1319,7 @@ def _parse_repo_lines(block: str, *, fallback_org: str = "") -> list[str]:
         print(
             f"[BATMAN-PARSE-WARN] _parse_repo_lines: skipping bare repo "
             f"name {token!r}: no `/`, parent repo owner, or `GH_ORG` is set. Write "
-            f"`owner/{token}` or set GH_ORG in `~/.alfredrc`. See "
+            f"`owner/{token}` or set GH_ORG in `$ALFRED_HOME/.env`. See "
             f"docs/BATMAN_PARENT_ISSUE_TEMPLATE.md.",
             file=sys.stderr,
         )

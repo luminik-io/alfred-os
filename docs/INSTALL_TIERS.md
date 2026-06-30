@@ -93,18 +93,18 @@ The base install already includes the runtime dependencies for core, the local A
 
 ```sh
 # Minimal: incoming webhook for fleet posts (one-way: agents post, you read)
-echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.alfredrc
+echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> $ALFRED_HOME/.env
 
 # Optional: the planning listener (Socket Mode, bot token + app token)
-echo 'SLACK_BOT_TOKEN=xoxb-...' >> ~/.alfredrc
-echo 'SLACK_APP_TOKEN=xapp-...' >> ~/.alfredrc
-echo 'ALFRED_OPERATOR_SLACK_USER_ID=U0123' >> ~/.alfredrc
-echo 'ALFRED_TRUSTED_SLACK_USER_IDS=U0123,U0456' >> ~/.alfredrc
+echo 'SLACK_BOT_TOKEN=xoxb-...' >> $ALFRED_HOME/.env
+echo 'SLACK_APP_TOKEN=xapp-...' >> $ALFRED_HOME/.env
+echo 'ALFRED_OPERATOR_SLACK_USER_ID=U0123' >> $ALFRED_HOME/.env
+echo 'ALFRED_TRUSTED_SLACK_USER_IDS=U0123,U0456' >> $ALFRED_HOME/.env
 ./bin/alfred-slack-listener.py
 
 # Optional: arm the issue bridge (default OFF). Both are required to enable.
-echo 'ALFRED_BRIDGE_ENABLED=1' >> ~/.alfredrc
-echo 'ALFRED_BRIDGE_REPOS=acme-org/api,acme-org/web' >> ~/.alfredrc
+echo 'ALFRED_BRIDGE_ENABLED=1' >> $ALFRED_HOME/.env
+echo 'ALFRED_BRIDGE_REPOS=acme-org/api,acme-org/web' >> $ALFRED_HOME/.env
 ```
 
 Leave `ALFRED_BRIDGE_ENABLED` unset to keep approvals as refine-only no-ops. For the message contract, the reaction approval gate, and the listener boundary, see [`SLACK_UX.md`](SLACK_UX.md), [`SLACK_APPROVAL.md`](SLACK_APPROVAL.md), and the webhook walkthrough in the Slack setup guide.

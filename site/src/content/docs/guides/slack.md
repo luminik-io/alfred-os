@@ -38,7 +38,7 @@ Three options:
 ### Option A: Env var (simplest)
 
 ```sh
-echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> ~/.alfredrc
+echo 'SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T.../B.../...' >> $ALFRED_HOME/.env
 exec $SHELL
 ```
 

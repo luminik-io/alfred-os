@@ -3,11 +3,12 @@
 
 set -eu
 
-if [ -f "${HOME}/.alfredrc" ]; then
-  # shellcheck disable=SC1091
-  . "${HOME}/.alfredrc"
-fi
-
 ALFRED_HOME="${ALFRED_HOME:-${HOME}/.alfred}"
+if [ -f "${ALFRED_HOME}/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "${ALFRED_HOME}/.env"
+  set +a
+fi
 export ALFRED_HOME
 exec "${ALFRED_HOME}/bin/alfred-shipped-summary.py" --period weekly --slack "$@"

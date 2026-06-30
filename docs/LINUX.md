@@ -45,8 +45,8 @@ bash install.sh
 3. Installs `uv` from the official installer (no apt package), and uses it to
    provision Python 3.11 if the distro ships a newer default.
 4. `npm install -g @anthropic-ai/claude-code`.
-5. Creates `$ALFRED_HOME` and `$WORKSPACE_ROOT`, seeds `~/.alfredrc`, and
-   appends the source-block to your shell rc.
+5. Creates `$ALFRED_HOME` and `$WORKSPACE_ROOT`, and seeds `$ALFRED_HOME/.env`
+   for the scheduler, CLI, and native app to load directly.
 
 AWS CLI v2 is **not** auto-installed: apt's `awscli` is v1.x, and scheduled
 fleet jobs that touch AWS want v2. Install it manually from Amazon if you
@@ -174,4 +174,4 @@ systemctl --user restart my.fleet.lucius.timer
 ```
 
 If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in
-`~/.alfredrc`; it flows into rendered units through `agent-launch`.
+`$ALFRED_HOME/.env`; it flows into rendered units through `agent-launch`.

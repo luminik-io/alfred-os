@@ -36,7 +36,7 @@ One firing is one short-lived process working one task:
   explicit, and human merge is by design. Optional automerge only ever lands
   small PRs that match a policy you wrote, and you can leave it off.
 - It **cannot touch a repo you did not add.** Alfred only operates on the repos
-  listed in `~/.alfredrc`. It does not discover or clone other repos.
+  listed in `$ALFRED_HOME/.env`. It does not discover or clone other repos.
 - It **cannot escape the approval gate.** A locally drafted single-repo plan
   carries `agent:plan-pending-approval` and is held from autonomous pickup until
   you approve it and the label clears. A `do-not-pickup` override holds an issue

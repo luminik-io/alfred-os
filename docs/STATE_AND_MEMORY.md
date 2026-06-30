@@ -89,7 +89,7 @@ $ALFRED_HOME/state/
 The contract is intentionally narrow: operational state is JSON or JSONL on
 disk, promoted lessons live in Redis Agent Memory, and review/reliability rows
 live in FleetBrain. Anything else is reconstructed from GitHub, the repo
-checkout, or the operator's `~/.alfredrc`.
+checkout, or the operator's `$ALFRED_HOME/.env`.
 
 ## The fleet brain
 
@@ -135,7 +135,7 @@ records exact before/after character and byte counts in the engine result
 metadata. It never summarizes or invents facts. The agent must recover any
 omitted detail from the repository, tests, memory, or code-memory MCP tools.
 
-Configuration lives in `~/.alfredrc` or `$ALFRED_HOME/.env`:
+Configuration lives in `$ALFRED_HOME/.env` or `$ALFRED_HOME/.env`:
 
 | Variable | Default | What it does |
 |---|---:|---|

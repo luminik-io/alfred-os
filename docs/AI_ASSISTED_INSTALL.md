@@ -80,7 +80,7 @@ Rules:
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.
-- At the end, show the Alfred repo path, ~/.alfredrc Alfred block, `alfred agents`, `alfred auth status`, and doctor output.
+- At the end, show the Alfred repo path, $ALFRED_HOME/.env Alfred block, `alfred agents`, `alfred auth status`, and doctor output.
 
 Steps:
 0. Set shell variables from the values block:
@@ -119,7 +119,7 @@ Steps:
 
 4. Install prerequisites:
    ALFRED_NONINTERACTIVE=1 GH_ORG="$GH_ORG" OPERATOR_NAME="$OPERATOR_NAME" OPERATOR_EMAIL="$OPERATOR_EMAIL" bash install.sh
-   . ~/.alfredrc
+   . "${ALFRED_HOME:-$HOME/.alfred}/.env"
 
 5. Check auth and pause for me if login is needed:
    gh auth status || { echo "GitHub auth needed. Run: gh auth login --hostname github.com --git-protocol https --web"; exit 1; }
@@ -171,7 +171,7 @@ current process.stdin` and the process hangs until killed.
 Two supported paths from an AI-assisted install:
 
 1. Ask the operator to open their own terminal and run `alfred setup-token`
-   once. The script writes `CLAUDE_CODE_OAUTH_TOKEN` to `~/.alfredrc` and
+   once. The script writes `CLAUDE_CODE_OAUTH_TOKEN` to `$ALFRED_HOME/.env` and
    exits; the assistant can resume from there.
 2. Use the paste-back flow: the operator runs `claude setup-token` in
    their shell, copies the printed `sk-ant-oat...` token, and pastes it
@@ -182,7 +182,7 @@ Two supported paths from an AI-assisted install:
    ```
 
    `--token <value>` skips the Ink spawn entirely and writes the token
-   straight to `~/.alfredrc` with the same 0600 perms as the interactive
+   straight to `$ALFRED_HOME/.env` with the same 0600 perms as the interactive
    path. Re-run with `--force` to rotate later.
 
 When the script is invoked without a TTY and without `--token`, it
@@ -206,7 +206,7 @@ That command:
 - seeds fleet prompts into `~/.alfred/prompts/`
 - creates standard GitHub labels on the selected repo
 - writes `launchd/agents.conf`, the shared scheduler manifest
-- updates `~/.alfredrc`
+- updates `$ALFRED_HOME/.env`
 - deploys scheduler units for the selected fleet
 - runs doctor
 
@@ -337,5 +337,5 @@ Start with the smallest honest repo set. Once the full fleet passes doctor:
 - Add AWS IAM-per-agent: [`AWS_SETUP.md`](AWS_SETUP.md)
 - Add Codex engine routing: [`CODEX_PROVIDER.md`](CODEX_PROVIDER.md)
 - Add more repos by rerunning `alfred-init.py` with explicit `--repos`, or by
-  editing `~/.alfredrc` and redeploying.
+  editing `$ALFRED_HOME/.env` and redeploying.
 - Add workspace structure: [`WORKSPACE_PATTERNS.md`](WORKSPACE_PATTERNS.md)

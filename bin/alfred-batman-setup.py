@@ -7,7 +7,7 @@ bot token for approval gates, the operator's Slack member id, and the
 parent repo where large-feature issues live.
 
 The wizard is intentionally stdlib-only and idempotent. It writes one
-managed block to ``~/.alfredrc`` and replaces that block on every run.
+managed block to ``$ALFRED_HOME/.env`` and replaces that block on every run.
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def run_cmd(cmd: list[str], *, timeout: int | None = None) -> subprocess.Complet
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
 
 
-def read_alfredrc(path: Path) -> dict[str, str]:
+def read_env_file(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if not path.exists():
         return out
@@ -147,7 +147,7 @@ def upsert_batman_block(path: Path, kvs: dict[str, str]) -> None:
         value = kvs[key]
         if value == "":
             continue
-        lines.append(f"export {key}={shlex.quote(value)}")
+        lines.append(f"{key}={shlex.quote(value)}")
     block = "\n".join(lines)
     text = f"{cleaned}\n\n{block}\n" if cleaned else f"{block}\n"
 
@@ -219,41 +219,43 @@ def normalize_channel(channel: str) -> str:
     return channel.strip().lstrip("#")
 
 
-def env_or_rc(env: dict[str, str], rc: dict[str, str], key: str, default: str = "") -> str:
-    return (env.get(key) or rc.get(key) or default).strip()
+def env_or_config(
+    env: dict[str, str], config: dict[str, str], key: str, default: str = ""
+) -> str:
+    return (env.get(key) or config.get(key) or default).strip()
 
 
-def infer_parent_repo(env: dict[str, str], rc: dict[str, str]) -> str:
-    return env_or_rc(env, rc, BATMAN_PARENT_REPO_ENV)
+def infer_parent_repo(env: dict[str, str], config: dict[str, str]) -> str:
+    return env_or_config(env, config, BATMAN_PARENT_REPO_ENV)
 
 
 @dataclass
 class BatmanSetupState:
     repo_root: Path
-    alfredrc: Path
     alfred_home: Path
+    env_file: Path
     env: dict[str, str]
-    rc: dict[str, str] = field(default_factory=dict)
+    config: dict[str, str] = field(default_factory=dict)
     updates: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_args(cls, args: argparse.Namespace) -> BatmanSetupState:
-        alfredrc = Path(args.alfredrc or os.environ.get("ALFREDRC") or Path.home() / ".alfredrc")
         alfred_home = Path(
             args.alfred_home or os.environ.get("ALFRED_HOME") or Path.home() / ".alfred"
         )
+        env_file = alfred_home / ".env"
         repo_root = Path(args.repo_root or Path(__file__).resolve().parent.parent)
         state = cls(
             repo_root=repo_root,
-            alfredrc=alfredrc,
             alfred_home=alfred_home,
+            env_file=env_file,
             env=dict(os.environ),
         )
-        state.rc = read_alfredrc(alfredrc)
+        state.config = read_env_file(env_file)
         return state
 
     def value(self, key: str, default: str = "") -> str:
-        return env_or_rc({**self.env, **self.updates}, self.rc, key, default)
+        return env_or_config({**self.env, **self.updates}, self.config, key, default)
 
     def has_token(self) -> bool:
         return bool(self.value(TOKEN_ENV))
@@ -320,7 +322,7 @@ def collect_values(state: BatmanSetupState) -> dict[str, str]:
         OPERATOR_USER_ENV: state.value(OPERATOR_USER_ENV),
         BATMAN_CHANNEL_ENV: normalize_channel(state.value(BATMAN_CHANNEL_ENV)),
         BATMAN_PARENT_REPO_ENV: state.value(BATMAN_PARENT_REPO_ENV)
-        or infer_parent_repo(state.env, state.rc),
+        or infer_parent_repo(state.env, state.config),
         BATMAN_AUTO_EXECUTE_ENV: mode if mode in VALID_MODES else MODE_HALT,
         BATMAN_APPROVAL_MODE_ENV: (
             approval_mode if approval_mode in VALID_APPROVAL_MODES else APPROVAL_MODE_SLACK_OR_FILE
@@ -334,14 +336,14 @@ def collect_values(state: BatmanSetupState) -> dict[str, str]:
 def step_preflight(state: BatmanSetupState) -> None:
     step("Preflight")
     state.alfred_home.mkdir(parents=True, exist_ok=True)
-    state.alfredrc.parent.mkdir(parents=True, exist_ok=True)
-    if state.alfredrc.exists():
-        ok(f"{state.alfredrc} found")
+    state.env_file.parent.mkdir(parents=True, exist_ok=True)
+    if state.env_file.exists():
+        ok(f"{state.env_file} found")
     else:
-        state.alfredrc.write_text("", encoding="utf-8")
+        state.env_file.write_text("", encoding="utf-8")
         with contextlib.suppress(OSError):
-            state.alfredrc.chmod(0o600)
-        ok(f"{state.alfredrc} created")
+            state.env_file.chmod(0o600)
+        ok(f"{state.env_file} created")
     gh_org = state.value("GH_ORG")
     if gh_org:
         ok(f"GH_ORG={gh_org}")
@@ -372,7 +374,7 @@ def step_claude_oauth(
         script = Path(__file__).resolve().parent / "alfred-setup-token.py"
         rc = subprocess.run([sys.executable, str(script)], check=False).returncode
         if rc == 0:
-            state.rc = read_alfredrc(state.alfredrc)
+            state.config = read_env_file(state.env_file)
             ok(f"{TOKEN_ENV} configured")
         else:
             warn(f"`alfred setup-token` exited {rc}. Re-run it before enabling Batman.")
@@ -659,7 +661,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--approval-timeout-s", type=int, default=None, help="approval wait timeout seconds"
     )
-    parser.add_argument("--alfredrc", default="", help=argparse.SUPPRESS)
     parser.add_argument("--alfred-home", default="", help=argparse.SUPPRESS)
     parser.add_argument("--repo-root", default="", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
@@ -676,7 +677,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{STYLE.BLUE}alfred-batman-setup{STYLE.OFF} guided setup.")
     print(f"  Repo:        {state.repo_root}")
     print(f"  ALFRED_HOME: {state.alfred_home}")
-    print(f"  ~/.alfredrc: {state.alfredrc}")
+    print(f"  .env:        {state.env_file}")
     print()
 
     step_preflight(state)
@@ -704,8 +705,8 @@ def main(argv: list[str] | None = None) -> int:
     values = collect_values(state)
     step_optional_knobs(state, args, values=values)
 
-    upsert_batman_block(state.alfredrc, state.updates)
-    ok(f"wrote {len(state.updates)} Batman setting(s) to {state.alfredrc}")
+    upsert_batman_block(state.env_file, state.updates)
+    ok(f"wrote {len(state.updates)} Batman setting(s) to {state.env_file}")
     step_doctor(state, skip_doctor=args.skip_doctor)
 
     print("\nDone. Next steps:")

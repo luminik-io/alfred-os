@@ -91,127 +91,47 @@ def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
     assert env["LAUNCHD_LABEL"] == "my.fleet.marshall"
 
 
-def test_render_passes_custom_alfredrc_to_launchd_environment(tmp_path):
+def test_render_ignores_legacy_alfredrc_environment(tmp_path):
     custom_rc = tmp_path / "custom.alfredrc"
-    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
+    custom_rc.write_text("ALFRED_HOME=/stale\nWORKSPACE_ROOT=/stale\n", encoding="utf-8")
     conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
 
     out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
 
     plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
     env = plist_data["EnvironmentVariables"]
-    assert env["ALFREDRC"] == str(custom_rc)
+    assert "ALFREDRC" not in env
+    assert env["ALFRED_HOME"] != "/stale"
+    assert env["WORKSPACE_ROOT"] != "/stale"
 
 
-def test_render_escapes_custom_alfredrc_in_launchd_plist(tmp_path):
-    custom_rc = tmp_path / "custom&a<config>.alfredrc"
-    custom_rc.write_text("ALFRED_AUTO_PROMOTE=0\n", encoding="utf-8")
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"ALFREDRC": str(custom_rc)})
-
-    rendered = out_dir / "my.fleet.memory-auto-promote.plist"
-    plist = rendered.read_text()
-    assert str(custom_rc) not in plist
-    assert "&amp;" in plist
-    assert "&lt;" in plist
-    assert "&gt;" in plist
-    plist_data = plistlib.loads(rendered.read_bytes())
-    env = plist_data["EnvironmentVariables"]
-    assert env["ALFREDRC"] == str(custom_rc)
-
-
-def test_render_follows_persisted_alfredrc_pointer(tmp_path):
-    home = tmp_path / "home"
-    home.mkdir()
-    custom_rc = tmp_path / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
+def test_render_loads_runtime_env_file(tmp_path):
+    runtime = tmp_path / "runtime"
     workspace = tmp_path / "workspace"
-    (home / ".alfredrc").write_text(f"ALFREDRC={custom_rc} # scheduler rc\n", encoding="utf-8")
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
+    runtime.mkdir()
+    (runtime / ".env").write_text(f"WORKSPACE_ROOT={workspace}\n", encoding="utf-8")
     conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
 
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
+    out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
 
     plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
     env = plist_data["EnvironmentVariables"]
-    assert env["ALFREDRC"] == str(custom_rc)
-    assert env["ALFRED_HOME"] == str(custom_home)
+    assert "ALFREDRC" not in env
+    assert env["ALFRED_HOME"] == str(runtime)
     assert env["WORKSPACE_ROOT"] == str(workspace)
 
 
-def test_render_follows_pointer_from_explicit_alfredrc(tmp_path):
-    home = tmp_path / "home"
-    home.mkdir()
-    launch_rc = tmp_path / "launch.alfredrc"
-    custom_rc = tmp_path / "custom.alfredrc"
-    stale_home = tmp_path / "stale-runtime"
-    stale_workspace = tmp_path / "stale-workspace"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    launch_rc.write_text(
-        f"ALFREDRC={custom_rc}\nALFRED_HOME={stale_home}\nWORKSPACE_ROOT={stale_workspace}\n",
-        encoding="utf-8",
-    )
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": str(launch_rc)})
-
-    plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
-    env = plist_data["EnvironmentVariables"]
-    assert env["ALFREDRC"] == str(custom_rc)
-    assert env["ALFRED_HOME"] == str(custom_home)
-    assert env["WORKSPACE_ROOT"] == str(workspace)
-
-
-def test_render_expands_home_relative_persisted_alfredrc_pointer(tmp_path):
-    home = tmp_path / "home"
-    home.mkdir()
-    custom_rc = home / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    (home / ".alfredrc").write_text("ALFREDRC=~/custom.alfredrc\n", encoding="utf-8")
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
-
-    plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
-    env = plist_data["EnvironmentVariables"]
-    assert env["ALFREDRC"] == str(custom_rc)
-    assert env["ALFRED_HOME"] == str(custom_home)
-    assert env["WORKSPACE_ROOT"] == str(workspace)
-
-
-def test_render_preserves_process_layout_over_alfredrc(tmp_path):
-    home = tmp_path / "home"
-    home.mkdir()
-    rc_home = tmp_path / "rc-runtime"
-    rc_workspace = tmp_path / "rc-workspace"
+def test_render_preserves_process_layout_over_runtime_env(tmp_path):
     process_home = tmp_path / "process-runtime"
     process_workspace = tmp_path / "process-workspace"
-    (home / ".alfredrc").write_text(
-        f"ALFRED_HOME={rc_home}\nWORKSPACE_ROOT={rc_workspace}\n",
-        encoding="utf-8",
-    )
+    process_home.mkdir()
+    (process_home / ".env").write_text("WORKSPACE_ROOT=/stale\n", encoding="utf-8")
     conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
 
     out_dir = _render(
         tmp_path,
         conf,
         env={
-            "HOME": str(home),
-            "ALFREDRC": "",
             "ALFRED_HOME": str(process_home),
             "WORKSPACE_ROOT": str(process_workspace),
         },
@@ -221,26 +141,3 @@ def test_render_preserves_process_layout_over_alfredrc(tmp_path):
     env = plist_data["EnvironmentVariables"]
     assert env["ALFRED_HOME"] == str(process_home)
     assert env["WORKSPACE_ROOT"] == str(process_workspace)
-
-
-def test_render_follows_runtime_alfredrc_pointer_file(tmp_path):
-    home = tmp_path / "home"
-    runtime = home / ".alfred"
-    (runtime / "launchd").mkdir(parents=True)
-    custom_rc = tmp_path / "custom.alfredrc"
-    custom_home = tmp_path / "runtime"
-    workspace = tmp_path / "workspace"
-    (runtime / "launchd" / "alfredrc.path").write_text(f"{custom_rc}\n", encoding="utf-8")
-    custom_rc.write_text(
-        f"ALFRED_HOME={custom_home}\nWORKSPACE_ROOT={workspace}\nALFRED_AUTO_PROMOTE=0\n",
-        encoding="utf-8",
-    )
-    conf = "my.fleet.memory-auto-promote\tmemory-auto-promote.py\tinterval:3600\tno\n"
-
-    out_dir = _render(tmp_path, conf, env={"HOME": str(home), "ALFREDRC": ""})
-
-    plist_data = plistlib.loads((out_dir / "my.fleet.memory-auto-promote.plist").read_bytes())
-    env = plist_data["EnvironmentVariables"]
-    assert env["ALFREDRC"] == str(custom_rc)
-    assert env["ALFRED_HOME"] == str(custom_home)
-    assert env["WORKSPACE_ROOT"] == str(workspace)

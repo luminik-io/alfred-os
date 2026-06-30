@@ -76,7 +76,7 @@ Tabs are required between fields. Trailing empty fields can be omitted.
 | `__AGENT_ROLE_BLOCK__` | `ALFRED_<CODENAME>_ROLE` env var rendered from field 6 when present |
 
 `launchd` does not source shell rc files. The rendered plist calls
-`agent-launch`, which sources `~/.alfredrc` at firing time and then execs the
+`agent-launch`, which loads `$ALFRED_HOME/.env` at firing time and then execs the
 agent script from `$ALFRED_HOME/bin`.
 
 ## Adding an agent

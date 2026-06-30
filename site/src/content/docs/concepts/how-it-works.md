@@ -18,7 +18,7 @@ $ALFRED_HOME/bin/agent-launch lucius.py
 ```
 
 `agent-launch` is a thin shell wrapper. Host schedulers do not source shell rc
-files, so the wrapper sources `~/.alfredrc` at firing time, then execs
+files, so the wrapper sources `$ALFRED_HOME/.env` at firing time, then execs
 `$ALFRED_HOME/bin/lucius.py`. The rendered scheduler unit has already set
 `AGENT_CODENAME`, `LAUNCHD_LABEL`, `ALFRED_HOME`, `WORKSPACE_ROOT`, and `PATH`.
 

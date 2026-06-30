@@ -234,7 +234,7 @@ alfred claude primary
 
 On macOS, the helper flips the launchd global env var via `launchctl setenv`, so
 the next agent firing uses the selected account. On Linux, set
-`CLAUDE_CONFIG_DIR` in `~/.alfredrc` and restart the relevant systemd user
+`CLAUDE_CONFIG_DIR` in `$ALFRED_HOME/.env` and restart the relevant systemd user
 timers. In-flight runs keep their existing auth, and interactive Claude sessions
 keep using the operator's normal shell config.
 

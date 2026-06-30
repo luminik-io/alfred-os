@@ -22,7 +22,7 @@ What it reaches, and why:
 
 - **Your repos and worktrees** under `ALFRED_HOME` (`~/.alfred` by default) and
   the checkouts you pointed it at. This is ordinary file access in your home
-  directory. Alfred only touches repos you added to `~/.alfredrc`.
+  directory. Alfred only touches repos you added to `$ALFRED_HOME/.env`.
 - **Your local CLI auth.** Alfred shells out to `claude` and optional `codex`
   using the auth those tools already stored. It never reads your provider
   password and never asks for an API key.

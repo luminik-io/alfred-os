@@ -450,12 +450,12 @@ def test_report_once_disabled_does_not_create_install_id(tmp_path, monkeypatch):
     assert not (tmp_path / "state" / "telemetry-install-id").exists()
 
 
-def test_direct_dry_run_loads_alfredrc_opt_out(tmp_path):
+def test_direct_dry_run_loads_runtime_env_opt_out(tmp_path):
     home = tmp_path / "home"
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    (home / ".alfredrc").write_text(
+    (alfred_home / ".env").write_text(
         "ALFRED_TELEMETRY_ENABLED=0\nALFRED_TELEMETRY_URL=https://telemetry.example.com/ingest\n",
         encoding="utf-8",
     )
@@ -485,11 +485,9 @@ def test_cli_loads_trusted_token_from_alfred_home_env(tmp_path, monkeypatch):
     alfred_home = tmp_path / "alfred"
     home.mkdir()
     alfred_home.mkdir()
-    (home / ".alfredrc").write_text(
-        f"{pt.ENABLE_ENV}=1\n{pt.URL_ENV}={pt.DEFAULT_INGEST_URL}\n",
-        encoding="utf-8",
-    )
     (alfred_home / ".env").write_text(
+        f"{pt.ENABLE_ENV}=1\n"
+        f"{pt.URL_ENV}={pt.DEFAULT_INGEST_URL}\n"
         f"{pt.TRUSTED_TOKEN_ENV}=trusted-secret\n",
         encoding="utf-8",
     )

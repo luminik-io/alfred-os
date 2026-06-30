@@ -85,12 +85,12 @@ CLAUDE_CONFIG_DIR=$HOME/.claude-secondary claude
 
 Typical use: run on `primary`, hit a usage cap or auth issue (Slack alert from `set_global_block`), `alfred claude swap`, fleet resumes on `secondary`'s quota.
 
-On Linux, set `CLAUDE_CONFIG_DIR` in `~/.alfredrc` and redeploy or restart the
+On Linux, set `CLAUDE_CONFIG_DIR` in `$ALFRED_HOME/.env` and redeploy or restart the
 systemd user timers. There is no `launchctl setenv` equivalent.
 
 ## CLAUDE_BIN
 
-If `claude` isn't on the PATH that the host scheduler inherits, set the absolute path in `~/.alfredrc`:
+If `claude` isn't on the PATH that the host scheduler inherits, set the absolute path in `$ALFRED_HOME/.env`:
 
 ```sh
 CLAUDE_BIN=/Users/you/.local/share/fnm/aliases/default/bin/claude

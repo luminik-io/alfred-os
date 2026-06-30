@@ -190,8 +190,8 @@ TELEMETRY_ENV_KEYS = (
 )
 TELEMETRY_TRUSTED_TOKEN_ENV = "ALFRED_TELEMETRY_TRUSTED_TOKEN"
 DEFAULT_TELEMETRY_URL_ENV = "ALFRED_DEFAULT_TELEMETRY_URL"
-TELEMETRY_RC_BANNER = "# alfred telemetry, generated below this line. Safe to re-run."
-TELEMETRY_RC_BANNER_RE = re.compile(
+TELEMETRY_ENV_BANNER = "# alfred telemetry, generated below this line. Safe to re-run."
+TELEMETRY_ENV_BANNER_RE = re.compile(
     r"(?:\n{0,2})# alfred telemetry, generated below this line\. Safe to re-run\.\n"
     r"(?:ALFRED_TELEMETRY_(?:ENABLED|URL|TOKEN)=.*(?:\n|$))*",
     re.MULTILINE,
@@ -438,14 +438,11 @@ def cmd_enabled_agents(_args: argparse.Namespace) -> int:
 # ----- anonymous usage totals -----
 
 
-def _alfredrc_path(raw: str | None = None) -> Path:
-    configured = raw or os.environ.get("ALFREDRC")
-    if configured:
-        return _safe_expanduser(Path(configured))
-    return _home_child(".alfredrc")
+def _runtime_env_path() -> Path:
+    return _alfred_home_path() / ".env"
 
 
-def _read_alfredrc_values(path: Path) -> dict[str, str]:
+def _read_env_values(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     if not path.exists():
         return out
@@ -470,9 +467,8 @@ def _read_alfredrc_values(path: Path) -> dict[str, str]:
     return out
 
 
-def _telemetry_values(alfredrc: Path) -> dict[str, str]:
-    values = _read_alfredrc_values(_alfred_home_path() / ".env")
-    values.update(_read_alfredrc_values(alfredrc))
+def _telemetry_values() -> dict[str, str]:
+    values = _read_env_values(_runtime_env_path())
     for key in (
         *TELEMETRY_ENV_KEYS,
         TELEMETRY_TRUSTED_TOKEN_ENV,
@@ -577,11 +573,11 @@ def _quote_env_value(value: str) -> str:
     return shlex.quote(value)
 
 
-def _write_telemetry_rc_block(path: Path, values: dict[str, str]) -> None:
+def _write_telemetry_env_block(path: Path, values: dict[str, str]) -> None:
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
-    existing = TELEMETRY_RC_BANNER_RE.sub("", existing).strip()
+    existing = TELEMETRY_ENV_BANNER_RE.sub("", existing).strip()
     existing = _strip_telemetry_env_lines(existing).strip()
-    block = [TELEMETRY_RC_BANNER]
+    block = [TELEMETRY_ENV_BANNER]
     for key in TELEMETRY_ENV_KEYS:
         if key in values and values[key] != "":
             block.append(f"{key}={_quote_env_value(values[key])}")
@@ -799,9 +795,9 @@ def _telemetry_schedule_error(schedule: str) -> str | None:
 
 
 def cmd_telemetry_status(args: argparse.Namespace) -> int:
-    alfredrc = _alfredrc_path(args.alfredrc)
+    env_file = _runtime_env_path()
     conf = _telemetry_agents_conf_path(args.agents_conf)
-    values = _telemetry_values(alfredrc)
+    values = _telemetry_values()
     enabled = _telemetry_enabled(values)
     url = _telemetry_effective_url(values)
     token = values.get("ALFRED_TELEMETRY_TOKEN", "").strip()
@@ -815,7 +811,7 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
         "endpoint": url,
         "token_configured": bool(token) or _telemetry_state_token_exists(),
         "trusted_token_configured": bool(trusted_token),
-        "alfredrc": str(alfredrc),
+        "env_file": str(env_file),
         "agents_conf": str(conf),
         "scheduler_row": _telemetry_row_state(conf),
         "install_id_path": str(install_id_path),
@@ -844,9 +840,9 @@ def cmd_telemetry_status(args: argparse.Namespace) -> int:
 
 
 def cmd_telemetry_on(args: argparse.Namespace) -> int:
-    alfredrc = _alfredrc_path(args.alfredrc)
+    env_file = _runtime_env_path()
     conf = _telemetry_agents_conf_path(args.agents_conf)
-    current = _telemetry_values(alfredrc)
+    current = _telemetry_values()
     url = (
         args.url or current.get("ALFRED_TELEMETRY_URL") or _default_telemetry_url(current)
     ).strip()
@@ -891,10 +887,10 @@ def cmd_telemetry_on(args: argparse.Namespace) -> int:
                 "warning: kept install id and token so previous usage totals can be cleared later",
                 file=sys.stderr,
             )
-    _write_telemetry_rc_block(alfredrc, values)
+    _write_telemetry_env_block(env_file, values)
     _ensure_telemetry_scheduler_row(conf, args.schedule)
     print("alfred: telemetry enabled")
-    print(f"alfred: wrote {alfredrc}")
+    print(f"alfred: wrote {env_file}")
     print(f"alfred: scheduled {TELEMETRY_LABEL} in {conf}")
     print(_telemetry_deploy_hint(conf))
     return 0
@@ -909,9 +905,9 @@ def _clear_previous_telemetry_report(values: dict[str, str]) -> dict[str, object
 
 
 def cmd_telemetry_off(args: argparse.Namespace) -> int:
-    alfredrc = _alfredrc_path(args.alfredrc)
+    env_file = _runtime_env_path()
     conf = _telemetry_agents_conf_path(args.agents_conf)
-    current = _telemetry_values(alfredrc)
+    current = _telemetry_values()
     clear_values = dict(current)
     if not clear_values.get("ALFRED_TELEMETRY_URL"):
         clear_values["ALFRED_TELEMETRY_URL"] = _telemetry_previous_clear_url(current)
@@ -926,7 +922,7 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
         "ALFRED_TELEMETRY_TOKEN"
     ):
         values["ALFRED_TELEMETRY_TOKEN"] = current["ALFRED_TELEMETRY_TOKEN"]
-    _write_telemetry_rc_block(alfredrc, values)
+    _write_telemetry_env_block(env_file, values)
     removed = _remove_telemetry_scheduler_row(conf)
     if clear_status in {"sent", "no_install_id"}:
         _delete_telemetry_state_token()
@@ -948,7 +944,7 @@ def cmd_telemetry_off(args: argparse.Namespace) -> int:
             "warning: kept install id so previous usage totals can be cleared later",
             file=sys.stderr,
         )
-    print(f"alfred: wrote {alfredrc}")
+    print(f"alfred: wrote {env_file}")
     print(f"alfred: {'removed' if removed else 'no'} scheduler row at {conf}")
     print(_telemetry_deploy_hint(conf))
     if args.delete_install_id:
@@ -1361,7 +1357,7 @@ def _codex_status() -> int:
         resolved = shutil.which(binary)
     if not resolved:
         print(f"codex: not found on PATH ({binary})", file=sys.stderr)
-        print("Set CODEX_BIN in ~/.alfredrc or install/sign in to Codex CLI.", file=sys.stderr)
+        print("Set CODEX_BIN in $ALFRED_HOME/.env or install/sign in to Codex CLI.", file=sys.stderr)
         return 1
 
     print(f"codex binary: {resolved}")
@@ -2297,7 +2293,6 @@ def main(argv: list[str] | None = None) -> int:
     telemetry_sub = p_telemetry.add_subparsers(dest="telemetry_command", required=True)
     p_telemetry_status = telemetry_sub.add_parser("status", help="show usage total reporting state")
     p_telemetry_status.add_argument("--json", action="store_true")
-    p_telemetry_status.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_status.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_status.set_defaults(func=cmd_telemetry_status)
     p_telemetry_on = telemetry_sub.add_parser("on", help="enable anonymous usage totals")
@@ -2313,26 +2308,24 @@ def main(argv: list[str] | None = None) -> int:
         default="interval:3600",
         help="agents.conf cadence for the usage total reporter (default: interval:3600)",
     )
-    p_telemetry_on.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_on.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_on.set_defaults(func=cmd_telemetry_on)
     p_telemetry_off = telemetry_sub.add_parser("off", help="disable anonymous usage totals")
     p_telemetry_off.add_argument(
         "--forget-endpoint",
         action="store_true",
-        help="remove the telemetry endpoint from the managed .alfredrc block",
+        help="remove the telemetry endpoint from the managed .env block",
     )
     p_telemetry_off.add_argument(
         "--keep-token",
         action="store_true",
-        help="keep the existing ingest token in .alfredrc",
+        help="keep the existing ingest token in .env",
     )
     p_telemetry_off.add_argument(
         "--delete-install-id",
         action="store_true",
         help="delete $ALFRED_HOME/state/telemetry-install-id",
     )
-    p_telemetry_off.add_argument("--alfredrc", help=argparse.SUPPRESS)
     p_telemetry_off.add_argument("--agents-conf", help=argparse.SUPPRESS)
     p_telemetry_off.set_defaults(func=cmd_telemetry_off)
 

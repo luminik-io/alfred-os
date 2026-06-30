@@ -92,14 +92,13 @@ def _load_env_file(path: Path) -> None:
         os.environ[key] = value
 
 
-def _load_alfredrc_env() -> None:
+def _load_runtime_env() -> None:
     """Load local Alfred env files for direct CLI invocations.
 
     Scheduled runs go through ``agent-launch``, which already exports this file.
     Direct commands such as ``proof-telemetry.py --dry-run`` need the same view
     of the opt-out switch without forcing users to invoke the launcher.
     """
-    _load_env_file(Path.home() / ".alfredrc")
     alfred_home = Path(os.environ.get("ALFRED_HOME") or (Path.home() / ".alfred"))
     _load_env_file(alfred_home / ".env")
 
@@ -137,7 +136,7 @@ def _doctor_fast_path() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    _load_alfredrc_env()
+    _load_runtime_env()
 
     # Doctor fast path first: bin/doctor.sh runs every agent under
     # ALFRED_DOCTOR=1 and must never trigger a real telemetry POST.

@@ -55,7 +55,7 @@ Rules:
 - If SPECS_REPO is set, clone it under the workspace for context, but do not assign Lucius/Nightwing write loops to it unless I explicitly ask.
 - Before running any command that loads scheduled agents, show me the command and ask for confirmation.
 - If an interactive browser auth step is needed, stop and tell me exactly what to run.
-- At the end, show the Alfred repo path, ~/.alfredrc Alfred block, `alfred agents`, `alfred auth status`, and doctor output.
+- At the end, show the Alfred repo path, $ALFRED_HOME/.env Alfred block, `alfred agents`, `alfred auth status`, and doctor output.
 ```
 
 Then have the assistant follow the command sequence in the full guide.

@@ -70,7 +70,7 @@
 # Docker build cache, dangling images, orphaned volumes) runs only reactively,
 # when a firing already hit the disk floor and fires --emergency. To reclaim
 # that regenerable host build output proactively on the daily pass, set
-# ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 in ~/.alfredrc (equivalent to passing
+# ALFRED_CLEANUP_SCHEDULED_RECLAIM=1 in $ALFRED_HOME/.env (equivalent to passing
 # --scheduled). The normal age gates and retention floors for the other
 # cleanup categories stay unchanged; the dev-cache reclaim itself is wholesale.
 # An explicit second cleanup row (e.g. a midday reclaim) is optional:

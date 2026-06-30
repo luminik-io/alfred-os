@@ -12,9 +12,8 @@ The supported fix is a long-lived OAuth token that ``claude`` reads from
 the ``CLAUDE_CODE_OAUTH_TOKEN`` env var, bypassing the credential store.
 This script wraps the ``claude setup-token`` flow:
 
-  1. Detect whether a token is already set (env var, ``$ALFRED_HOME/.env``,
-     or the legacy ``~/.alfredrc``). Exit early when already configured,
-     unless ``--force`` is given.
+  1. Detect whether a token is already set (env var or ``$ALFRED_HOME/.env``).
+     Exit early when already configured, unless ``--force`` is given.
   2. Spawn ``claude setup-token`` so the operator can approve the
      browser flow once.
   3. Parse the long-lived token from the resulting output.
@@ -52,22 +51,6 @@ import sys
 from pathlib import Path
 
 TOKEN_ENV = "CLAUDE_CODE_OAUTH_TOKEN"
-
-# Legacy shell rc. Older installs (and a hand-edited operator machine)
-# may still carry the token here. We READ it so ``--check-only`` and the
-# already-configured guard see it, and so ``--force`` can migrate it, but
-# we no longer WRITE here: the scheduler loader does not source rc files,
-# so a token parked in ~/.alfredrc silently 401s every firing.
-ALFREDRC = Path(os.environ.get("ALFREDRC", str(Path.home() / ".alfredrc")))
-
-# Accepts ``\r?\n`` line endings because an operator could have saved
-# ~/.alfredrc from a CRLF editor (Notepad, a Windows checkout).
-LEGACY_BANNER = "# alfred setup-token, do not edit by hand (re-run to rotate)"
-LEGACY_BLOCK_RE = re.compile(
-    rf"\r?\n?{re.escape(LEGACY_BANNER)}\r?\nexport {TOKEN_ENV}=[^\r\n]*\r?\n",
-    re.MULTILINE,
-)
-
 
 def _alfred_home() -> Path:
     return Path(os.environ.get("ALFRED_HOME") or str(Path.home() / ".alfred"))
@@ -110,8 +93,8 @@ def fail(msg: str, code: int = 1) -> None:
 def _file_defines_token(path: Path) -> bool:
     """True if ``path`` defines a non-empty ``TOKEN_ENV`` line.
 
-    Tolerates both dotenv (``KEY=value``) and shell (``export KEY=value``)
-    forms so it reads ``.env`` and the legacy ``~/.alfredrc`` alike.
+    Tolerates both dotenv (``KEY=value``) and shell-style ``export KEY=value``
+    forms so hand-edited ``.env`` files still parse cleanly.
     """
     if not path.is_file():
         return False
@@ -136,8 +119,7 @@ def existing_token_source() -> str | None:
     or ``None`` if it is unset.
 
     Checks process env first (covers shell exports), then the canonical
-    ``$ALFRED_HOME/.env``, then the legacy ``~/.alfredrc``. Reporting the
-    legacy path lets ``--force`` migrate an old install to ``.env``.
+    ``$ALFRED_HOME/.env``. Does not validate the value, only reports presence.
     Does not validate the value, only reports presence.
     """
     if os.environ.get(TOKEN_ENV, "").strip():
@@ -145,50 +127,7 @@ def existing_token_source() -> str | None:
     env_file = env_path()
     if _file_defines_token(env_file):
         return str(env_file)
-    if _file_defines_token(ALFREDRC):
-        return f"{ALFREDRC} (legacy; re-run with --force to migrate to {env_file})"
     return None
-
-
-def _strip_legacy_block(text: str) -> str:
-    """Remove the token line from legacy ``~/.alfredrc`` content.
-
-    Drops both the old marker block and any bare ``export TOKEN=...`` line
-    so migrating to ``.env`` does not leave a stale duplicate behind.
-    """
-    cleaned = LEGACY_BLOCK_RE.sub("\n", text)
-    kept = [
-        line
-        for line in cleaned.splitlines()
-        if line.strip().removeprefix("export").strip().split("=", 1)[0] != TOKEN_ENV
-    ]
-    return "\n".join(kept).rstrip()
-
-
-def _migrate_legacy_token() -> None:
-    """Remove a token line left in ``~/.alfredrc`` by an older install.
-
-    Best-effort: if the file is unreadable or unwritable we warn and move
-    on. The newly written ``.env`` is authoritative regardless.
-    """
-    if not _file_defines_token(ALFREDRC):
-        return
-    try:
-        existing = ALFREDRC.read_text(encoding="utf-8")
-    except OSError as exc:
-        warn(f"could not read legacy {ALFREDRC} to migrate token: {exc}")
-        return
-    cleaned = _strip_legacy_block(existing)
-    new_contents = (cleaned + "\n") if cleaned else ""
-    prior_umask = os.umask(0o077)
-    try:
-        ALFREDRC.write_text(new_contents, encoding="utf-8")
-    except OSError as exc:
-        warn(f"could not rewrite legacy {ALFREDRC}: {exc}")
-        return
-    finally:
-        os.umask(prior_umask)
-    info(f"removed legacy {TOKEN_ENV} from {ALFREDRC} (now lives in {env_path()}).")
 
 
 def write_token(token: str) -> None:
@@ -200,8 +139,7 @@ def write_token(token: str) -> None:
     created if missing. On a shared host the file is created with 0600
     perms from the start (umask narrowed during the write) so there is no
     readable window between create and chmod holding a year-long
-    subscription credential. A token left in the legacy ``~/.alfredrc`` is
-    migrated out so the two stores cannot disagree.
+    subscription credential.
     """
     path = env_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -241,9 +179,6 @@ def write_token(token: str) -> None:
         path.chmod(0o600)
     except OSError as exc:
         warn(f"could not chmod 0600 {path}: {exc}")
-
-    _migrate_legacy_token()
-
 
 def run_setup_token() -> str:
     """Spawn ``claude setup-token``, return the parsed token.

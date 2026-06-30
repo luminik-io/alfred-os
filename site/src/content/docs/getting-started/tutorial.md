@@ -14,7 +14,7 @@ You've completed [Install](/getting-started/install/). `alfred doctor` shows `0 
 ## 1. Pick a target repo
 
 ```sh
-echo 'ECHO_REPO_SLUG=myorg/sandbox-repo' >> ~/.alfredrc
+echo 'ECHO_REPO_SLUG=myorg/sandbox-repo' >> $ALFRED_HOME/.env
 exec $SHELL
 ```
 

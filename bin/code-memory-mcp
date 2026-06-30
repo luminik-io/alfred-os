@@ -158,32 +158,6 @@ load_env_file() {
       ''|[0-9]*|*[!A-Za-z0-9_]*) continue ;;
     esac
     case "$mode" in
-      alfredrc)
-        case "$key" in
-          ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
-            [ "$RC_TARGETS_EFFECTIVE_HOME" -eq 0 ] && continue
-            ;;
-        esac
-        if [ -n "${!key+x}" ]; then
-          if [ "$key" = "ALFREDRC" ]; then
-            :
-          elif [ "${ALFREDRC_FILE_OVERRIDES_RUNTIME:-0}" = "1" ]; then
-            case "$key" in
-              ALFRED_HOME|ALFRED_FLEET_BRAIN_DB)
-                :
-                ;;
-              ALFRED_CODE_MEMORY_*|ALFRED_CODE_MAP_REPOS)
-                env_key_was_original "$key" && continue
-                ;;
-              *)
-                continue
-                ;;
-            esac
-          else
-            continue
-          fi
-        fi
-        ;;
       no_clobber)
         if [ -n "${!key+x}" ]; then
           continue
@@ -220,120 +194,12 @@ expand_user_path() {
   esac
 }
 
-normalize_runtime_home() {
-  local value expanded normalized
-  value="$1"
-  expanded="$(expand_user_path "$value")"
-  if command -v python3 >/dev/null 2>&1; then
-    normalized="$(python3 - "$expanded" <<'PY' 2>/dev/null || true
-from pathlib import Path
-import sys
-
-print(Path(sys.argv[1]).expanduser().resolve(strict=False))
-PY
-)"
-    if [ -n "$normalized" ]; then
-      printf '%s' "$normalized"
-      return 0
-    fi
-  fi
-  printf '%s' "$expanded"
-}
-
-read_env_key() {
-  local file="$1" wanted="$2" line key value quote_style sq="'" dq='"' splice
-  [ -f "$file" ] || return 0
-  splice="${sq}${dq}${sq}${dq}${sq}"
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      ''|\#*) continue ;;
-      export\ *) line="${line#export }" ;;
-    esac
-    key="${line%%=*}"
-    value="${line#*=}"
-    [ "$key" = "$wanted" ] || continue
-    value="$(trim_env_value "$(strip_inline_comment "$value")")"
-    quote_style="none"
-    case "$value" in
-      \'*\') quote_style="single"; value="${value#\'}"; value="${value%\'}"; value="${value//$splice/$sq}" ;;
-      \"*\") quote_style="double"; value="${value#\"}"; value="${value%\"}" ;;
-    esac
-    if [ "$quote_style" != "single" ]; then
-      value="${value//\$\{HOME\}/$HOME}"
-      value="${value//\$HOME/$HOME}"
-    fi
-    printf '%s' "$value"
-    return 0
-  done < "$file"
-}
-
-rc_targets_effective_home() {
-  local selected_alfredrc="$1" direct_selected_alfredrc="$2" effective_home rc_home rc_home_expanded
-  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
-    return 0
-  fi
-  if [ -z "${ALFRED_HOME:-}" ]; then
-    return 0
-  fi
-  effective_home="$(normalize_runtime_home "$ALFRED_HOME")"
-  rc_home="$(read_env_key "$selected_alfredrc" "ALFRED_HOME")"
-  if [ -n "$rc_home" ]; then
-    rc_home_expanded="$(normalize_runtime_home "$rc_home")"
-  else
-    rc_home_expanded="$(normalize_runtime_home "$HOME/.alfred")"
-  fi
-  [ "$rc_home_expanded" = "$effective_home" ]
-}
-
-load_selected_alfredrc() {
-  local selected_alfredrc="${ALFREDRC:-$HOME/.alfredrc}" direct_selected_alfredrc=""
-  if env_key_was_original "ALFREDRC" && [ -n "${ALFREDRC:-}" ]; then
-    direct_selected_alfredrc="direct_selected_alfredrc"
-  fi
-  selected_alfredrc="$(expand_user_path "$selected_alfredrc")"
-  ALFREDRC="$selected_alfredrc"
-  export ALFREDRC
-  if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
-    RC_TARGETS_EFFECTIVE_HOME=1
-  else
-    RC_TARGETS_EFFECTIVE_HOME=0
-  fi
-  if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
-    ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
-  else
-    ALFREDRC_FILE_OVERRIDES_RUNTIME=0 load_env_file "$selected_alfredrc" alfredrc
-  fi
-  if [ -n "${ALFREDRC:-}" ] && [ "$ALFREDRC" != "$selected_alfredrc" ]; then
-    selected_alfredrc="$(expand_user_path "$ALFREDRC")"
-    ALFREDRC="$selected_alfredrc"
-    export ALFREDRC
-    if [ "$direct_selected_alfredrc" != "direct_selected_alfredrc" ] && [ -z "${ALFRED_HOME:-}" ]; then
-      ALFRED_HOME="$HOME/.alfred"
-      export ALFRED_HOME
-    fi
-    if rc_targets_effective_home "$selected_alfredrc" "$direct_selected_alfredrc"; then
-      RC_TARGETS_EFFECTIVE_HOME=1
-    else
-      RC_TARGETS_EFFECTIVE_HOME=0
-    fi
-    if [ "$direct_selected_alfredrc" = "direct_selected_alfredrc" ]; then
-      ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
-    elif [ "$RC_TARGETS_EFFECTIVE_HOME" -eq 1 ]; then
-      ALFREDRC_FILE_OVERRIDES_RUNTIME=1 load_env_file "$selected_alfredrc" alfredrc
-    else
-      ALFREDRC_FILE_OVERRIDES_RUNTIME=0 load_env_file "$selected_alfredrc" alfredrc
-    fi
-  fi
-}
-
-RC_TARGETS_EFFECTIVE_HOME=1
-load_selected_alfredrc
 : "${ALFRED_HOME:=$HOME/.alfred}"
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 load_env_file "$ALFRED_HOME/.env" no_clobber
 # Code-memory settings are setup-owned runtime state. Load them again so the
-# active runtime .env beats stale rc values, while explicit process overrides
-# keep winning.
+# active runtime .env fills generated code-memory settings, while explicit
+# process overrides keep winning.
 load_env_file "$ALFRED_HOME/.env" code_memory_override
 ALFRED_HOME="$(expand_user_path "$ALFRED_HOME")"
 export ALFRED_HOME
@@ -690,7 +556,7 @@ case "$CMD" in
       log "binary:  NOT RESOLVED (set ALFRED_CODE_MEMORY_BIN or enable autofetch)"
     fi
     log "version-pin: ${CODE_MEMORY_REPO}@${CODE_MEMORY_VERSION}"
-    log "rc:          ${ALFREDRC:-}"
+    log "env-file:    $ALFRED_HOME/.env"
     log "index-dir:   $INDEX_DIR"
     log "index-home:  $CODE_MEMORY_HOME"
     log "cache-dir:   $CODE_MEMORY_CACHE_DIR"

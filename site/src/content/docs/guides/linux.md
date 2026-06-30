@@ -65,7 +65,7 @@ cd ~/code/alfred-os
 bash install.sh
 ```
 
-On Linux, `install.sh` confirms the host is Debian/Ubuntu (`/etc/os-release`), `apt-get install`s the prerequisites, installs `uv` from the official installer (and uses it to provision Python 3.11 if the distro default is newer), runs `npm install -g @anthropic-ai/claude-code`, then seeds `$ALFRED_HOME`, `$WORKSPACE_ROOT`, and `~/.alfredrc`.
+On Linux, `install.sh` confirms the host is Debian/Ubuntu (`/etc/os-release`), `apt-get install`s the prerequisites, installs `uv` from the official installer (and uses it to provision Python 3.11 if the distro default is newer), runs `npm install -g @anthropic-ai/claude-code`, then seeds `$ALFRED_HOME`, `$WORKSPACE_ROOT`, and `$ALFRED_HOME/.env`.
 
 AWS CLI v2 is **not** auto-installed; apt ships v1.x. Install it from Amazon if your fleet jobs touch AWS.
 
@@ -114,4 +114,4 @@ alfred claude secondary
 systemctl --user restart my.fleet.lucius.timer
 ```
 
-If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in `~/.alfredrc`; it flows into rendered units through `agent-launch`.
+If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in `$ALFRED_HOME/.env`; it flows into rendered units through `agent-launch`.

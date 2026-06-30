@@ -11,8 +11,7 @@ runs, engine selection, Claude/Codex auth checks, Claude account management, and
 
 Fresh-machine bootstrap. Detects macOS or Debian/Ubuntu Linux, installs CLI
 deps through Homebrew or apt, npm-installs Claude Code, creates `$ALFRED_HOME`
-and `$WORKSPACE_ROOT`, drops `~/.alfredrc` from the template, and appends a
-source block to your shell rc.
+and `$WORKSPACE_ROOT`, and seeds `$ALFRED_HOME/.env` from the template.
 
 ```sh
 bash install.sh [--non-interactive] [--skip-brew] [--skip-npm]
@@ -75,7 +74,7 @@ python3 bin/alfred-batman-setup.py --check-only
 python3 bin/alfred-batman-setup.py --non-interactive --skip-token-setup --skip-doctor --mode 0 --parent-repo owner/specs
 ```
 
-The wizard writes one managed block in `~/.alfredrc` for `BATMAN_PARENT_REPO`,
+The wizard writes one managed block in `$ALFRED_HOME/.env` for `BATMAN_PARENT_REPO`,
 `BATMAN_AUTO_EXECUTE`, Slack approval settings, picker, and approval timeout.
 It can call `alfred setup-token` interactively and runs `alfred doctor
 --lifecycle` at the end unless skipped.
@@ -172,7 +171,7 @@ directories and refuses to clear live holders or matching dirty worktrees
 unless `--force` is passed. `labels` creates or checks the
 canonical GitHub labels needed by the lifecycle state machine, Batman planning,
 and issue-claim overrides. `telemetry` controls anonymous usage totals:
-`status` shows local state, `on` writes the managed `.alfredrc` block, and
+`status` shows local state, `on` writes the hosted endpoint to `$ALFRED_HOME/.env`, and
 `off` clears the previous report and writes the opt-out flag. The scheduler row
 can stay installed; without an endpoint, or after opt-out, it exits cleanly and
 sends nothing.

@@ -37,14 +37,14 @@ Multi-repo layout:
     specs/
 ```
 
-With that layout, set `WORKSPACE_ROOT=~/code` in `~/.alfredrc`. Alfred's
+With that layout, set `WORKSPACE_ROOT=~/code` in `$ALFRED_HOME/.env`. Alfred's
 repo-operating agents will look for local repos at
 `$WORKSPACE_ROOT/product/<repo>`.
 
 ## If your repos already live somewhere else
 
 Alfred resolves `$WORKSPACE_ROOT/<subdir>/<repo>` where `<subdir>` defaults
-to `product`. Override the subdir with `WORKSPACE_SUBDIR` in `~/.alfredrc`
+to `product`. Override the subdir with `WORKSPACE_SUBDIR` in `$ALFRED_HOME/.env`
 when your existing layout doesn't match the default, and skip the symlink
 shim entirely:
 
@@ -79,7 +79,7 @@ Use this when you have one app, one library, or one Mac/iOS app repo:
 ```
 
 This creates labels on `my-org/my-app`, writes `ALFRED_LUCIUS_REPOS=my-app`
-and similar variables into `~/.alfredrc`, deploys the full fleet, and runs
+and similar variables into `$ALFRED_HOME/.env`, deploys the full fleet, and runs
 doctor.
 
 ## Multi-Repo Product Workspace
@@ -101,7 +101,7 @@ selected repo, Bane can run QA, and Ra's al Ghul can review PRs across the same
 selected repos.
 
 If you need different repo lists per agent, run the interactive wizard or edit
-the generated variables in `~/.alfredrc`:
+the generated variables in `$ALFRED_HOME/.env`:
 
 ```sh
 ALFRED_DRAKE_REPOS=api,web,mobile
@@ -176,7 +176,7 @@ For parent-plan execution, set the runner gate explicitly and redeploy:
 
 ```sh
 alfred enable batman
-# Add or verify BATMAN_PARENT_REPO=my-org/specs in ~/.alfredrc.
+# Add or verify BATMAN_PARENT_REPO=my-org/specs in $ALFRED_HOME/.env.
 # Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs
 bash deploy.sh

@@ -5,7 +5,7 @@ description: IAM-per-agent, Secrets Manager naming, scoped policy templates.
 
 Alfred uses AWS for two optional things: **Secrets Manager** (Slack webhook, Sentry tokens, third-party API keys) and **per-agent IAM** (one scoped IAM identity per scheduled agent).
 
-If you don't need either, skip this. Put `SLACK_WEBHOOK_URL` in `~/.alfredrc` directly. The framework runs fine without an AWS account.
+If you don't need either, skip this. Put `SLACK_WEBHOOK_URL` in `$ALFRED_HOME/.env` directly. The framework runs fine without an AWS account.
 
 Full guide at [`docs/AWS_SETUP.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/AWS_SETUP.md). Highlights:
 
@@ -17,7 +17,7 @@ Your admin SSO may have broad AWS access. If a scheduled agent inherited that, a
 - `gordon-cron`: read-only on ECS, ALB, CloudWatch logs/metrics, plus the Sentry token.
 - `acme-host`: read-only on `alfred/*` secrets.
 
-Agent runners that touch AWS read role-specific variables such as `ALFRED_HUNTRESS_AWS_PROFILE` or `ALFRED_GORDON_AWS_PROFILE` from `~/.alfredrc`, then strip ambient `AWS_*` credentials and set `AWS_PROFILE` only for the AWS subprocess they own.
+Agent runners that touch AWS read role-specific variables such as `ALFRED_HUNTRESS_AWS_PROFILE` or `ALFRED_GORDON_AWS_PROFILE` from `$ALFRED_HOME/.env`, then strip ambient `AWS_*` credentials and set `AWS_PROFILE` only for the AWS subprocess they own.
 
 ## Create a scoped IAM user
 
@@ -65,7 +65,7 @@ Policy templates for Slack reader, ECS read-only, CloudWatch logs etc. live in [
 | `alfred/sentry-dsn-agents` | Sentry DSN agent runners post events to |
 | `alfred/sentry-api-token` | Sentry API token for query operations |
 
-The secret ID prefix `alfred/` is the default convention. Adjust to your fleet's naming if you prefer (e.g. `myfleet/slack-webhook`). Override `SLACK_WEBHOOK_SECRET_ID` in `~/.alfredrc` to match.
+The secret ID prefix `alfred/` is the default convention. Adjust to your fleet's naming if you prefer (e.g. `myfleet/slack-webhook`). Override `SLACK_WEBHOOK_SECRET_ID` in `$ALFRED_HOME/.env` to match.
 
 ## Key rotation
 

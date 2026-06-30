@@ -23,8 +23,6 @@ __JAVA_BLOCK__
     <string>__HOME__</string>
     <key>ALFRED_HOME</key>
     <string>__ALFRED_HOME__</string>
-    <key>ALFREDRC</key>
-    <string>__ALFREDRC__</string>
     <key>WORKSPACE_ROOT</key>
     <string>__WORKSPACE_ROOT__</string>
     <key>AGENT_CODENAME</key>

@@ -71,7 +71,7 @@ you already authenticated. It is meant to be inspectable, so you can read exactl
 
 **What Alfred touches:**
 
-- The repos you explicitly added to `~/.alfredrc`, and the isolated worktrees it
+- The repos you explicitly added to `$ALFRED_HOME/.env`, and the isolated worktrees it
   creates for them under `ALFRED_HOME` (`~/.alfred` by default).
 - Your local `claude` and optional `codex` CLI auth, by shelling out to those
   tools. It reads no provider password and stores no API key.
@@ -225,7 +225,6 @@ macOS Homebrew path:
 brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
 brew install alfred-os
 alfred-install
-exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 alfred-init                       # choose agents, repos, codenames, Slack
@@ -237,7 +236,6 @@ Source checkout path, for working from `main` or running the Linux installer:
 git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
 cd ~/code/alfred-os
 bash install.sh
-exec $SHELL                       # pick up ~/.alfredrc
 gh auth login                     # GitHub
 claude                            # Claude Code first-run auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
@@ -262,10 +260,10 @@ The full fleet includes Drake, Batman, Lucius, Ra's al Ghul, Bane, Nightwing,
 Robin, Huntress, Gordon, automerge, `agent-cleanup`, memory harvest, memory
 auto-promotion, `code-map-refresh`, morning briefs, recaps, shipped summaries,
 and fleet doctor. Slack is optional. The `--repos` owner must match `GH_ORG`;
-the runtime agents store the bare repo name in `~/.alfredrc` and build
+the runtime agents store the bare repo name in `$ALFRED_HOME/.env` and build
 `GH_ORG/repo` at firing time. `alfred-init.py` seeds prompt templates, creates
 the standard GitHub labels on selected repos, writes the scheduler manifest
-(`launchd/agents.conf`), updates `~/.alfredrc`, then runs deploy and doctor.
+(`launchd/agents.conf`), updates `$ALFRED_HOME/.env`, then runs deploy and doctor.
 
 The full fleet is installed and visible from the start. High-impact lanes still
 have explicit gates: Batman is configured but waits behind the runner gate until

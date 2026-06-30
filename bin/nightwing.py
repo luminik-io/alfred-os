@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Nightwing - review-to-fix agent. Lands fixes for unresolved P0/P1 reviewer comments.
 
-Per-repo pre-push commands load from ${HOME}/.alfredrc.d/<codename>.yaml
+Per-repo pre-push commands load from $ALFRED_HOME/agents/<codename>.toml
 (same format as lucius). Without that file, language-suffix defaults apply.
 
 Reviewer comment matching: bot reviewers (CodeRabbit, Codex/ChatGPT, any
@@ -24,6 +24,7 @@ sys.path.insert(
     (os.environ.get("ALFRED_HOME") or os.path.expanduser("~/.alfred")) + "/lib",
 )
 from agent_runner import (
+    ALFRED_HOME,
     GH_ORG,
     STATE_ROOT,
     WORKSPACE,
@@ -344,7 +345,7 @@ def preserve_workflow_validation_failure(
 
 def _load_pre_push_config(agent_codename: str) -> dict[str, str]:
     """Same format / defaults as lucius._load_pre_push_config."""
-    cfg_path = Path(os.path.expanduser(f"~/.alfredrc.d/{agent_codename}.yaml"))
+    cfg_path = ALFRED_HOME / "agents" / f"{agent_codename}.toml"
     user_cfg: dict[str, str] = {}
     if cfg_path.exists():
         try:

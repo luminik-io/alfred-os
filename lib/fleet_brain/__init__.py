@@ -309,7 +309,6 @@ def _load_auto_promote_env_file(
     path: Path,
     env: dict[str, str],
     *,
-    allow_alfredrc_pointer: bool = False,
     override_existing: bool = False,
     protected_keys: set[str] | None = None,
     protected_key_overrides: set[str] | None = None,
@@ -335,9 +334,6 @@ def _load_auto_promote_env_file(
         if not (raw_value.startswith("'") and raw_value.endswith("'")):
             value = _expand_home(value)
         if key in env:
-            if key == "ALFREDRC" and allow_alfredrc_pointer:
-                env[key] = value
-                continue
             if _auto_promote_stop_control_active(key, env[key]):
                 continue
             if not _auto_promote_stop_control_active(key, value) and (
@@ -349,32 +345,18 @@ def _load_auto_promote_env_file(
 
 def direct_auto_promote_env() -> dict[str, str]:
     env = dict(os.environ)
+    env.pop("ALFREDRC", None)
     process_keys = set(os.environ)
-    selected_rc = Path(env.get("ALFREDRC") or "~/.alfredrc").expanduser()
-    direct_selected_rc = bool(os.environ.get("ALFREDRC", "").strip())
-    env["ALFREDRC"] = str(selected_rc)
+    if not env.get("ALFRED_HOME", "").strip():
+        env["ALFRED_HOME"] = str(Path("~/.alfred").expanduser())
+    else:
+        env["ALFRED_HOME"] = str(Path(env["ALFRED_HOME"]).expanduser())
     _load_auto_promote_env_file(
-        selected_rc,
+        Path(env["ALFRED_HOME"]).expanduser() / ".env",
         env,
-        allow_alfredrc_pointer=True,
-        override_existing=direct_selected_rc,
         protected_keys=process_keys,
-        protected_key_overrides=(
-            {"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"} if direct_selected_rc else set()
-        ),
+        protected_key_overrides=set(),
     )
-    pointed_rc = Path(env.get("ALFREDRC") or str(selected_rc)).expanduser()
-    if pointed_rc != selected_rc:
-        env["ALFREDRC"] = str(pointed_rc)
-        _load_auto_promote_env_file(
-            pointed_rc,
-            env,
-            override_existing=True,
-            protected_keys=process_keys,
-            protected_key_overrides={"ALFRED_HOME", "ALFRED_FLEET_BRAIN_DB"},
-        )
-    env.setdefault("ALFRED_HOME", str(Path("~/.alfred").expanduser()))
-    _load_auto_promote_env_file(Path(env["ALFRED_HOME"]).expanduser() / ".env", env)
     return env
 
 

@@ -1,7 +1,7 @@
 """Tests for ``bin/alfred-batman-setup.py``.
 
 The wizard has live Slack and Claude branches, but the regression
-surface here is local and deterministic: rc-file idempotency, validation,
+surface here is local and deterministic: .env idempotency, validation,
 check-only reporting, and lifecycle-doctor invocation.
 """
 
@@ -37,16 +37,16 @@ def _load_module(monkeypatch: pytest.MonkeyPatch | None = None, tmp_path: Path |
     return mod
 
 
-def test_read_alfredrc_parses_exports_and_quotes(tmp_path, monkeypatch):
+def test_read_env_file_parses_exports_and_quotes(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
-    rc.write_text(
+    env_file = tmp_path / ".env"
+    env_file.write_text(
         "# comment\n"
         "export GH_ORG=acme\n"
         "BATMAN_PARENT_REPO='acme/specs'\n"
         'BATMAN_SLACK_CHANNEL="alfred"\n'
     )
-    out = mod.read_alfredrc(rc)
+    out = mod.read_env_file(env_file)
     assert out["GH_ORG"] == "acme"
     assert out["BATMAN_PARENT_REPO"] == "acme/specs"
     assert out["BATMAN_SLACK_CHANNEL"] == "alfred"
@@ -54,8 +54,8 @@ def test_read_alfredrc_parses_exports_and_quotes(tmp_path, monkeypatch):
 
 def test_upsert_batman_block_is_idempotent_and_preserves_other_blocks(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
-    rc.write_text(
+    env_file = tmp_path / ".env"
+    env_file.write_text(
         "# operator preamble\n"
         "export GH_ORG=acme\n\n"
         "# alfred-init, generated below this line. Safe to re-run.\n"
@@ -66,23 +66,26 @@ def test_upsert_batman_block_is_idempotent_and_preserves_other_blocks(tmp_path, 
         "BATMAN_PARENT_REPO": "acme/specs",
         "SLACK_BOT_TOKEN": "xoxb-1234567890-abcdef",
     }
-    mod.upsert_batman_block(rc, kvs)
-    first = rc.read_text()
-    mod.upsert_batman_block(rc, kvs)
-    second = rc.read_text()
+    mod.upsert_batman_block(env_file, kvs)
+    first = env_file.read_text()
+    mod.upsert_batman_block(env_file, kvs)
+    second = env_file.read_text()
 
     assert first == second
     assert second.count("alfred-batman-setup, generated") == 1
     assert "alfred-init, generated" in second
-    assert "export BATMAN_PARENT_REPO=acme/specs" in second
-    assert stat.S_IMODE(rc.stat().st_mode) == 0o600
+    assert "BATMAN_PARENT_REPO=acme/specs" in second
+    assert "export BATMAN_PARENT_REPO" not in second
+    assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
 
 
 def test_check_only_reports_missing_required_values(tmp_path, monkeypatch, capsys):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
-    rc.write_text("export GH_ORG=acme\n")
-    out = mod.main(["--check-only", "--alfredrc", str(rc)])
+    alfred_home = tmp_path / "alfred-home"
+    env_file = alfred_home / ".env"
+    alfred_home.mkdir()
+    env_file.write_text("GH_ORG=acme\n")
+    out = mod.main(["--check-only", "--alfred-home", str(alfred_home)])
 
     captured = capsys.readouterr()
     assert out == 1
@@ -92,13 +95,15 @@ def test_check_only_reports_missing_required_values(tmp_path, monkeypatch, capsy
 
 def test_check_only_approval_gate_requires_slack_token_and_user(tmp_path, monkeypatch, capsys):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
-    rc.write_text(
-        "export CLAUDE_CODE_OAUTH_TOKEN=token-present\n"
-        "export BATMAN_AUTO_EXECUTE=approval-gate\n"
-        "export BATMAN_PARENT_REPO=acme/specs\n"
+    alfred_home = tmp_path / "alfred-home"
+    env_file = alfred_home / ".env"
+    alfred_home.mkdir()
+    env_file.write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=token-present\n"
+        "BATMAN_AUTO_EXECUTE=approval-gate\n"
+        "BATMAN_PARENT_REPO=acme/specs\n"
     )
-    out = mod.main(["--check-only", "--alfredrc", str(rc)])
+    out = mod.main(["--check-only", "--alfred-home", str(alfred_home)])
 
     captured = capsys.readouterr()
     assert out == 1
@@ -108,14 +113,16 @@ def test_check_only_approval_gate_requires_slack_token_and_user(tmp_path, monkey
 
 def test_check_only_file_approval_mode_does_not_require_slack(tmp_path, monkeypatch, capsys):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
-    rc.write_text(
-        "export CLAUDE_CODE_OAUTH_TOKEN=token-present\n"
-        "export BATMAN_AUTO_EXECUTE=approval-gate\n"
-        "export BATMAN_APPROVAL_MODE=file\n"
-        "export BATMAN_PARENT_REPO=acme/specs\n"
+    alfred_home = tmp_path / "alfred-home"
+    env_file = alfred_home / ".env"
+    alfred_home.mkdir()
+    env_file.write_text(
+        "CLAUDE_CODE_OAUTH_TOKEN=token-present\n"
+        "BATMAN_AUTO_EXECUTE=approval-gate\n"
+        "BATMAN_APPROVAL_MODE=file\n"
+        "BATMAN_PARENT_REPO=acme/specs\n"
     )
-    out = mod.main(["--check-only", "--alfredrc", str(rc)])
+    out = mod.main(["--check-only", "--alfred-home", str(alfred_home)])
 
     captured = capsys.readouterr()
     assert out == 0
@@ -126,15 +133,16 @@ def test_check_only_file_approval_mode_does_not_require_slack(tmp_path, monkeypa
 
 def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, monkeypatch, capsys):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
+    alfred_home = tmp_path / "alfred-home"
+    env_file = alfred_home / ".env"
     token = "xoxb-1234567890"
     out = mod.main(
         [
             "--non-interactive",
             "--skip-token-setup",
             "--skip-doctor",
-            "--alfredrc",
-            str(rc),
+            "--alfred-home",
+            str(alfred_home),
             "--mode",
             "approval-gate",
             "--slack-bot-token",
@@ -153,28 +161,30 @@ def test_non_interactive_writes_supplied_values_without_live_calls(tmp_path, mon
     )
 
     assert out == 0
-    text = rc.read_text()
-    assert "export BATMAN_AUTO_EXECUTE=approval-gate" in text
-    assert "export BATMAN_APPROVAL_MODE=slack-or-file" in text
-    assert f"export SLACK_BOT_TOKEN={token}" in text
-    assert "export ALFRED_OPERATOR_SLACK_USER_ID=U123ABC" in text
-    assert "export BATMAN_SLACK_CHANNEL=alfred" in text
-    assert "export BATMAN_PARENT_REPO=acme/specs" in text
-    assert "export BATMAN_PICKER=newest" in text
-    assert "export BATMAN_APPROVAL_TIMEOUT_S=120" in text
+    text = env_file.read_text()
+    assert "BATMAN_AUTO_EXECUTE=approval-gate" in text
+    assert "BATMAN_APPROVAL_MODE=slack-or-file" in text
+    assert f"SLACK_BOT_TOKEN={token}" in text
+    assert "ALFRED_OPERATOR_SLACK_USER_ID=U123ABC" in text
+    assert "BATMAN_SLACK_CHANNEL=alfred" in text
+    assert "BATMAN_PARENT_REPO=acme/specs" in text
+    assert "BATMAN_PICKER=newest" in text
+    assert "BATMAN_APPROVAL_TIMEOUT_S=120" in text
+    assert "export BATMAN_AUTO_EXECUTE" not in text
     assert "Skipping lifecycle doctor" in capsys.readouterr().err
 
 
 def test_non_interactive_file_approval_mode_skips_slack_values(tmp_path, monkeypatch, capsys):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
+    alfred_home = tmp_path / "alfred-home"
+    env_file = alfred_home / ".env"
     out = mod.main(
         [
             "--non-interactive",
             "--skip-token-setup",
             "--skip-doctor",
-            "--alfredrc",
-            str(rc),
+            "--alfred-home",
+            str(alfred_home),
             "--mode",
             "approval-gate",
             "--approval-mode",
@@ -185,9 +195,9 @@ def test_non_interactive_file_approval_mode_skips_slack_values(tmp_path, monkeyp
     )
 
     assert out == 0
-    text = rc.read_text()
-    assert "export BATMAN_AUTO_EXECUTE=approval-gate" in text
-    assert "export BATMAN_APPROVAL_MODE=file" in text
+    text = env_file.read_text()
+    assert "BATMAN_AUTO_EXECUTE=approval-gate" in text
+    assert "BATMAN_APPROVAL_MODE=file" in text
     assert "SLACK_BOT_TOKEN" not in text
     assert "ALFRED_OPERATOR_SLACK_USER_ID" not in text
     captured = capsys.readouterr()
@@ -197,14 +207,15 @@ def test_non_interactive_file_approval_mode_skips_slack_values(tmp_path, monkeyp
 
 def test_non_interactive_blank_channel_preserves_runtime_fallback(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
+    alfred_home = tmp_path / "alfred-home"
+    env_file = alfred_home / ".env"
     out = mod.main(
         [
             "--non-interactive",
             "--skip-token-setup",
             "--skip-doctor",
-            "--alfredrc",
-            str(rc),
+            "--alfred-home",
+            str(alfred_home),
             "--mode",
             "0",
             "--parent-repo",
@@ -213,7 +224,7 @@ def test_non_interactive_blank_channel_preserves_runtime_fallback(tmp_path, monk
     )
 
     assert out == 0
-    assert "BATMAN_SLACK_CHANNEL" not in rc.read_text()
+    assert "BATMAN_SLACK_CHANNEL" not in env_file.read_text()
 
 
 def test_invalid_slack_token_is_rejected(tmp_path, monkeypatch):
@@ -224,7 +235,7 @@ def test_invalid_slack_token_is_rejected(tmp_path, monkeypatch):
 
 def test_lifecycle_doctor_invoked_when_not_skipped(tmp_path, monkeypatch):
     mod = _load_module(monkeypatch, tmp_path)
-    rc = tmp_path / ".alfredrc"
+    alfred_home = tmp_path / "alfred-home"
     repo = tmp_path / "repo"
     (repo / "bin").mkdir(parents=True)
     (repo / "bin" / "doctor.sh").write_text("#!/usr/bin/env bash\n")
@@ -241,8 +252,8 @@ def test_lifecycle_doctor_invoked_when_not_skipped(tmp_path, monkeypatch):
             "--skip-token-setup",
             "--repo-root",
             str(repo),
-            "--alfredrc",
-            str(rc),
+            "--alfred-home",
+            str(alfred_home),
             "--mode",
             "0",
             "--parent-repo",

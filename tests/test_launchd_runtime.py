@@ -17,7 +17,7 @@ def _clean_env(**overrides: str) -> dict[str, str]:
     return env
 
 
-def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
+def test_agent_launch_loads_runtime_env_without_shell_eval(tmp_path):
     home = tmp_path / "home"
     alfred = tmp_path / "alfred"
     bin_dir = alfred / "bin"
@@ -26,7 +26,7 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
     capture = tmp_path / "capture.json"
     marker = tmp_path / "command-substitution-ran"
     telemetry_token = f"tok$(touch {marker})&still"
-    (home / ".alfredrc").write_text(
+    (alfred / ".env").write_text(
         "\n".join(
             [
                 "WORKSPACE_ROOT=$HOME/work space",
@@ -50,13 +50,18 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "  'telemetry_token': os.environ.get('ALFRED_TELEMETRY_TOKEN'),\n"
         "  'quote_token': os.environ.get('QUOTE_TOKEN'),\n"
         "  'home_literal': os.environ.get('HOME_LITERAL'),\n"
+        "  'alfredrc': os.environ.get('ALFREDRC'),\n"
         "}))\n"
     )
     target.chmod(0o755)
 
     res = subprocess.run(
         ["bash", str(REPO / "bin" / "agent-launch"), "probe"],
-        env=_clean_env(HOME=str(home), ALFRED_HOME=str(alfred)),
+        env=_clean_env(
+            HOME=str(home),
+            ALFRED_HOME=str(alfred),
+            ALFREDRC=str(home / ".alfredrc"),
+        ),
         capture_output=True,
         text=True,
         timeout=10,
@@ -70,21 +75,21 @@ def test_agent_launch_loads_alfredrc_without_shell_eval(tmp_path):
         "telemetry_token": telemetry_token,
         "quote_token": "can'quote",
         "home_literal": "abc$HOMEdef-${HOME}",
+        "alfredrc": None,
     }
     assert not marker.exists()
 
 
-def test_agent_launch_expands_double_quoted_home_path_values(tmp_path):
+def test_agent_launch_expands_double_quoted_home_path_values_from_runtime_env(tmp_path):
     home = tmp_path / "home"
     alfred = home / ".alfred"
     bin_dir = alfred / "bin"
     home.mkdir()
     bin_dir.mkdir(parents=True)
     capture = tmp_path / "capture.json"
-    (home / ".alfredrc").write_text(
+    (alfred / ".env").write_text(
         "\n".join(
             [
-                'ALFRED_HOME="$HOME/.alfred"',
                 'WORKSPACE_ROOT="$HOME/code space"',
                 "",
             ]
@@ -125,7 +130,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
     bin_dir.mkdir(parents=True)
     launchd_dir.mkdir(parents=True)
     capture = tmp_path / "doctor-env.json"
-    (home / ".alfredrc").write_text("CUSTOM_FROM_RC=loaded\n")
+    (alfred / ".env").write_text("CUSTOM_FROM_ENV=loaded\n")
     (launchd_dir / "agents.conf").write_text(
         "alfred.helper\tprobe.py\tinterval:60\tno\talfred.helper\tHelper\n"
     )
@@ -137,7 +142,7 @@ def test_doctor_runs_configured_agent_through_agent_launch(tmp_path):
         "  'doctor': os.environ.get('ALFRED_DOCTOR'),\n"
         "  'codename': os.environ.get('AGENT_CODENAME'),\n"
         "  'label': os.environ.get('LAUNCHD_LABEL'),\n"
-        "  'custom': os.environ.get('CUSTOM_FROM_RC'),\n"
+        "  'custom': os.environ.get('CUSTOM_FROM_ENV'),\n"
         "}))\n"
         "print('[PROBE-DOCTOR-OK]')\n"
     )
@@ -341,15 +346,14 @@ def test_deploy_defers_reload_for_running_jobs(tmp_path):
     assert alfred_new_calls == []
 
 
-def test_deploy_follows_pointer_from_explicit_alfredrc(tmp_path):
+def test_deploy_ignores_explicit_alfredrc_and_uses_alfred_home(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"
     stale_alfred = tmp_path / "stale-alfred"
     alfred = tmp_path / "alfred"
     workspace = tmp_path / "workspace"
     fakebin = tmp_path / "fakebin"
-    launch_rc = tmp_path / "launch.alfredrc"
-    custom_rc = tmp_path / "custom.alfredrc"
+    legacy_rc = tmp_path / "legacy.alfredrc"
     src.mkdir()
     home.mkdir()
     fakebin.mkdir()
@@ -361,12 +365,8 @@ def test_deploy_follows_pointer_from_explicit_alfredrc(tmp_path):
     for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
         (src / "lib" / pkg).mkdir()
         (src / "lib" / pkg / "__init__.py").write_text("")
-    launch_rc.write_text(
-        f"ALFREDRC={custom_rc}\nALFRED_HOME={stale_alfred}\n",
-        encoding="utf-8",
-    )
-    custom_rc.write_text(
-        f"ALFRED_HOME={alfred}\nWORKSPACE_ROOT={workspace}\n",
+    legacy_rc.write_text(
+        f"ALFRED_HOME={stale_alfred}\nWORKSPACE_ROOT={tmp_path / 'stale-workspace'}\n",
         encoding="utf-8",
     )
     launchctl_log = tmp_path / "launchctl.log"
@@ -382,7 +382,9 @@ def test_deploy_follows_pointer_from_explicit_alfredrc(tmp_path):
     env.update(
         {
             "HOME": str(home),
-            "ALFREDRC": str(launch_rc),
+            "ALFREDRC": str(legacy_rc),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(workspace),
             "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
         }
     )
@@ -396,18 +398,17 @@ def test_deploy_follows_pointer_from_explicit_alfredrc(tmp_path):
     )
 
     assert res.returncode == 0, res.stdout + res.stderr
-    assert (alfred / "launchd" / "alfredrc.path").read_text().strip() == str(custom_rc)
     assert (alfred / "launchd" / "source-repo.txt").read_text().strip() == str(src)
     assert not stale_alfred.exists()
+    assert not (alfred / "launchd" / "alfredrc.path").exists()
 
 
-def test_deploy_expands_home_specifier_from_persisted_alfredrc_pointer(tmp_path):
+def test_deploy_removes_persisted_alfredrc_pointer_and_uses_runtime_env(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"
-    alfred = tmp_path / "alfred"
+    alfred = home / ".alfred"
     workspace = tmp_path / "workspace"
     fakebin = tmp_path / "fakebin"
-    custom_rc = home / "custom.alfredrc"
     src.mkdir()
     home.mkdir()
     fakebin.mkdir()
@@ -424,8 +425,8 @@ def test_deploy_expands_home_specifier_from_persisted_alfredrc_pointer(tmp_path)
         "%h/custom.alfredrc\n",
         encoding="utf-8",
     )
-    custom_rc.write_text(
-        f"ALFRED_HOME={alfred}\nWORKSPACE_ROOT={workspace}\n",
+    (home / ".alfred" / ".env").write_text(
+        f"WORKSPACE_ROOT={workspace}\n",
         encoding="utf-8",
     )
     launchctl_log = tmp_path / "launchctl.log"
@@ -455,8 +456,8 @@ def test_deploy_expands_home_specifier_from_persisted_alfredrc_pointer(tmp_path)
     )
 
     assert res.returncode == 0, res.stdout + res.stderr
-    assert (alfred / "launchd" / "alfredrc.path").read_text().strip() == str(custom_rc)
     assert (alfred / "launchd" / "source-repo.txt").read_text().strip() == str(src)
+    assert not (alfred / "launchd" / "alfredrc.path").exists()
 
 
 def test_agent_launch_prefers_alfred_home_venv_python(tmp_path):
