@@ -1,11 +1,12 @@
 import type { TabKey } from "../../lib/uiTypes";
 
-// The six steps of the first-run takeover (DESIGN_SPEC section 7). Each is a
+// The seven steps of the first-run takeover (DESIGN_SPEC section 7). Each is a
 // view with a Maya path (guided, no terminal) and a Dev shortcut.
 //   welcome -> mental model + "Get started" / "I have a server running"
 //   engine  -> detect installed Claude / Codex CLIs (no API keys)
 //   github  -> reuse the gh sign-in
 //   repos   -> pick repos by name + description
+//   team    -> choose the display cast for agents while roles stay stable
 //   slack   -> optional approvals in Slack (clearly skippable)
 //   request -> the payoff: a real first Request, or a labelled demo
 export type OnboardingStepKey =
@@ -13,6 +14,7 @@ export type OnboardingStepKey =
   | "engine"
   | "github"
   | "repos"
+  | "team"
   | "slack"
   | "request";
 
@@ -21,6 +23,7 @@ export const ONBOARDING_STEP_ORDER: OnboardingStepKey[] = [
   "engine",
   "github",
   "repos",
+  "team",
   "slack",
   "request",
 ];

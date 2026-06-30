@@ -140,6 +140,16 @@ const TRUSTED_EMPTY: TrustedSlackUsersResponse = {
   state_path: "/tmp/trusted.json",
 };
 
+function defaultRosterProps() {
+  return {
+    rosterTheme: "batman" as const,
+    customNames: { names: {}, roles: {} },
+    rosterSaveError: null,
+    onRosterThemeChange: vi.fn(),
+    onEditCustomTheme: vi.fn(),
+  };
+}
+
 function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingView>> = {}) {
   return render(
     <OnboardingView
@@ -155,6 +165,7 @@ function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingV
       onOpenConnection={vi.fn()}
       onSwitch={vi.fn()}
       onRefreshBoard={vi.fn(async () => undefined)}
+      {...defaultRosterProps()}
       {...props}
     />,
   );
@@ -187,7 +198,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("OnboardingView six-step takeover", () => {
+describe("OnboardingView seven-step takeover", () => {
   it("opens on the welcome step with the mental model and no-terminal framing", async () => {
     renderOnboarding();
     expect(
@@ -201,11 +212,12 @@ describe("OnboardingView six-step takeover", () => {
       screen.getByText(/runs on the claude max and codex pro subscriptions you already pay for/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/you will not need a terminal/i)).toBeInTheDocument();
-    // The persistent rail shows all six steps.
+    // The persistent rail shows all seven steps.
     expect(screen.getByRole("button", { name: /^welcome$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^tools$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^github$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^repositories$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^team$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^slack$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^first request$/i })).toBeInTheDocument();
   });
@@ -251,6 +263,7 @@ describe("OnboardingView six-step takeover", () => {
         onOpenConnection={vi.fn()}
         onSwitch={vi.fn()}
         onRefreshBoard={vi.fn(async () => undefined)}
+        {...defaultRosterProps()}
       />,
     );
 
@@ -286,6 +299,7 @@ describe("OnboardingView six-step takeover", () => {
         onOpenConnection={vi.fn()}
         onSwitch={vi.fn()}
         onRefreshBoard={vi.fn(async () => undefined)}
+        {...defaultRosterProps()}
       />,
     );
 
@@ -511,6 +525,7 @@ describe("OnboardingView six-step takeover", () => {
       onOpenConnection: vi.fn(),
       onSwitch: vi.fn(),
       onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
     };
     const view = render(<OnboardingView {...props} connected />);
     const user = userEvent.setup();
@@ -563,6 +578,7 @@ describe("OnboardingView six-step takeover", () => {
       onOpenConnection: vi.fn(),
       onSwitch: vi.fn(),
       onRefreshBoard: vi.fn(async () => undefined),
+      ...defaultRosterProps(),
     };
     const view = render(<OnboardingView {...props} connected />);
     const user = userEvent.setup();
@@ -666,6 +682,39 @@ describe("OnboardingView six-step takeover", () => {
     const user = userEvent.setup();
     await gotoStep(user, /^repositories$/i);
     expect(screen.getByText(/connect github first/i)).toBeInTheDocument();
+  });
+
+  it("lets the user choose the agent naming theme before Slack", async () => {
+    const onRosterThemeChange = vi.fn();
+    const onEditCustomTheme = vi.fn();
+    renderOnboarding({
+      rosterTheme: "transformers",
+      onRosterThemeChange,
+      onEditCustomTheme,
+    });
+    const user = userEvent.setup();
+    await gotoStep(user, /^team$/i);
+
+    const stepper = screen.getByRole("navigation", { name: /onboarding progress/i });
+    expect(within(stepper).getByRole("button", { current: "step" })).toHaveAccessibleName(
+      /^team$/i,
+    );
+    expect(
+      within(stepper).getByLabelText("3 of 7 onboarding steps complete"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/active cast/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /transformers/i })).toBeInTheDocument();
+    expect(screen.getByText("Optimus Prime")).toBeInTheDocument();
+    expect(
+      screen.getByText(/roles, permissions, schedules, labels, worktrees, and merge gates stay unchanged/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /customize/i }));
+    expect(onEditCustomTheme).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("combobox", { name: /roster theme/i }));
+    await user.click(await screen.findByRole("option", { name: /justice league/i }));
+    expect(onRosterThemeChange).toHaveBeenCalledWith("justice-league");
   });
 
   it("treats Slack as optional and skippable, advancing to the first request", async () => {
@@ -863,8 +912,16 @@ describe("OnboardingView six-step takeover", () => {
     // The active node carries aria-current="step" and is the Welcome node.
     const current = within(stepper).getByRole("button", { current: "step" });
     expect(current).toHaveAccessibleName(/welcome/i);
-    // All six numbered nodes are present and queryable by their bare labels.
-    for (const label of [/^welcome$/i, /^tools$/i, /^github$/i, /^repositories$/i, /^slack$/i, /^first request$/i]) {
+    // All seven numbered nodes are present and queryable by their bare labels.
+    for (const label of [
+      /^welcome$/i,
+      /^tools$/i,
+      /^github$/i,
+      /^repositories$/i,
+      /^team$/i,
+      /^slack$/i,
+      /^first request$/i,
+    ]) {
       expect(within(stepper).getByRole("button", { name: label })).toBeInTheDocument();
     }
   });
@@ -881,14 +938,14 @@ describe("OnboardingView six-step takeover", () => {
     expect(current).toHaveAccessibleName(/repositories/i);
     // The completion count reflects the three detected-done steps.
     expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
-      /3 of 6/i,
+      /3 of 7/i,
     );
   });
 
-  it("opens on Welcome at 0 of 6 done even when tools, gh and repos are pre-detected", async () => {
+  it("opens on Welcome at 0 of 7 done even when tools, gh and repos are pre-detected", async () => {
     // Regression for the broken progress logic: on a fresh launch where Claude
     // Code is installed, gh is already signed in, and repos are already saved,
-    // the rail used to show "3 of 6 done" while the user was still on step 1
+    // the rail used to show "3 of 7 done" while the user was still on step 1
     // (Welcome). The count must reflect where the user actually is, so a step the
     // user has not reached never reads done even when its signal is satisfied.
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
@@ -905,7 +962,7 @@ describe("OnboardingView six-step takeover", () => {
     expect(current).toHaveAccessibleName(/welcome/i);
     await waitFor(() =>
       expect(within(stepper).getByLabelText(/onboarding steps complete/i)).toHaveTextContent(
-        /0 of 6/i,
+        /0 of 7/i,
       ),
     );
   });

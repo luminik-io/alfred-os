@@ -339,9 +339,14 @@ function App() {
               canRun={supportsNativeActions()}
               nativeBusy={nativeBusy}
               nativeResult={nativeResult}
+              rosterTheme={rosterTheme}
+              customNames={customNames}
+              rosterSaveError={rosterSaveError}
               onConnectServer={(url) => void refresh(url)}
               onStartRuntime={startRuntime}
               onRunLocalAction={runLocalAction}
+              onRosterThemeChange={setRosterTheme}
+              onEditCustomTheme={() => setCustomThemeEditorOpen(true)}
               onOpenConnection={() => {
                 setSetupMode("advanced");
               }}

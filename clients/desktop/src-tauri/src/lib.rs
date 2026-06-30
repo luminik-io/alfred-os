@@ -580,6 +580,7 @@ fn validate_api_path<'a>(
         is_allowed_compose_draft(path_part)
             || is_allowed_compose_converse(path_part)
             || is_allowed_conversation_control(path_part)
+            || is_allowed_roster_theme_action(path_part)
             || is_allowed_followup_action(path_part)
             || is_allowed_plan_decision(path_part)
             || is_allowed_memory_action(path_part)
@@ -597,6 +598,9 @@ fn validate_api_path<'a>(
 }
 
 fn is_allowed_read_path(path: &str) -> bool {
+    if path == "/api/roster-theme" {
+        return true;
+    }
     let allowed = [
         "/api/status",
         "/api/actions",
@@ -641,6 +645,10 @@ fn is_allowed_setup_action(path: &str) -> bool {
         path,
         "/api/setup/repos" | "/api/setup/playbook" | "/api/setup/demo" | "/api/setup/demo/clear"
     )
+}
+
+fn is_allowed_roster_theme_action(path: &str) -> bool {
+    path == "/api/roster-theme"
 }
 
 fn is_allowed_followup_action(path: &str) -> bool {
@@ -1667,6 +1675,7 @@ mod tests {
             "/api/setup/repos",
             "/api/setup/repos?limit=50",
             "/api/setup/playbooks",
+            "/api/roster-theme",
         ] {
             validate_api_path(read, &Method::GET).expect("setup reads are allowed");
         }
@@ -1676,14 +1685,19 @@ mod tests {
             "/api/setup/playbook",
             "/api/setup/demo",
             "/api/setup/demo/clear",
+            "/api/roster-theme",
         ] {
-            assert!(is_allowed_setup_action(write));
             validate_api_path(write, &Method::POST).expect("setup writes are allowed");
         }
 
         assert!(!is_allowed_setup_action("/api/setup/wipe"));
+        assert!(!is_allowed_setup_action("/api/setup/roster-theme"));
         let err = validate_api_path("/api/setup/wipe", &Method::POST)
             .expect_err("unknown setup write must stay blocked");
+        assert!(err.contains("desktop contract"));
+
+        let err = validate_api_path("/api/setup/roster-theme", &Method::POST)
+            .expect_err("wrong roster-theme route must stay blocked");
         assert!(err.contains("desktop contract"));
     }
 
