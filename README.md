@@ -54,9 +54,9 @@ flowchart LR
   can read, diff, and merge, not a chat transcript or a hidden change. The
   review, the tests, and the history are all where your team already looks.
 - **Local and private by construction.** Alfred runs as you, on your own Mac,
-  against the CLIs you already authenticated. Your code never leaves the
-  machine. The only network calls go to the model provider you chose, to GitHub,
-  and to your Slack webhook.
+  against the CLIs you already authenticated. Alfred does not send code to
+  Alfred or Luminik servers. Task context goes only to the model provider you
+  chose, GitHub, and Slack when you configured Slack.
 - **A team you supervise, not autonomy you hope for.** Each run is contained in
   an isolated worktree, bounded by a hard spend cap, and held at an approval
   gate you control. Slack is the planning surface; you keep merge authority.

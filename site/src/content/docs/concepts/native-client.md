@@ -10,7 +10,7 @@ post-PR follow-up belong in Slack threads.
 
 The Tauri client lives under `clients/desktop` and wraps the local Alfred
 runtime: Inbox, Ask, Work, Agents, Setup, install detection, dependency checks,
-full-fleet setup, roster themes, custom names, health signals, plans, firings,
+full-fleet setup, roster themes, custom display names, health signals, plans, firings,
 memory review, safe next actions, native runtime launch, and local follow-up
 handling.
 
@@ -31,7 +31,7 @@ The client is for trust and operations:
 2. Open Alfred Desktop. Setup detects an existing Alfred core install when one
    is present, or guides you through installing the local runtime.
 3. Connect GitHub and Claude or Codex, choose repos, configure the full fleet,
-   pick a roster theme or custom names, and run doctor.
+   pick a roster theme or custom display names, and run doctor.
 4. When the runtime is reachable, the app connects to `http://127.0.0.1` or
    `http://localhost` and reads the same local state as the CLI.
 

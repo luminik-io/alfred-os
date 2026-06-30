@@ -10,7 +10,7 @@ For the JSON API it reads, see [`SERVE.md`](SERVE.md). This page is both the des
 
 Build the native Mac/Linux app as the recommended local installer and control surface, not a second Alfred runtime.
 
-Slack remains the primary collaboration UI because it already has threads, reactions, search, mobile push, and shared context. The native client makes Alfred easier to set up, trust, and repair: install detection, dependency checks, auth, repo selection, full-fleet setup, roster themes, custom names, health, logs, approvals, memory review, safe pause/resume, dry-run launch, and recovery.
+Slack remains the primary collaboration UI because it already has threads, reactions, search, mobile push, and shared context. The native client makes Alfred easier to set up, trust, and repair: install detection, dependency checks, auth, repo selection, full-fleet setup, roster themes, custom display names, health, logs, approvals, memory review, safe pause/resume, dry-run launch, and recovery.
 
 The client reads and writes through the same local APIs, state files, and CLI commands Alfred already uses. You can run Alfred with or without the client, and Slack remains the collaboration surface.
 
@@ -33,7 +33,7 @@ The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary 
 | **Ask** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
 | **Agents** | The agent roster, activity feed, latest-run inspector, and memory learning queue. | Pause, resume, run once, dry-run a codename, promote or reject memory candidates, and inspect firing traces. |
-| **Setup** | Guided onboarding and repair: existing install inventory, runtime, auth, repos, labels, engine checks, code memory, full-fleet setup, roster naming, Slack collaborators, and demo data. | Start or reconnect the local runtime, run curated checks in-app, configure the full fleet, choose a roster theme or custom names, and add or remove local trusted Slack collaborators. |
+| **Setup** | Guided onboarding and repair: existing install inventory, runtime, auth, repos, labels, engine checks, code memory, full-fleet setup, roster naming, Slack collaborators, and demo data. | Start or reconnect the local runtime, run curated checks in-app, configure the full fleet, choose a roster theme or custom display names, and add or remove local trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
