@@ -917,7 +917,7 @@ def test_read_env_file_strips_inline_comments_without_touching_quoted_hashes(tmp
     assert out["EMPTY"] == ""
 
 
-def test_maybe_offer_setup_token_treats_process_env_only_token_as_not_ready(
+def test_maybe_offer_setup_token_warns_process_env_only_token_without_prompting(
     tmp_path, init_mod, monkeypatch, capsys
 ):
     alfred_home = tmp_path / ".alfred"
@@ -931,7 +931,8 @@ def test_maybe_offer_setup_token_treats_process_env_only_token_as_not_ready(
 
     captured = capsys.readouterr()
     assert "scheduled firings need it" in captured.err
-    assert any("Run `alfred setup-token` now?" in prompt for prompt in prompts)
+    assert 'alfred setup-token --token "$CLAUDE_CODE_OAUTH_TOKEN"' in captured.err
+    assert prompts == []
 
 
 def test_maybe_offer_setup_token_accepts_runtime_env_file_token(

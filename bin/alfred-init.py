@@ -1163,6 +1163,8 @@ def _maybe_offer_setup_token(*, non_interactive: bool) -> None:
             "CLAUDE_CODE_OAUTH_TOKEN is set only in this shell; scheduled firings "
             f"need it in {env_file}."
         )
+        warn('Persist it with: alfred setup-token --token "$CLAUDE_CODE_OAUTH_TOKEN"')
+        return
 
     print(
         "\n  Scheduled firings (launchd / systemd --user) can't read the\n"
