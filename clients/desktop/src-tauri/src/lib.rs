@@ -1215,7 +1215,18 @@ fn terminate_child_tree(child: &mut Child) {
         }
     }
     let _ = child.kill();
-    let _ = child.wait();
+    wait_for_child_exit(child, Duration::from_millis(500));
+}
+
+fn wait_for_child_exit(child: &mut Child, timeout: Duration) {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) | Err(_) => return,
+            Ok(None) if started.elapsed() >= timeout => return,
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+        }
+    }
 }
 
 fn resolve_program(requested: &str) -> String {
@@ -1959,6 +1970,7 @@ mod tests {
 
     #[test]
     fn native_command_timeout_returns_bounded_failure() {
+        let started = Instant::now();
         let result = run_native_command_blocking(
             "/bin/sh".to_string(),
             vec!["-c".to_string(), "sleep 2".to_string()],
@@ -1966,6 +1978,7 @@ mod tests {
         )
         .expect("timeout result should be captured");
 
+        assert!(started.elapsed() < Duration::from_secs(1));
         assert!(!result.success);
         assert_eq!(result.status, Some(124));
         assert_eq!(
