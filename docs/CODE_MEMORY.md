@@ -50,6 +50,15 @@ it at a binary you installed yourself.
   current. The `code-memory-mcp` launcher refreshes the MCP graph separately so
   search, call-graph, impact, and who-owns queries track git changes without a
   full rebuild.
+- **Stable local export.** `alfred code-map export` converts
+  `$ALFRED_HOME/state/code-map.json` into the stable `alfred-codegraph@1`
+  contract. This is the deterministic local fallback for agents, MCP clients,
+  and onboarding checks when the external code-memory binary is not installed.
+- **Read-only MCP bridge.** `alfred mcp serve` exposes
+  `alfred_code_graph_summary` and `alfred_code_impact` alongside the existing
+  memory tools. Agents can ask for repo summaries, import impact, matching
+  symbols, API calls, and contract drift without reading raw transcripts or
+  shelling out.
 
 ## Install and index
 
@@ -61,6 +70,11 @@ bin/code-memory-mcp refresh     # incremental rebuild of the MCP graph
 
 # The full fleet also installs code-map-refresh for the local JSON code map.
 alfred agents                   # confirm code-map-refresh appears
+
+# Stable local contract for native onboarding and agent fallback context.
+alfred code-map export --summary-only
+alfred code-map summary
+alfred code-map impact frontend src/lib/api.ts --json
 ```
 
 If the binary cannot be resolved (no network, autofetch disabled, unsupported
@@ -87,6 +101,23 @@ All knobs are environment variables; set them in `$ALFRED_HOME/.env` or
 | `ALFRED_CODE_MEMORY_FETCH_TIMEOUT_S` | `120` | Overall timeout for first-use release downloads. |
 | `ALFRED_CODE_MEMORY_INDEX_DIR` | `$ALFRED_HOME/state/code-memory` | Default storage root for code-memory state when `ALFRED_CODE_MEMORY_HOME` is unset. |
 | `ALFRED_CODE_MEMORY_HOME` | `ALFRED_CODE_MEMORY_INDEX_DIR` | HOME used for the upstream binary, which stores graph DBs under `.cache/codebase-memory-mcp`. |
+
+## `alfred-codegraph@1`
+
+The export contract is intentionally small:
+
+- `schema`: always `alfred-codegraph@1`
+- `generated_at`: timestamp from the last `code-map-refresh`
+- `repos[]`: repo name, HEAD SHA, graph summary, contract surfaces, and
+  optionally files plus import edges
+- `contract_drift[]`: client API calls with no matching server endpoint or
+  route in the local map
+
+The impact query resolves simple relative imports (`./Widget`, `./api`) back to
+mapped files and returns incoming imports, outgoing imports, symbols, API
+surfaces in the file, matching drift, nearby files, and a `match_status`
+(`exact`, `suffix`, `ambiguous`, or `not_found`). It is advisory context, not a
+compiler or merge gate.
 
 Binary resolution order (first hit wins):
 

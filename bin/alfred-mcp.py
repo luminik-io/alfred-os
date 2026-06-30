@@ -25,6 +25,7 @@ for candidate in (
     if candidate.exists() and str(candidate) not in sys.path:
         sys.path.insert(0, str(candidate))
 
+from code_graph import impact_for_path, summarize_codegraph  # noqa: E402
 from fleet_brain import FleetBrain, default_db_path  # noqa: E402
 from fleet_brain.doctor import run_memory_doctor  # noqa: E402
 
@@ -135,6 +136,32 @@ TOOLS: tuple[dict[str, Any], ...] = (
         },
     },
     {
+        "name": "alfred_code_graph_summary",
+        "description": "Summarize Alfred's local code graph by repo without returning raw source.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "alfred_code_impact",
+        "description": "Return local import, symbol, route, API-call, and drift hints for a repo path.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "path": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            },
+            "required": ["repo", "path"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "alfred_memory_doctor",
         "description": "Run read-only health checks over fleet-brain memory.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -156,6 +183,19 @@ def call_tool(
         return run_memory_doctor(db_path or os.environ.get("ALFRED_FLEET_BRAIN_DB"))
     if name == "alfred_memory_doctor":
         return run_memory_doctor(db_path or os.environ.get("ALFRED_FLEET_BRAIN_DB"))
+    if name == "alfred_code_graph_summary":
+        return summarize_codegraph(
+            repo=_str_or_none(args.get("repo")),
+            limit=_int_limit(args.get("limit"), default=25, max_value=100),
+        )
+    if name == "alfred_code_impact":
+        repo, path = _require_repo_path(args)
+        return impact_for_path(
+            None,
+            repo=repo,
+            path=path,
+            limit=_int_limit(args.get("limit"), default=50, max_value=200),
+        )
     brain = _brain(db_path)
     if name == "alfred_memory_recall":
         _require_scope(args)
@@ -298,6 +338,14 @@ def _require_repo_path(args: dict[str, Any]) -> tuple[str, str]:
     if not repo or not path:
         raise ValueError("graph tools require both a repo and a path")
     return repo, path
+
+
+def _int_limit(value: Any, *, default: int, max_value: int) -> int:
+    try:
+        parsed = int(value if value is not None else default)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(1, min(parsed, max_value))
 
 
 def _raw_memory_allowed() -> bool:

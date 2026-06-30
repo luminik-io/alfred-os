@@ -108,6 +108,13 @@ def test_code_memory_tool_names_use_server_prefix() -> None:
     assert all(n.startswith("mcp__code_memory__") for n in names)
 
 
+def test_memory_mcp_tool_names_include_code_graph_tools() -> None:
+    names = _proc._memory_tool_names()
+    assert "mcp__alfred_memory__alfred_code_graph_summary" in names
+    assert "mcp__alfred_memory__alfred_code_impact" in names
+    assert "mcp__alfred_memory__alfred_who_owns" in names
+
+
 if __name__ == "__main__":
     import pytest as _pytest
 
