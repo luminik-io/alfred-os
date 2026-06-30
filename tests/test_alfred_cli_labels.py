@@ -103,6 +103,26 @@ def test_labels_all_reads_fleet_repo_env(cli_module, monkeypatch: pytest.MonkeyP
     assert repos == ["api", "web", "mobile"]
 
 
+def test_setup_token_forwards_paste_back_token(cli_module, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(list(cmd))
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(cli_module.subprocess, "run", fake_run)
+
+    assert cli_module.main(["setup-token", "--token", "runtime-token-value"]) == 0
+    assert calls == [
+        [
+            sys.executable,
+            str(BIN.parent / "alfred-setup-token.py"),
+            "--token",
+            "runtime-token-value",
+        ]
+    ]
+
+
 def test_labels_all_hydrates_fleet_repo_env_from_runtime_env(
     cli_module, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -2283,6 +2283,8 @@ def cmd_setup_token(args: argparse.Namespace) -> int:
         cmd.append("--force")
     if args.check_only:
         cmd.append("--check-only")
+    if args.token:
+        cmd.extend(["--token", args.token])
     return subprocess.run(cmd, check=False).returncode
 
 
@@ -2536,6 +2538,14 @@ def _main_hydrated(argv: list[str] | None = None) -> int:
         "--check-only",
         action="store_true",
         help="report status without spawning `claude setup-token`",
+    )
+    p_setup_token.add_argument(
+        "--token",
+        metavar="VALUE",
+        help=(
+            "skip the interactive `claude setup-token` spawn and write the "
+            "given token to $ALFRED_HOME/.env directly"
+        ),
     )
     p_setup_token.set_defaults(func=cmd_setup_token)
 
