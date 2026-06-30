@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   type CustomRosterNames,
+  type EditableAgent,
   editableAgents,
   EMPTY_CUSTOM_NAMES,
 } from "../lib/agentThemes";
@@ -21,7 +22,7 @@ import { ScrollArea } from "./ui/scroll-area";
 
 // The operator-authored custom roster editor: one row per known fleet agent,
 // grouped by canonical role. The operator renames each agent's display name and
-// (optionally) its role label; a blank field falls back to the shipped Batman
+// (optionally) its role label; a blank field falls back to that agent's default
 // name/role, so a half-filled custom theme is never blank. Saving persists the
 // maps server-side (shared with the Slack path) via the parent's onSave, and
 // also selects the `custom` theme so the change is visible immediately.
@@ -34,15 +35,17 @@ const MAX_LABEL_LEN = 64;
 export function CustomThemeEditor({
   open,
   value,
+  agents,
   onOpenChange,
   onSave,
 }: {
   open: boolean;
   value: CustomRosterNames;
+  agents?: readonly EditableAgent[];
   onOpenChange: (open: boolean) => void;
   onSave: (next: CustomRosterNames) => void | Promise<void>;
 }) {
-  const agents = useMemo(() => editableAgents(), []);
+  const editableRoster = useMemo(() => [...(agents ?? editableAgents())], [agents]);
   const [names, setNames] = useState<Record<string, string>>(value.names);
   const [roles, setRoles] = useState<Record<string, string>>(value.roles);
   const [saving, setSaving] = useState(false);
@@ -87,14 +90,14 @@ export function CustomThemeEditor({
   };
 
   const byRole = useMemo(() => {
-    const groups = new Map<WorkflowRole, typeof agents>();
-    for (const agent of agents) {
+    const groups = new Map<WorkflowRole, typeof editableRoster>();
+    for (const agent of editableRoster) {
       const list = groups.get(agent.role) ?? [];
       list.push(agent);
       groups.set(agent.role, list);
     }
     return groups;
-  }, [agents]);
+  }, [editableRoster]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -103,7 +106,7 @@ export function CustomThemeEditor({
           <DialogTitle>Customize the roster</DialogTitle>
           <DialogDescription>
             Rename each agent and, optionally, its role label. Blank fields keep
-            the default name. Your cast is shared with the desktop and the Slack
+            the default name. Your roster is shared with the desktop and the Slack
             messages the agents post.
           </DialogDescription>
         </DialogHeader>
@@ -170,7 +173,7 @@ export function CustomThemeEditor({
               Cancel
             </Button>
             <Button type="button" size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : "Save cast"}
+              {saving ? "Saving..." : "Save roster"}
             </Button>
           </div>
         </DialogFooter>

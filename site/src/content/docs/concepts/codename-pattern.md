@@ -61,17 +61,17 @@ Without the codename, "the test agent" tends to creep: "well, while it's there, 
 The default install ships the Batman cast, and Alfred Desktop can re-skin the
 visible roster with preset themes or custom display names without changing the
 underlying role codenames, scheduler labels, or GitHub state machine. If you are
-authoring a new fleet configuration, pick anything coherent:
+authoring a new fleet configuration or naming custom agents, pick anything
+coherent:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
 - **Tolkien**: Aragorn, Legolas, Gimli, Gandalf. Watch lore consistency (Gandalf shouldn't review Frodo's PR).
 - **Your favourite anime, novel, podcast, board game.** All work.
 
-Constraints:
+Constraints for visible names:
 
-- ASCII-safe names (used in filenames, label slugs, gh CLI args). `rasalghul` not `Ra's al Ghul`.
-- ~10 characters max. Long codenames pollute Slack scrolling.
+- Short single-line names. Long names pollute Slack scrolling.
 - Pronounceable. You are going to say "Lucius shipped #303" out loud at some point.
 - Consistent across the fleet. Don't mix Batman + Star Wars; pick one universe.
 
@@ -89,22 +89,26 @@ The role implementation lives in `bin/<role>.py` (the filename never changes). T
 
 ```mermaid
 flowchart TB
-    init["alfred-init wizard<br/><i>you pick codenames</i>"]
-    rc["$ALFRED_HOME/.env<br/><code>AGENT_CODENAME_FEATURE_DEV=marshall</code>"]
-    conf["agents.conf<br/><code>my.fleet.marshall  lucius.py  interval:1200</code>"]
-    unit["my.fleet.marshall scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=marshall</code>"]
+    init["alfred-init or Desktop setup<br/><i>install full fleet</i>"]
+    conf["agents.conf<br/><code>my.fleet.lucius  lucius.py  interval:1200</code>"]
+    unit["my.fleet.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
-    output["Slack: 'Marshall shipped: ...'<br/>PR title: 'feat(...): ... [Marshall]'<br/>worktree: eng-marshall-..."]
+    theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>visible cast</i>"]
+    output["Desktop / Slack: 'Ironhide shipped: ...'<br/>PR title and worktree keep <code>lucius</code>"]
 
-    init --> rc
     init --> conf
     conf -- "render.sh" --> unit
     unit -- "deploy.sh" --> runner
-    rc -. "loaded by agent-launch/native runtime" .-> runner
+    init -. "Team step or picker" .-> theme
     runner --> output
+    theme --> output
 ```
 
-Rename `lucius` to `marshall` and the bin script stays `lucius.py`; only the runtime codename in Slack messages, PR titles, log paths, worktree paths, and claim comments changes.
+The bin script filename stays `lucius.py` because it is the role
+implementation. Custom display names change what humans see, not the scheduler
+contract. When you add a new agent script and schedule row later, Alfred Desktop
+can include that live agent in the custom roster editor and give it a visible
+name too.
 
 [Tutorial](/getting-started/tutorial/) for an end-to-end build of one codename. The [agent fleet](/concepts/fleet/) page maps the default cast and how the roles hand work to each other.
 

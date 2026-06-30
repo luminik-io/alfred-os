@@ -304,15 +304,45 @@ export type EditableAgent = {
   defaultRoleLabel: string;
 };
 
-export function editableAgents(): EditableAgent[] {
-  return Object.keys(BATMAN_THEME.nameByCodename)
-    .map((codename) => {
-      const role = BATMAN_ROLE_BY_CODENAME[codename] ?? "ops";
-      return {
-        codename,
-        role,
-        defaultName: BATMAN_THEME.nameByCodename[codename],
-        defaultRoleLabel: ROLE_LABELS_DEFAULT[role],
-      };
+export type EditableAgentSource = RoleSource & {
+  displayName?: string | null;
+  roleLabel?: string | null;
+};
+
+function baseEditableAgent(codename: string): EditableAgent {
+  const role = BATMAN_ROLE_BY_CODENAME[codename] ?? "ops";
+  return {
+    codename,
+    role,
+    defaultName: BATMAN_THEME.nameByCodename[codename] ?? titleizeCodename(codename),
+    defaultRoleLabel: ROLE_LABELS_DEFAULT[role],
+  };
+}
+
+function cleanLabel(value: string | null | undefined): string | null {
+  const text = value?.trim();
+  return text ? text : null;
+}
+
+export function editableAgents(sources: readonly EditableAgentSource[] = []): EditableAgent[] {
+  const agents = new Map<string, EditableAgent>();
+  for (const codename of Object.keys(BATMAN_THEME.nameByCodename)) {
+    agents.set(codename, baseEditableAgent(codename));
+  }
+
+  for (const source of sources) {
+    const codename = normalizeCodename(source.codename);
+    if (!codename) continue;
+    const identity = resolveThemedIdentity(source, "batman");
+    const existing = agents.get(codename);
+    agents.set(codename, {
+      codename,
+      role: identity.role,
+      defaultName: existing?.defaultName ?? cleanLabel(source.displayName) ?? identity.name,
+      defaultRoleLabel:
+        existing?.defaultRoleLabel ?? cleanLabel(source.roleLabel) ?? identity.roleLabel,
     });
+  }
+
+  return Array.from(agents.values());
 }

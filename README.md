@@ -477,6 +477,12 @@ titles, Slack messages, and commit-trailer metadata, so a coherent cast makes th
 fleet's channel scannable. And narrow scopes per codename force design quality:
 "what does Bane do?" is a sharper question than "what does the test agent do?".
 
+In the desktop app, roster themes and custom names are display identity only.
+They change the names and role labels shown in Agents, onboarding, and Slack,
+while stable runtime codenames, scheduler labels, GitHub labels, worktrees, and
+merge gates stay unchanged. If you add a new agent script later, the custom cast
+editor can name that live agent too.
+
 See [Architecture → Codename pattern](https://alfred.luminik.io/concepts/codename-pattern/) for more.
 
 ## Design boundaries
@@ -538,4 +544,6 @@ running while the mission is in flight. The public repository is
 `luminik-io/alfred-os`, but the product name is Alfred. The default codenames
 use the same theme: Batman is the architect, Lucius is the senior developer,
 Drake scopes smaller work, Ra's al Ghul reviews PRs, Bane adds tests, and
-Nightwing handles review fixes.
+Nightwing handles review fixes. You can keep those defaults, switch the visible
+roster to another preset, or define custom display names without changing the
+underlying agent roles.

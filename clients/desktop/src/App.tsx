@@ -33,6 +33,12 @@ import { useAlfred } from "./hooks/useAlfred";
 import { useDesktopRoute } from "./hooks/useDesktopRoute";
 import { hasStoredBaseUrl, supportsNativeActions } from "./api";
 import { FLEET_SUBTABS, PRIMARY_TABS } from "./lib/primaryTabs";
+import {
+  editableAgents,
+  type EditableAgentSource,
+  normalizeCodename,
+} from "./lib/agentThemes";
+import { scheduleRoleLabelForEditor } from "./lib/agentRoster";
 import type { OperatorKey, RequestThreadModel, TabKey } from "./lib/uiTypes";
 import { useRosterTheme } from "./lib/useRosterTheme";
 import { useTheme } from "./lib/useTheme";
@@ -189,6 +195,35 @@ function App() {
       },
     ];
   }, [goTo, refresh, theme, toggleTheme]);
+
+  const customThemeAgents = useMemo(() => {
+    const byCodename = new Map<string, EditableAgentSource>();
+    for (const run of snapshot?.schedule ?? []) {
+      byCodename.set(normalizeCodename(run.codename), {
+        codename: run.codename,
+        displayName: run.display_name,
+        roleLabel: scheduleRoleLabelForEditor({
+          codename: run.codename,
+          role: run.role,
+          roleTitle: run.role_title,
+        }),
+        roleTitle: run.role_title || run.role,
+        purpose: run.purpose,
+      });
+    }
+    for (const agent of snapshot?.status.agents ?? []) {
+      const key = normalizeCodename(agent.codename);
+      const scheduled = byCodename.get(key);
+      byCodename.set(key, {
+        codename: agent.codename,
+        displayName: agent.display_name ?? scheduled?.displayName,
+        roleLabel: agent.role_title ?? scheduled?.roleLabel,
+        roleTitle: agent.role_title ?? scheduled?.roleTitle,
+        purpose: agent.purpose ?? scheduled?.purpose,
+      });
+    }
+    return editableAgents(Array.from(byCodename.values()));
+  }, [snapshot?.schedule, snapshot?.status.agents]);
 
   return (
     <AppShell
@@ -447,6 +482,7 @@ function App() {
       <CustomThemeEditor
         open={customThemeEditorOpen}
         value={customNames}
+        agents={customThemeAgents}
         onOpenChange={setCustomThemeEditorOpen}
         onSave={setCustomNames}
       />
