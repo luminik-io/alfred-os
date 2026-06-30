@@ -12,12 +12,12 @@
  * because the goal is to communicate "this is what running Alfred
  * looks like" - not to be a marketing summary.
  *
- * Source: live `alfred status` output, captured 2026-05-23 from the
- * real Ghostty terminal. Cost is $0.00 because Alfred uses CLI
+ * Source: live `alfred status` output, captured 2026-06-30 from a
+ * local OSS full-fleet install. Cost is $0.00 because Alfred uses CLI
  * subscriptions, not metered API spend.
  */
 
-type Load = "live" | "paused";
+type Load = "live" | "off";
 type State = "ok" | "warn" | "paused" | "info";
 
 interface Row {
@@ -36,25 +36,27 @@ interface Row {
 }
 
 const rows: Row[] = [
-  { agent: "alfred-nightly",        load: "live",   engine: "-",      fired: "never",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "automerge",             load: "live",   engine: "-",      fired: "3m",      fires: 47, ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "bane",                  load: "live",   engine: "hybrid", fired: "9h37m",   fires: 1,  ok: 1,  fail: 0, streak: 0,  turns: 1,  cost: "$0.00", state: "ok" },
-  { agent: "batman",                load: "live",   engine: "hybrid", fired: "11h14m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "warn", note: "awaiting approval #567, #123 (9h 44m)" },
-  { agent: "brand-mention-scanner", load: "live",   engine: "-",      fired: "56m",     fires: 6,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "cleanup",               load: "live",   engine: "-",      fired: "8h54m",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "code-map-refresh",      load: "live",   engine: "-",      fired: "59m",     fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "content-drift",         load: "live",   engine: "-",      fired: "never",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "damian",                load: "live",   engine: "hybrid", fired: "2h37m",   fires: 1,  ok: 1,  fail: 0, streak: 0,  turns: 1,  cost: "$0.00", state: "ok" },
-  { agent: "drake",                 load: "live",   engine: "hybrid", fired: "17m",     fires: 9,  ok: 9,  fail: 0, streak: 0,  turns: 9,  cost: "$0.00", state: "ok" },
-  { agent: "fleet-doctor",          load: "live",   engine: "-",      fired: "4h25m",   fires: 1,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "huntress",              load: "paused", engine: "-",      fired: "18h26m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "paused", note: "paused since 2026-05-22T15:46:57Z" },
-  { agent: "lucius",                load: "paused", engine: "hybrid", fired: "15h42m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "paused", note: "paused since 2026-05-22T18:23:22Z" },
-  { agent: "morning-brief",         load: "live",   engine: "-",      fired: "4h55m",   fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "nightwing",             load: "paused", engine: "hybrid", fired: "41m",     fires: 14, ok: 14, fail: 0, streak: 0,  turns: 15, cost: "$0.00", state: "paused", note: "paused since 2026-05-15T11:23:59Z" },
-  { agent: "rasalghul",             load: "live",   engine: "hybrid", fired: "23m",     fires: 23, ok: 0,  fail: 23, streak: 0, turns: 23, cost: "$0.00", state: "ok" },
-  { agent: "robin",                 load: "live",   engine: "hybrid", fired: "56m",     fires: 1,  ok: 1,  fail: 0, streak: 0,  turns: 1,  cost: "$0.00", state: "ok" },
-  { agent: "shipped-summary-daily", load: "live",   engine: "-",      fired: "15h10m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
-  { agent: "shipped-summary-weekly",load: "live",   engine: "-",      fired: "15h10m",  fires: 0,  ok: 0,  fail: 0, streak: 0,  turns: 0,  cost: "$0.00", state: "ok" },
+  { agent: "lucius",                load: "live", engine: "hybrid", fired: "2m",    fires: 8, ok: 8, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "drake",                 load: "live", engine: "hybrid", fired: "2h33m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "bane",                  load: "live", engine: "hybrid", fired: "4h17m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "rasalghul",             load: "live", engine: "hybrid", fired: "6m",    fires: 1, ok: 1, fail: 0, streak: 0, turns: 1, cost: "$0.00", state: "ok" },
+  { agent: "nightwing",             load: "live", engine: "hybrid", fired: "1h32m", fires: 6, ok: 6, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "robin",                 load: "live", engine: "hybrid", fired: "1h32m", fires: 2, ok: 2, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "batman",                load: "live", engine: "hybrid", fired: "1h34m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "huntress",              load: "off",  engine: "-",      fired: "never", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "paused", note: "gated: set target URL" },
+  { agent: "gordon",                load: "off",  engine: "-",      fired: "never", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "paused", note: "gated: set ECS cluster" },
+  { agent: "automerge",             load: "live", engine: "-",      fired: "12m",   fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "agent-cleanup",         load: "live", engine: "-",      fired: "6h06m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "memory-harvest",        load: "live", engine: "-",      fired: "1h01m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "memory-auto-promote",   load: "live", engine: "-",      fired: "46m",   fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "code-map-refresh",      load: "live", engine: "-",      fired: "4h25m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "agent-morning-brief",   load: "live", engine: "-",      fired: "2h05m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "fleet-doctor",          load: "live", engine: "-",      fired: "1h36m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "fleet-recap-morning",   load: "live", engine: "-",      fired: "1h21m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "fleet-recap-evening",   load: "live", engine: "-",      fired: "1h21m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "shipped-summary-daily", load: "live", engine: "-",      fired: "1h30m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "shipped-summary-weekly",load: "live", engine: "-",      fired: "1h30m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "ok" },
+  { agent: "proof-telemetry",       load: "live", engine: "-",      fired: "1h34m", fires: 0, ok: 0, fail: 0, streak: 0, turns: 0, cost: "$0.00", state: "info", note: "anonymous aggregate usage" },
 ];
 
 const loaded = rows.filter((r) => r.load === "live").length;
@@ -86,7 +88,7 @@ const total = rows.length;
     {rows.map((r) => (
       <div class={`fleet__row fleet__row--state-${r.state}`}>
         <span class="fleet__agent">{r.agent}</span>
-        <span class="fleet__load">{r.load === "live" ? "●" : "❚❚"}</span>
+        <span class="fleet__load">{r.load === "live" ? "●" : "○"}</span>
         <span class="fleet__eng">{r.engine}</span>
         <span class="fleet__fired">{r.fired}</span>
         <span class="num">{r.fires}</span>
@@ -104,7 +106,7 @@ const total = rows.length;
   </div>
 
   <figcaption class="fleet__cap">
-    Live <code>alfred status</code> output from a real Mac, captured 2026-05-23. Cost is <code>$0.00</code> because Alfred runs on your own Claude and Codex subscriptions, not pay-per-token API bills. The amber row is Batman holding two large plans for your approval; the paused rows are agents that were stopped by hand.
+    Live <code>alfred status</code> output from a real Mac, captured 2026-06-30 after the OSS full-fleet install. Cost is <code>$0.00</code> because Alfred runs on your own Claude and Codex subscriptions, not pay-per-token API bills. Batman is loaded; Huntress and Gordon stay off until their target URL and ECS settings are configured.
   </figcaption>
 </figure>
 
@@ -172,8 +174,8 @@ const total = rows.length;
     color: var(--alfred-accent);
     text-align: center;
     font-variant-numeric: tabular-nums;
-    /* Both ● and ❚❚ occupy the same visual slot. */
-    letter-spacing: -0.05em;
+    /* Both load glyphs occupy the same visual slot. */
+    letter-spacing: 0;
   }
   .fleet__row--state-paused .fleet__load { color: var(--alfred-mute); }
   .fleet__row--state-warn .fleet__load { color: var(--alfred-accent); }

@@ -58,13 +58,11 @@
 # freshly queued candidates are seen.
 #   my.fleet.memory-auto-promote	memory-auto-promote.py	cron:8:20	no		Gated memory auto-promoter
 #
-# Opt-in: code-memory index refresh. Incrementally re-indexes the in-scope
-# repos (ALFRED_CODE_MEMORY_REPOS, falling back to ALFRED_CODE_MAP_REPOS) into
-# the codebase-memory-mcp code graph so the search / call-graph / impact /
-# who-owns tools stay current. AGENT_CODENAME=code-memory-refresh makes the
-# launcher default to `refresh`. A clean no-op until the binary is installed
-# (autofetch on by default; disable with ALFRED_CODE_MEMORY_AUTOFETCH=0).
-#   my.fleet.code-memory-refresh	code-memory-mcp	interval:21600	no		Code-memory index refresh
+# Opt-in: local code-map refresh. This scans ALFRED_CODE_MAP_REPOS and writes
+# $ALFRED_HOME/state/code-map.json for prompt context. It is separate from the
+# codebase-memory-mcp graph; run `bin/code-memory-mcp refresh` when you want to
+# incrementally refresh that MCP index after the initial `bin/code-memory-mcp index`.
+#   my.fleet.code-map-refresh	code-map-refresh.py	interval:21600	no		Code map refresh
 
 # The cleanup janitor runs daily at 03:00 when enabled (it ships in the
 # starter fleet). By default that daily pass is workspace-scoped and the
@@ -76,8 +74,8 @@
 # --scheduled). The normal age gates and retention floors for the other
 # cleanup categories stay unchanged; the dev-cache reclaim itself is wholesale.
 # An explicit second cleanup row (e.g. a midday reclaim) is optional:
-#   my.fleet.cleanup	agent-cleanup.py	cron:3:00	no		Daily cleanup + reclaim
-#   my.fleet.cleanup-noon	agent-cleanup.py	cron:13:00	no	my.fleet.cleanup	Midday disk reclaim
+#   my.fleet.agent-cleanup	agent-cleanup.py	cron:3:00	no		Daily cleanup + reclaim
+#   my.fleet.agent-cleanup-noon	agent-cleanup.py	cron:13:00	no	my.fleet.agent-cleanup	Midday disk reclaim
 
 # Anonymous usage totals. This line stays commented until an install configures
 # an endpoint. The script sends only aggregate counts to ALFRED_TELEMETRY_URL,

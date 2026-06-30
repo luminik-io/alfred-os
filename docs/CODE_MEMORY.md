@@ -43,9 +43,11 @@ it at a binary you installed yourself.
 - **Indexing.** The launcher indexes the repos in your scope list into
   `$ALFRED_HOME/state/code-memory`. If no scope list is configured, Alfred
   auto-discovers git repos under `WORKSPACE_ROOT/product` by default, skipping
-  archive, worktree, build, and dependency directories. A scheduled
-  `code-memory-refresh` agent keeps the index current; it does an incremental
-  `refresh` on each run so the graph tracks git changes without a full rebuild.
+  archive, worktree, build, and dependency directories. The installed
+  `code-map-refresh` agent keeps Alfred's lightweight local JSON code map
+  current. The `code-memory-mcp` launcher refreshes the MCP graph separately so
+  search, call-graph, impact, and who-owns queries track git changes without a
+  full rebuild.
 
 ## Install and index
 
@@ -53,10 +55,10 @@ it at a binary you installed yourself.
 # Resolve + fetch the pinned binary, then build the initial index.
 bin/code-memory-mcp doctor      # shows resolved binary, version pin, index dir
 bin/code-memory-mcp index       # full build for the in-scope repos
+bin/code-memory-mcp refresh     # incremental rebuild of the MCP graph
 
-# Schedule incremental refreshes (opt-in). Uncomment the code-memory-refresh
-# line in launchd/agents.conf.example, then re-render + deploy your units.
-alfred agents                   # confirm code-memory-refresh appears
+# The full fleet also installs code-map-refresh for the local JSON code map.
+alfred agents                   # confirm code-map-refresh appears
 ```
 
 If the binary cannot be resolved (no network, autofetch disabled, unsupported

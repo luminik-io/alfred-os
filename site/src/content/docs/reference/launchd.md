@@ -50,7 +50,7 @@ Example:
 my.fleet.lucius	lucius.py	interval:1200	yes			Feature developer
 my.fleet.bane	bane.py	cron:2:00	yes			Test coverage
 my.fleet.gordon	gordon.py	cron:8:00	no			Deploy health
-my.fleet.weekly-cleanup	cleanup.py	cron:0:21:00	no	my.fleet.cleanup	Weekly cleanup
+my.fleet.agent-cleanup	agent-cleanup.py	cron:3:00	no	my.fleet.agent-cleanup	Daily cleanup
 ```
 
 Tabs are required between fields. Trailing empty fields can be omitted.
