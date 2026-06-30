@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -415,6 +417,98 @@ def test_install_inventory_uses_active_serve_home_not_launcher_rc_home(
     assert inventory["alfred_home"] == str(active_home)
     assert inventory["env_path"] == str(active_home / ".env")
     assert inventory["env_present"] is True
+
+
+def test_install_inventory_reports_roster_theme_and_repo_local_map(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    alfred_home = tmp_path / ".alfred"
+    theme_dir = alfred_home / "state" / "roster-theme"
+    theme_dir.mkdir(parents=True)
+    (theme_dir / "roster-theme.json").write_text(
+        json.dumps(
+            {
+                "theme": "custom",
+                "custom_names": {"batman": "Sherlock", "lucius": "Watson"},
+                "custom_roles": {"batman": "Lead detective"},
+                "updated_at": "2026-06-30T12:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        "ALFRED_REPO_LOCAL_MAP",
+        "acme/site=../marketing/site,acme/api=/Users/example/api",
+    )
+
+    inventory = setup_mod.bootstrap_status()["install"]
+    by_key = {item["key"]: item for item in inventory["items"]}
+
+    assert inventory["roster_theme"] == {
+        "theme": "custom",
+        "label": "Custom",
+        "path": str(theme_dir / "roster-theme.json"),
+        "custom_names_count": 2,
+        "custom_roles_count": 1,
+        "updated_at": "2026-06-30T12:00:00Z",
+    }
+    assert inventory["repo_local_map"] == {
+        "present": True,
+        "count": 2,
+        "entries": [
+            {"repo": "acme/api", "path": "/Users/example/api"},
+            {"repo": "acme/site", "path": "../marketing/site"},
+        ],
+    }
+    assert by_key["cast"]["detail"] == "Custom cast active with 2 names and 1 role label."
+    assert by_key["repo-map"]["detail"] == "2 repo local path mappings configured."
+
+
+def test_roster_theme_inventory_does_not_swallow_store_failures(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import roster_theme_store
+
+    def fail_from_state_root(_state_root: Path) -> object:
+        raise RuntimeError("broken roster theme store")
+
+    monkeypatch.setattr(
+        roster_theme_store.RosterThemeStore,
+        "from_state_root",
+        fail_from_state_root,
+    )
+
+    with pytest.raises(RuntimeError, match="broken roster theme store"):
+        setup_mod._install_roster_theme(tmp_path)
+
+
+def test_roster_theme_inventory_coerces_updated_at_to_string(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import roster_theme_store
+
+    class FakeState:
+        def __init__(self) -> None:
+            self.theme = "custom"
+            self.custom_names = {"batman": "Sherlock"}
+            self.custom_roles = {}
+            self.updated_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
+
+    class FakeStore:
+        def load(self) -> FakeState:
+            return FakeState()
+
+    monkeypatch.setattr(
+        roster_theme_store.RosterThemeStore,
+        "from_state_root",
+        lambda _state_root: FakeStore(),
+    )
+
+    payload = setup_mod._install_roster_theme(tmp_path)
+
+    assert payload["updated_at"] == "2026-06-30 12:00:00+00:00"
 
 
 def test_bootstrap_status_uses_active_serve_home_for_code_memory(

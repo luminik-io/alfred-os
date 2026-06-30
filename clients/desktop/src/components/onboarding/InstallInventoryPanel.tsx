@@ -8,7 +8,18 @@ import type { SetupInstallInventory, SetupInstallItem, SetupStatus } from "../..
 import { Badge, Card, CardContent } from "../ui";
 import { cn } from "@/lib/utils";
 
-const PRIMARY_ITEMS = ["home", "env", "agents", "repos", "slack", "memory", "token"];
+const PRIMARY_ITEMS = [
+  "home",
+  "env",
+  "agents",
+  "repos",
+  "repo-map",
+  "cast",
+  "slack",
+  "memory",
+  "token",
+];
+const REPO_MAP_PREVIEW_LIMIT = 4;
 
 export function InstallInventoryPanel({
   inventory,
@@ -80,12 +91,40 @@ export function InstallInventoryPanel({
                     {item.path}
                   </code>
                 ) : null}
+                {item.key === "repo-map" && inventory.repo_local_map?.entries.length ? (
+                  <RepoMapPreview inventory={inventory} />
+                ) : null}
               </span>
             </li>
           ))}
         </ul>
       </CardContent>
     </Card>
+  );
+}
+
+function RepoMapPreview({ inventory }: { inventory: SetupInstallInventory }) {
+  const entries = inventory.repo_local_map?.entries ?? [];
+  const visible = entries.slice(0, REPO_MAP_PREVIEW_LIMIT);
+  const hidden = entries.length - visible.length;
+
+  return (
+    <span className="mt-2 grid gap-1" aria-label="Configured repo local path map">
+      {visible.map((entry) => (
+        <span
+          key={entry.repo}
+          className="grid gap-0.5 rounded border border-border/50 bg-background/55 px-2 py-1"
+        >
+          <code className="break-all text-[11px] text-foreground">{entry.repo}</code>
+          <code className="break-all text-[11px] text-muted-foreground">{entry.path}</code>
+        </span>
+      ))}
+      {hidden > 0 ? (
+        <span className="text-[11px] text-muted-foreground">
+          +{hidden} more {hidden === 1 ? "mapping" : "mappings"}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
