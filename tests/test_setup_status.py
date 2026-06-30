@@ -7,6 +7,7 @@ import os
 import stat
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -481,6 +482,32 @@ def test_roster_theme_inventory_does_not_swallow_store_failures(
 
     with pytest.raises(RuntimeError, match="broken roster theme store"):
         setup_mod._install_roster_theme(tmp_path)
+
+
+def test_roster_theme_inventory_coerces_updated_at_to_string(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import roster_theme_store
+
+    class FakeState:
+        theme = "custom"
+        custom_names = {"batman": "Sherlock"}
+        custom_roles = {}
+        updated_at = datetime(2026, 6, 30, 12, 0, tzinfo=UTC)
+
+    class FakeStore:
+        def load(self) -> FakeState:
+            return FakeState()
+
+    monkeypatch.setattr(
+        roster_theme_store.RosterThemeStore,
+        "from_state_root",
+        lambda _state_root: FakeStore(),
+    )
+
+    payload = setup_mod._install_roster_theme(tmp_path)
+
+    assert payload["updated_at"] == "2026-06-30 12:00:00+00:00"
 
 
 def test_bootstrap_status_uses_active_serve_home_for_code_memory(

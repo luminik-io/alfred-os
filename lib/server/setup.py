@@ -27,6 +27,7 @@ twin.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -1366,6 +1367,10 @@ def _install_roster_theme(home: Path) -> dict[str, Any]:
     try:
         from roster_theme_store import RosterThemeStore
     except ImportError:
+        logging.getLogger(__name__).debug(
+            "roster_theme_store unavailable; defaulting setup inventory to batman",
+            exc_info=True,
+        )
         return _default_roster_theme_inventory()
 
     state = RosterThemeStore.from_state_root(home / "state").load()
@@ -1379,7 +1384,7 @@ def _install_roster_theme(home: Path) -> dict[str, Any]:
         "path": str(path) if path.is_file() else None,
         "custom_names_count": custom_names_count,
         "custom_roles_count": custom_roles_count,
-        "updated_at": state.updated_at,
+        "updated_at": str(state.updated_at) if state.updated_at is not None else None,
     }
 
 
