@@ -176,6 +176,7 @@ _RESERVED_STATE_SUBDIRS: frozenset[str] = frozenset(
         "_paused",
     }
 )
+_IGNORED_STATE_CODENAMES: frozenset[str] = frozenset({"cleanup"})
 
 
 # Matches the ISO-8601 UTC stamp ``write_agent_pause_marker`` records as the
@@ -339,16 +340,18 @@ class FilesystemReader:
     # -- internals ----------------------------------------------------------
 
     def _iter_codenames(self) -> list[str]:
-        """Enumerate codenames that have a state directory.
+        """Enumerate codenames from runtime state plus deployed schedule.
 
         Sources:
+        * ``$ALFRED_HOME/launchd/agents.conf`` next to ``state/`` so newly
+          installed scheduled agents appear before their first firing
         * ``state/<codename>/`` (canonical, written by ``agent_runner``)
-        * ``state/codenames/<codename>/`` (forward-compat, optional)
+        * ``state/codenames/<codename>/`` (optional)
 
         Reserved subdirs (transcripts/, fleet/, engines/, ...) are filtered
         out. Returns a deduped sorted list.
         """
-        found: set[str] = set()
+        found: set[str] = set(self._iter_scheduled_codenames())
         if self.state_root.is_dir():
             for entry in self.state_root.iterdir():
                 if not entry.is_dir():
@@ -356,6 +359,8 @@ class FilesystemReader:
                 if entry.name in _RESERVED_STATE_SUBDIRS:
                     continue
                 if entry.name.startswith("."):
+                    continue
+                if entry.name in _IGNORED_STATE_CODENAMES:
                     continue
                 # Only count directories that actually have events or spend
                 # files, otherwise unrelated state subdirs that we forgot
@@ -365,9 +370,26 @@ class FilesystemReader:
         codenames_dir = self.state_root / "codenames"
         if codenames_dir.is_dir():
             for entry in codenames_dir.iterdir():
-                if entry.is_dir() and not entry.name.startswith("."):
+                if (
+                    entry.is_dir()
+                    and not entry.name.startswith(".")
+                    and entry.name not in _IGNORED_STATE_CODENAMES
+                ):
                     found.add(entry.name)
         return sorted(found)
+
+    def _iter_scheduled_codenames(self) -> list[str]:
+        """Return codenames from the deployed scheduler config beside state."""
+        conf = _runtime_agents_conf(self.state_root)
+        if conf is None:
+            return []
+        try:
+            from .schedule import scheduled_codenames
+
+            return scheduled_codenames(conf_path=conf)
+        except Exception as exc:  # pragma: no cover - defensive UI path
+            logger.debug("read scheduled codenames %s: %s", conf, exc)
+            return []
 
     def _iter_firings_for(self, codename: str, *, limit: int) -> list[FiringRecord]:
         records: list[FiringRecord] = []
@@ -716,6 +738,18 @@ def _json_bridge_issue_url(payload: dict[str, Any]) -> str | None:
 
 def _strip_markdown_value(line: str) -> str:
     return line.split(":", 1)[-1].strip().strip("*").strip()
+
+
+def _runtime_agents_conf(state_root: Path) -> Path | None:
+    """Resolve the deployed ``agents.conf`` that belongs to ``state_root``."""
+    runtime_home = state_root.parent
+    for conf in (
+        runtime_home / "launchd" / "agents.conf",
+        runtime_home / "infra" / "agents" / "launchd" / "agents.conf",
+    ):
+        if conf.is_file():
+            return conf
+    return None
 
 
 def _extract_markdown_link_url(value: str) -> str:

@@ -73,10 +73,15 @@ export const CODENAME_ROLE_HINTS: Record<string, WorkflowRole> = {
   gordon: "ops",
   "fleet-doctor": "ops",
   huntress: "ops",
-  cleanup: "ops",
   "agent-cleanup": "ops",
   "memory-harvest": "ops",
+  "memory-auto-promote": "ops",
   "code-map-refresh": "ops",
+  "agent-morning-brief": "ops",
+  "fleet-recap-morning": "ops",
+  "fleet-recap-evening": "ops",
+  "shipped-summary-daily": "ship",
+  "shipped-summary-weekly": "ship",
   "proof-telemetry": "ops",
 };
 
@@ -89,7 +94,24 @@ const ROLE_KEYWORDS: ReadonlyArray<[WorkflowRole, readonly string[]]> = [
   ["architect", ["architect", "plan", "design", "spec", "lead"]],
   ["triage", ["triage", "intake", "groom", "scope", "manager", "product"]],
   ["implement", ["implement", "develop", "engineer", "build", "code", "fix"]],
-  ["ops", ["ops", "health", "monitor", "doctor", "cleanup", "harvest", "infra", "uptime"]],
+  [
+    "ops",
+    [
+      "ops",
+      "health",
+      "monitor",
+      "doctor",
+      "cleanup",
+      "harvest",
+      "memory",
+      "brief",
+      "recap",
+      "summary",
+      "telemetry",
+      "infra",
+      "uptime",
+    ],
+  ],
 ];
 
 /** Normalize a codename to the short, lowercase form we hint on. */

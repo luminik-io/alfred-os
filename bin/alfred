@@ -629,6 +629,14 @@ def _alfred_home_path() -> Path:
     return _home_child(".alfred")
 
 
+def _alfred_managed_python() -> str:
+    """Return Alfred's managed runtime interpreter when it is provisioned."""
+    candidate = _alfred_home_path() / "venv" / "bin" / "python"
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    return sys.executable
+
+
 def _source_agents_conf_for_root(root: Path) -> Path | None:
     if not (root / "deploy.sh").exists():
         return None
@@ -1182,7 +1190,9 @@ def cmd_dry_run(
         if args.codename == "all":
             records = _record_map()
             if args.json:
-                payloads = [_dry_run_payload(records[codename], args) for codename in sorted(records)]
+                payloads = [
+                    _dry_run_payload(records[codename], args) for codename in sorted(records)
+                ]
                 print(json.dumps(payloads, indent=2))
                 return 0
             rc = 0
@@ -1561,7 +1571,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         forwarded.append("--no-browser")
     if args.log_level:
         forwarded.extend(["--log-level", args.log_level])
-    return subprocess.run([sys.executable, str(script), *forwarded], check=False).returncode
+    return subprocess.run(
+        [_alfred_managed_python(), str(script), *forwarded], check=False
+    ).returncode
 
 
 def cmd_schedule(args: argparse.Namespace) -> int:

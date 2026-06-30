@@ -108,8 +108,10 @@ def main(argv: list[str] | None = None) -> int:
         import uvicorn
     except ImportError:
         sys.stderr.write(
-            "alfred-serve: missing dependencies. Install the serve extras:\n"
-            "    pip install 'alfred-os[serve]'\n"
+            "alfred-serve: missing dependencies. Re-run install.sh, or install the "
+            "dashboard deps into $ALFRED_HOME/venv:\n"
+            '    uv pip install --python "$ALFRED_HOME/venv/bin/python" '
+            "fastapi httpx uvicorn jinja2\n"
         )
         return 2
 

@@ -275,6 +275,35 @@ for f in "$REPO_DIR/bin/"*; do
   chmod +x "$RUNTIME_BIN/$(basename "$f")"
 done
 
+ensure_runtime_python_deps() {
+  local venv_python="$ALFRED_HOME/venv/bin/python"
+  [ "${ALFRED_DEPLOY_SKIP_PYTHON_DEPS:-0}" = "1" ] && return 0
+  [ -x "$venv_python" ] || return 0
+  if "$venv_python" -c "import boto3, fastapi, httpx, jinja2, slack_sdk, uvicorn" >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "[alfred-os/deploy] $venv_python is missing runtime deps; uv not found, so run install.sh to repair"
+    return 0
+  fi
+  echo "[alfred-os/deploy] installing Alfred runtime Python deps into $ALFRED_HOME/venv"
+  if ! uv pip install --python "$venv_python" \
+    "slack-sdk>=3.27" \
+    "boto3>=1.34" \
+    "fastapi>=0.110" \
+    "httpx>=0.27" \
+    "uvicorn>=0.27" \
+    "jinja2>=3.1" >/dev/null; then
+    echo "[alfred-os/deploy] WARNING: runtime dependency install failed; re-run install.sh to repair" >&2
+    return 0
+  fi
+  if ! "$venv_python" -c "import boto3, fastapi, httpx, jinja2, slack_sdk, uvicorn" >/dev/null 2>&1; then
+    echo "[alfred-os/deploy] WARNING: runtime dependency install completed, but imports still fail; re-run install.sh to repair" >&2
+  fi
+}
+
+ensure_runtime_python_deps
+
 if [ -f "$REPO_DIR/prompts/spec-interrogator.md" ]; then
   cp "$REPO_DIR/prompts/spec-interrogator.md" "$RUNTIME_PROMPTS/spec-interrogator.md"
   chmod 644 "$RUNTIME_PROMPTS/spec-interrogator.md"

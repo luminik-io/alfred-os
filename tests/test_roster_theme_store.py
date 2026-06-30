@@ -241,6 +241,15 @@ def test_preset_maps_cover_the_same_cast_as_batman_base() -> None:
         assert set(names) == base, f"{theme} preset cast drifted from the Batman base"
 
 
+def test_batman_base_uses_canonical_scheduled_codenames() -> None:
+    assert "cleanup" not in BATMAN_BASE_NAMES
+    assert "cleanup" not in BATMAN_BASE_ROLES
+    assert "agent-cleanup" in BATMAN_BASE_NAMES
+    assert "memory-auto-promote" in BATMAN_BASE_NAMES
+    assert "agent-morning-brief" in BATMAN_BASE_NAMES
+    assert "shipped-summary-weekly" in BATMAN_BASE_NAMES
+
+
 def test_themed_display_name_resolves_preset_identity() -> None:
     state = RosterThemeState(theme="transformers", custom_names={}, custom_roles={})
     assert state.themed_display_name_for("lucius") == "Ironhide"

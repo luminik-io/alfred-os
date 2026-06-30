@@ -76,10 +76,15 @@ const BATMAN_THEME: RosterTheme = {
     automerge: "Auto-merge",
     gordon: "Gordon",
     "fleet-doctor": "Fleet doctor",
-    cleanup: "Cleanup",
-    "agent-cleanup": "Cleanup",
+    "agent-cleanup": "Agent cleanup",
     "memory-harvest": "Memory harvest",
+    "memory-auto-promote": "Memory auto-promote",
     "code-map-refresh": "Code map",
+    "agent-morning-brief": "Morning brief",
+    "fleet-recap-morning": "Fleet recap morning",
+    "fleet-recap-evening": "Fleet recap evening",
+    "shipped-summary-daily": "Shipped summary daily",
+    "shipped-summary-weekly": "Shipped summary weekly",
     "proof-telemetry": "Telemetry",
   },
 };
@@ -102,10 +107,15 @@ const TRANSFORMERS_THEME: RosterTheme = {
     automerge: "Jazz",
     gordon: "Wheeljack",
     "fleet-doctor": "Perceptor",
-    cleanup: "Cosmos",
     "agent-cleanup": "Cosmos",
     "memory-harvest": "Brainstorm",
+    "memory-auto-promote": "Chromia",
     "code-map-refresh": "Beachcomber",
+    "agent-morning-brief": "Prowl",
+    "fleet-recap-morning": "Trailbreaker",
+    "fleet-recap-evening": "Mirage",
+    "shipped-summary-daily": "Sunstreaker",
+    "shipped-summary-weekly": "Wheelie",
     "proof-telemetry": "Blaster",
   },
 };
@@ -128,10 +138,15 @@ const JUSTICE_LEAGUE_THEME: RosterTheme = {
     automerge: "Green Lantern",
     gordon: "Cyborg",
     "fleet-doctor": "Doctor Fate",
-    cleanup: "Atom",
     "agent-cleanup": "Atom",
     "memory-harvest": "Zatanna",
+    "memory-auto-promote": "Mister Miracle",
     "code-map-refresh": "Vixen",
+    "agent-morning-brief": "Oracle",
+    "fleet-recap-morning": "Blue Beetle",
+    "fleet-recap-evening": "Black Canary",
+    "shipped-summary-daily": "Hawkman",
+    "shipped-summary-weekly": "Booster Gold",
     "proof-telemetry": "Firestorm",
   },
 };
@@ -291,7 +306,6 @@ export type EditableAgent = {
 
 export function editableAgents(): EditableAgent[] {
   return Object.keys(BATMAN_THEME.nameByCodename)
-    .filter((codename) => codename !== "agent-cleanup") // alias of `cleanup`
     .map((codename) => {
       const role = BATMAN_ROLE_BY_CODENAME[codename] ?? "ops";
       return {

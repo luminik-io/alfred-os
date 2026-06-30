@@ -220,6 +220,54 @@ def test_api_status_orders_and_profiles_core_agents(tmp_path: Path) -> None:
     assert agents[2]["role_title"] == "Planner"
 
 
+def test_api_status_includes_scheduled_agents_before_first_firing(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    _write_jsonl(
+        state / "cleanup" / "events" / "2026-06-01-0900-aa.jsonl",
+        [{"ts": "2026-06-01T09:00:00Z", "event": "firing_complete"}],
+    )
+    _write_jsonl(
+        state / "codenames" / "cleanup" / "events" / "2026-06-01-0910-aa.jsonl",
+        [{"ts": "2026-06-01T09:10:00Z", "event": "firing_complete"}],
+    )
+    conf = tmp_path / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "# label\tscript\tschedule\tneeds_java\tlog_stem\trole\n"
+        "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tfeature dev\n"
+        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect\n"
+        "alfred.agent-cleanup\tagent-cleanup.py\tcron:3:00\tno\t"
+        "alfred.agent-cleanup\thygiene\n"
+        "alfred.memory-auto-promote\tmemory-auto-promote.py\tcron:8:20\tno\t"
+        "alfred.memory-auto-promote\tmemory auto-promote\n"
+        "alfred.shipped-summary-daily\tshipped-summary-daily.sh\tcron:7:35\tno\t"
+        "alfred.shipped-summary\tshipped summary daily\n"
+        "#alfred.huntress\thuntress.py\tinterval:1800\tno\talfred.huntress\tstaging smoke runner\n",
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    agents = client.get("/api/status").json()["agents"]
+    by_codename = {agent["codename"]: agent for agent in agents}
+
+    assert [agent["codename"] for agent in agents] == [
+        "batman",
+        "lucius",
+        "agent-cleanup",
+        "memory-auto-promote",
+        "shipped-summary-daily",
+    ]
+    assert by_codename["batman"]["status"] == "idle"
+    assert by_codename["batman"]["last_summary"] == "no firings yet"
+    assert by_codename["batman"]["loaded"] is True
+    assert by_codename["batman"]["display_name"] == "Batman"
+    assert by_codename["agent-cleanup"]["display_name"] == "Agent Cleanup"
+    assert "cleanup" not in by_codename
+    assert by_codename["memory-auto-promote"]["role_title"] == "Memory Judge"
+    assert by_codename["shipped-summary-daily"]["role_title"] == "Shipping Digest"
+    assert "huntress" not in by_codename
+
+
 def test_api_memory_candidates_promote_and_reject(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2732,9 +2780,10 @@ def test_api_schedule_returns_cron_and_interval_runs(
     conf.write_text(
         "# Per-agent launchd config.\n"
         "alfred.lucius\tlucius.py\tinterval:600\tyes\t\topus\tSingle-repo engineer\n"
+        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tcross-repo architect\n"
         "alfred.bane\tbane.py\tcron:2:00\tyes\t\topus\tDaily test author\n"
         "alfred.cold-backup\talfred-cold-backup.py\tcron:0:2:00\tno\t\t\tWeekly cold backup\n"
-        "# alfred.batman\tbatman.py\tinterval:5400\tyes\t\topus\tDisabled\n",
+        "# alfred.huntress\thuntress.py\tinterval:5400\tyes\t\topus\tDisabled\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ALFRED_REPO", str(repo))
@@ -2743,14 +2792,15 @@ def test_api_schedule_returns_cron_and_interval_runs(
     runs = client.get("/api/schedule").json()["runs"]
     by_codename = {run["codename"]: run for run in runs}
 
-    # The commented-out Batman row is not surfaced.
-    assert set(by_codename) == {"lucius", "bane", "cold-backup"}
+    # The commented-out Huntress row is not surfaced.
+    assert set(by_codename) == {"lucius", "batman", "bane", "cold-backup"}
 
     # interval rows carry a cadence string but no guessed next-fire timestamp.
     assert by_codename["lucius"]["kind"] == "interval"
     assert by_codename["lucius"]["cadence"] == "every 10m"
     assert by_codename["lucius"]["next_fire_at"] is None
     assert by_codename["lucius"]["role"] == "Single-repo engineer"
+    assert by_codename["batman"]["role"] == "cross-repo architect"
 
     # cron rows compute a concrete next-fire.
     assert by_codename["bane"]["kind"] == "cron-daily"
@@ -2759,6 +2809,80 @@ def test_api_schedule_returns_cron_and_interval_runs(
 
     assert by_codename["cold-backup"]["kind"] == "cron-weekly"
     assert by_codename["cold-backup"]["cadence"] == "Sunday 02:00"
+
+
+def test_server_agents_conf_path_prefers_checkout_before_default_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import server.schedule as schedule_mod
+
+    checkout = tmp_path / "checkout"
+    (checkout / "clients").mkdir(parents=True)
+    (checkout / "bin").mkdir()
+    (checkout / "bin" / "alfred").write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    (checkout / "lib" / "server").mkdir(parents=True)
+    checkout_conf = checkout / "launchd" / "agents.conf"
+    checkout_conf.parent.mkdir()
+    checkout_conf.write_text(
+        "alfred.batman\tbatman.py\tinterval:3600\tno\talfred.batman\tarchitect\n",
+        encoding="utf-8",
+    )
+
+    home = tmp_path / "home"
+    home_conf = home / ".alfred" / "launchd" / "agents.conf"
+    home_conf.parent.mkdir(parents=True)
+    home_conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tengineer\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.chdir(checkout / "clients")
+
+    assert schedule_mod.agents_conf_path() == checkout_conf
+
+
+def test_server_agents_conf_path_uses_default_home_when_no_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import server.schedule as schedule_mod
+
+    home = tmp_path / "home"
+    home_conf = home / ".alfred" / "launchd" / "agents.conf"
+    home_conf.parent.mkdir(parents=True)
+    home_conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tno\talfred.lucius\tengineer\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("ALFRED_REPO", raising=False)
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("WORKSPACE_ROOT", str(tmp_path / "missing-workspace"))
+    monkeypatch.chdir(tmp_path)
+
+    assert schedule_mod.agents_conf_path() == home_conf
+
+
+def test_scheduled_codenames_is_not_limited_by_schedule_endpoint_cap(tmp_path: Path) -> None:
+    import server.schedule as schedule_mod
+
+    conf = tmp_path / "launchd" / "agents.conf"
+    conf.parent.mkdir()
+    conf.write_text(
+        "\n".join(
+            f"alfred.worker-{index:04d}\tworker.py\tinterval:600\tno\t"
+            f"alfred.worker-{index:04d}\tworker"
+            for index in range(1005)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert len(schedule_mod.scheduled_codenames(conf_path=conf)) == 1005
 
 
 def test_api_schedule_reads_deployed_runtime_conf(

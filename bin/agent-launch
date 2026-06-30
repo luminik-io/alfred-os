@@ -380,8 +380,7 @@ fi
 
 # Python interpreter resolution (Python targets only):
 #   1. ${ALFRED_PYTHON}              - explicit operator override
-#   2. ${ALFRED_HOME}/venv/bin/python - install.sh-managed venv (has
-#                                       slack-sdk + boto3 baked in)
+#   2. ${ALFRED_HOME}/venv/bin/python - install.sh-managed runtime venv
 #   3. agent shebang                 - preserves source-checkout / dev paths
 #
 # Non-Python targets (shell scripts, etc.) always execute via their own

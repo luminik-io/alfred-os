@@ -13,13 +13,16 @@ token-gated local mutations for the Tauri client under `clients/desktop`.
 
 ## Install
 
-The server lives behind an optional dependency group so the base `alfred-os` package stays stdlib-only:
+`install.sh` provisions the managed `$ALFRED_HOME/venv` with the dashboard
+dependencies because Alfred Desktop uses `alfred serve` by default.
+
+For package-only installs, the dependencies are in the base package:
 
 ```bash
-pip install 'alfred-os[serve]'
+pip install alfred-os
 ```
 
-The group pulls in `fastapi`, `uvicorn`, and `jinja2`. Pico.css and HTMX are loaded from a CDN by the bundled templates; no JS or CSS build step is required.
+The stack uses `fastapi`, `httpx`, `uvicorn`, and `jinja2`. Pico.css and HTMX are loaded from a CDN by the bundled templates; no JS or CSS build step is required.
 
 ## Run
 

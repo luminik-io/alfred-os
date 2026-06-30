@@ -52,6 +52,16 @@ describe("deriveAgentRole", () => {
       gordon: "ops",
       "fleet-doctor": "ops",
       huntress: "ops",
+      "agent-cleanup": "ops",
+      "memory-harvest": "ops",
+      "memory-auto-promote": "ops",
+      "code-map-refresh": "ops",
+      "agent-morning-brief": "ops",
+      "fleet-recap-morning": "ops",
+      "fleet-recap-evening": "ops",
+      "shipped-summary-daily": "ship",
+      "shipped-summary-weekly": "ship",
+      "proof-telemetry": "ops",
     };
     for (const [codename, lane] of Object.entries(PRIOR_LANES)) {
       expect(deriveAgentRole({ codename })).toBe(lane);
@@ -172,8 +182,12 @@ describe("editableAgents", () => {
       expect(agent.defaultName.length).toBeGreaterThan(0);
       expect(agent.defaultRoleLabel.length).toBeGreaterThan(0);
     }
-    // The alias entry is collapsed so an agent never appears twice.
-    expect(agents.some((a) => a.codename === "agent-cleanup")).toBe(false);
+    // The obsolete cleanup alias is gone; the canonical scheduled codename is
+    // editable because it is what the installer deploys.
+    expect(agents.some((a) => a.codename === "cleanup")).toBe(false);
+    expect(agents.some((a) => a.codename === "agent-cleanup")).toBe(true);
     expect(agents.some((a) => a.codename === "batman")).toBe(true);
+    expect(agents.some((a) => a.codename === "memory-auto-promote")).toBe(true);
+    expect(agents.some((a) => a.codename === "shipped-summary-weekly")).toBe(true);
   });
 });

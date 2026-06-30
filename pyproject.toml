@@ -26,6 +26,10 @@ classifiers = [
 dependencies = [
   "slack-sdk>=3.27",
   "boto3>=1.34",
+  "fastapi>=0.110",
+  "httpx>=0.27",
+  "uvicorn>=0.27",
+  "jinja2>=3.1",
 ]
 
 [project.scripts]
@@ -34,17 +38,10 @@ alfred-os = "alfred_os_cli:main"
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
-  "httpx>=0.27",
   "httpx2>=0.1",
   "ruff>=0.5",
   "mypy>=1.10",
 ]
-serve = [
-  "fastapi>=0.110",
-  "uvicorn>=0.27",
-  "jinja2>=3.1",
-]
-
 [project.urls]
 Homepage = "https://alfred.luminik.io"
 Repository = "https://github.com/luminik-io/alfred-os"
@@ -120,9 +117,7 @@ warn_unused_ignores = true
 no_implicit_reexport = true
 strict_equality = true
 # Excluded from type checking:
-# - lib/server/: depends on fastapi which is an optional `serve` extra
-#   that CI's `uv run --with mypy mypy lib/` invocation does not pull.
-#   Local devs running mypy with the extra installed still get coverage.
+# - lib/server/: FastAPI route layer is still migrating to strict typing.
 exclude = ["^lib/server/"]
 
 [[tool.mypy.overrides]]

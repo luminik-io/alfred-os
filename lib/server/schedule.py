@@ -78,9 +78,9 @@ class ScheduledRun:
 def agents_conf_path() -> Path | None:
     """Resolve ``launchd/agents.conf``, or ``None`` if absent.
 
-    An explicit ``ALFRED_REPO`` wins. Otherwise prefer the installed runtime
-    home (``ALFRED_HOME``), because ``deploy.sh`` copies the
-    launchd config there. Source-checkout fallbacks remain for development.
+    Explicit env wins first. A source checkout wins before the default
+    ``~/.alfred`` install so tests and local dev do not bleed in an operator's
+    live fleet by accident.
     """
     alfred_repo = os.environ.get("ALFRED_REPO")
     if alfred_repo:
@@ -92,8 +92,17 @@ def agents_conf_path() -> Path | None:
         if deployed is not None:
             return deployed
 
+    checkout = _checkout_agents_conf(Path.cwd())
+    if checkout is not None:
+        return checkout
+
     workspace = os.environ.get("WORKSPACE_ROOT", os.path.expanduser("~/code"))
-    return _first_agents_conf(Path(workspace) / "alfred-os")
+    workspace_conf = _first_agents_conf(Path(workspace) / "alfred-os")
+    if workspace_conf is not None:
+        return workspace_conf
+
+    default_home = Path(os.path.expanduser("~/.alfred"))
+    return _first_agents_conf(default_home) if default_home.is_dir() else None
 
 
 def _first_agents_conf(base: Path) -> Path | None:
@@ -102,6 +111,18 @@ def _first_agents_conf(base: Path) -> Path | None:
         base / "infra" / "agents" / "launchd" / "agents.conf",
     ):
         if conf.is_file():
+            return conf
+    return None
+
+
+def _checkout_agents_conf(start: Path) -> Path | None:
+    for base in (start, *start.parents):
+        conf = _first_agents_conf(base)
+        if (
+            conf is not None
+            and (base / "bin" / "alfred").is_file()
+            and (base / "lib" / "server").is_dir()
+        ):
             return conf
     return None
 
@@ -151,6 +172,31 @@ def upcoming_runs(
     return runs[: max(1, limit)]
 
 
+def scheduled_codenames(conf_path: Path | None = None) -> list[str]:
+    """Return all unique agent codenames present in ``agents.conf``."""
+    path = conf_path if conf_path is not None else agents_conf_path()
+    if path is None:
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.debug("could not read agents.conf %s: %s", path, exc)
+        return []
+
+    codenames: set[str] = set()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        fields = raw_line.split("\t")
+        if len(fields) < 3:
+            continue
+        label = fields[0].strip()
+        if label:
+            codenames.add(_codename_from_label(label))
+    return sorted(codenames, key=lambda codename: (profile_order(codename), codename))
+
+
 def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     fields = raw_line.split("\t")
     if len(fields) < 3:
@@ -159,7 +205,7 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     if not label:
         return None
     schedule = fields[2].strip()
-    role = fields[6].strip() if len(fields) >= 7 else ""
+    role = fields[-1].strip() if len(fields) >= 6 else ""
     codename = _codename_from_label(label)
     profile = profile_payload(codename)
 

@@ -40,7 +40,7 @@ def test_serve_parser_defaults_to_desktop_port():
     assert args.no_browser is True
 
 
-def test_serve_forwards_supported_server_args(monkeypatch):
+def test_serve_forwards_supported_server_args(tmp_path, monkeypatch):
     cli = load_cli_module()
     calls = []
 
@@ -48,6 +48,8 @@ def test_serve_forwards_supported_server_args(monkeypatch):
         calls.append((command, check))
         return SimpleNamespace(returncode=0)
 
+    monkeypatch.delenv("ALFRED_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
 
     assert (
@@ -78,6 +80,36 @@ def test_serve_forwards_supported_server_args(monkeypatch):
                 "--no-browser",
                 "--log-level",
                 "debug",
+            ],
+            False,
+        )
+    ]
+
+
+def test_serve_uses_managed_alfred_venv_when_present(tmp_path, monkeypatch):
+    cli = load_cli_module()
+    alfred_home = tmp_path / "alfred"
+    venv_python = alfred_home / "venv" / "bin" / "python"
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    venv_python.chmod(0o755)
+    calls = []
+
+    def fake_run(command, check):
+        calls.append((command, check))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+
+    assert cli.main(["serve", "--no-browser"]) == 0
+
+    assert calls == [
+        (
+            [
+                str(venv_python),
+                str(ROOT / "bin/alfred-serve.py"),
+                "--no-browser",
             ],
             False,
         )

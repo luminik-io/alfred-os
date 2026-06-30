@@ -36,11 +36,16 @@ const AGENT_ORDER: Record<string, number> = {
   gordon: 100,
   automerge: 110,
   "agent-cleanup": 120,
-  cleanup: 120,
   "memory-harvest": 130,
+  "memory-auto-promote": 135,
   "fleet-doctor": 140,
   "code-map-refresh": 150,
-  "proof-telemetry": 160,
+  "agent-morning-brief": 155,
+  "fleet-recap-morning": 170,
+  "fleet-recap-evening": 171,
+  "shipped-summary-daily": 180,
+  "shipped-summary-weekly": 181,
+  "proof-telemetry": 190,
 };
 
 /**

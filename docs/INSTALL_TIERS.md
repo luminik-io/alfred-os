@@ -33,20 +33,19 @@ claude
 
 `install.sh` puts `git`, `gh`, `jq`, the AWS CLI, Python, Node, and `uv` in place, installs the Claude Code CLI, and creates `$ALFRED_HOME` (default `~/.alfred`) and `$WORKSPACE_ROOT` (default `~/code`). It does not enable any agents or touch the scheduler; `alfred-init.py` and `deploy.sh` do that. See [`../INSTALL.md`](../INSTALL.md) for what each step does and how to recover when one fails.
 
-### The `serve` extra
+### Local API
 
-`alfred serve` is the localhost JSON API over `$ALFRED_HOME/state`. It binds to `127.0.0.1` by default and is the API Alfred Desktop reads through. Its Python dependencies are an optional extra so a pure-fleet install stays small:
+`alfred serve` is the localhost JSON API over `$ALFRED_HOME/state`. It binds to `127.0.0.1` by default and is the API Alfred Desktop reads through. `install.sh` installs its Python dependencies into `$ALFRED_HOME/venv` because the native app is the default onboarding path:
 
 ```sh
-pip install 'alfred-os[serve]'   # FastAPI + uvicorn + jinja2
 alfred serve --no-browser        # listens on http://127.0.0.1:7010
 ```
 
 If port 7010 is taken, use another localhost port and point Alfred Desktop
 at it from Setup. Binding to `0.0.0.0` is allowed but discouraged: the dashboard
 exposes paths and event payloads that may carry repo URLs or other operator
-context. The fleet runs fine without `serve` ever starting; it is only needed
-when you want the dashboard or Alfred Desktop.
+context. The scheduled fleet can keep running if `serve` is stopped, but the
+dashboard and Alfred Desktop expect it to be available.
 
 ## `client`: the desktop app
 
@@ -90,7 +89,7 @@ The Slack tier is the planning listener plus the issue bridge. It turns Slack in
 - The **listener** (`lib/slack_listener.py`) runs in Socket Mode. The configured approver and trusted users can DM or mention Alfred; the listener refines the request into a saved local draft, scores readiness, and asks for missing scope. It never files issues, opens PRs, or runs code.
 - The **bridge** (`lib/slack_issue_bridge.py`) is off by default. When the configured approver explicitly approves a draft, and the bridge is enabled with a repo allowlist, it files one labeled GitHub issue. From there the fleet claims it through every existing gate. The bridge runs no code.
 
-The base install already includes `slack-sdk` and `boto3` (promoted out of optional extras in v0.4.0), so the only thing the Slack tier needs beyond `core` is configuration:
+The base install already includes the runtime dependencies for core, the local API, and Slack/AWS integrations, so the only thing the Slack tier needs beyond `core` is configuration:
 
 ```sh
 # Minimal: incoming webhook for fleet posts (one-way: agents post, you read)

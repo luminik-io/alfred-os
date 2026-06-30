@@ -50,10 +50,10 @@ The core tier is the whole product for most users:
 
 Core needs no desktop, no browser, and no Slack. A headless Debian or Ubuntu box runs the entire fleet from timers with nothing on screen. The CLI and fleet are fully standalone; the other tiers are additive.
 
-`alfred serve` is an optional extra so a pure-fleet install stays small:
+`alfred serve` is part of the core runtime because Alfred Desktop uses it as
+the local API:
 
 ```sh
-pip install 'alfred-os[serve]'   # FastAPI + uvicorn
 alfred serve --port 7010 --no-browser
 ```
 
