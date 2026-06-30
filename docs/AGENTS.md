@@ -159,7 +159,7 @@ To add a role not in the default set (e.g., `arsenal` for "deploy-time security 
    ```
 
 3. Run `bash deploy.sh`.
-4. Run `bash bin/doctor.sh` to confirm preflight passes.
+4. Run `./bin/alfred doctor` to confirm preflight passes.
 
 The existing primitives in `lib/agent_runner/` cover the common patterns: lock, preflight, spend, gh, slack, claim/release, claude_invoke, event log. Read [`docs/STATE_MACHINE.md`](STATE_MACHINE.md) and [`docs/TUTORIAL.md`](TUTORIAL.md) before writing the script.
 
@@ -187,9 +187,9 @@ alfred enabled-agents         # print the current runner-gate list
 alfred labels check --all     # report missing lifecycle/approval labels
 alfred labels bootstrap --all # create missing lifecycle/approval labels
 alfred shipped --period weekly # summarize merged PRs, issues, LOC, config changes
-bash deploy.sh                # sync bin/lib; render + bootstrap if agents.conf exists
-bash bin/doctor.sh            # preflight configured Python agents
-bash bin/doctor.sh --lifecycle # validate Batman parser, Slack approval, Claude OAuth
+bash deploy.sh                 # sync bin/lib; render + bootstrap if agents.conf exists
+./bin/alfred doctor            # preflight configured Python agents
+./bin/alfred doctor --lifecycle # validate Batman parser, Slack approval, Claude OAuth
 ```
 
 Use `alfred-label-state` for issue-claim overrides. Use

@@ -5,7 +5,7 @@ Run after `git clone` + `bash install.sh`. install.sh handles dependency
 install (brew, gh, claude, aws, python, node, runtime dirs, ~/.alfredrc
 template). alfred-init handles configuration: auth checks, Slack webhook
 provisioning, agent selection, codename + repo + schedule wiring,
-agents.conf generation, deploy.sh, doctor.sh, smoke test.
+agents.conf generation, deploy, doctor, smoke test.
 
 Wizard order (each step is idempotent, re-running won't duplicate):
     0. Preflight:      ALFRED_HOME, ~/.alfredrc, GH_ORG must exist.
@@ -22,7 +22,7 @@ Wizard order (each step is idempotent, re-running won't duplicate):
     9. Generate config: agents.conf, env, starter prompts, opt-in gate.
    10. GitHub labels:  create standard labels on selected repos.
    11. Deploy:         `bash deploy.sh`.
-   12. Doctor:         `bash bin/doctor.sh`.
+   12. Doctor:         `alfred doctor`.
    13. Smoke test:     final Slack post + summary.
 
 Override paths:
@@ -1740,7 +1740,7 @@ def step_12_smoke(state: WizardState) -> None:
     print("    alfred agents:         configured agents + runner-gate state")
     print("    alfred enable <agent> , add an opt-in codename to the runner gate")
     print("    alfred disable <agent>, remove a codename from the runner gate")
-    print("    bash bin/doctor.sh:    preflight configured Python agents")
+    print("    alfred doctor:         preflight configured Python agents")
     print()
     print("  Read docs/AGENTS.md for the full codename topology.")
     print("  Read INSTALL.md if anything went sideways.")
@@ -1986,7 +1986,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     step_10_labels(state, skip=args.skip_label_setup)
     step_10_deploy(state)
     if not step_11_doctor(state, non_interactive=non_interactive):
-        fail("Doctor failed. Resolve and re-run `bash bin/doctor.sh`.")
+        fail("Doctor failed. Resolve and re-run `alfred doctor`.")
         return 1
     step_12_smoke(state)
     return 0

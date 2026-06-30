@@ -84,7 +84,7 @@ agent script from `$ALFRED_HOME/bin`.
 1. Drop `bin/<your-codename>.py` into your fleet repo.
 2. Append a row to `launchd/agents.conf`.
 3. Run `bash deploy.sh`: renders + bootstraps.
-4. Verify with `bash bin/doctor.sh`.
+4. Verify with `./bin/alfred doctor`.
 
 ## Pause / resume
 

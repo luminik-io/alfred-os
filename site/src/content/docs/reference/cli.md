@@ -1,6 +1,6 @@
 ---
 title: Alfred CLI
-description: install.sh, deploy.sh, doctor.sh, and the alfred CLI.
+description: install.sh, deploy.sh, alfred doctor, and the alfred CLI.
 ---
 
 The Alfred CLI covers the local fleet control surface: install, deploy,
@@ -77,23 +77,17 @@ python3 bin/alfred-batman-setup.py --non-interactive --skip-token-setup --skip-d
 
 The wizard writes one managed block in `~/.alfredrc` for `BATMAN_PARENT_REPO`,
 `BATMAN_AUTO_EXECUTE`, Slack approval settings, picker, and approval timeout.
-It can call `alfred setup-token` interactively and runs `bin/doctor.sh
+It can call `alfred setup-token` interactively and runs `alfred doctor
 --lifecycle` at the end unless skipped.
 
-## `bin/doctor.sh`
+## `alfred doctor`
 
 Runs configured Python agents under `ALFRED_DOCTOR=1`. On a fresh checkout
 with no `launchd/agents.conf`, it reports `0 passed, 0 failed`.
 
 ```sh
-bash bin/doctor.sh
-bash bin/doctor.sh --lifecycle
-```
-
-Homebrew wrapper:
-
-```sh
-alfred-doctor
+alfred doctor
+alfred doctor --lifecycle
 ```
 
 `--lifecycle` runs only the Batman lifecycle-path doctor: a synthetic

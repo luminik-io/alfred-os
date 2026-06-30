@@ -92,13 +92,13 @@ Next:         approve, decline, or steer this plan in-thread.
 Execution:    after approval, Batman files scoped child issues for Lucius.
 ```
 
-## doctor.sh: clean run
+## alfred doctor: clean run
 
-When it appears: `bash bin/doctor.sh`. The script triggers a doctor-mode
+When it appears: `alfred doctor`. The script triggers a doctor-mode
 firing of every enabled agent (no LLM spend) and reports preflight status.
 
 ```
-$ bash bin/doctor.sh
+$ alfred doctor
 [doctor] alfred-os doctor starting
 [doctor] ALFRED_HOME=~/.alfred
 [doctor] WORKSPACE_ROOT=~/code
@@ -126,14 +126,14 @@ $ bash bin/doctor.sh
 [doctor] all green; fleet ready to run.
 ```
 
-## doctor.sh: one failure
+## alfred doctor: one failure
 
-When it appears: same script, but one preflight step fails. Doctor exits
+When it appears: same command, but one preflight step fails. Doctor exits
 non-zero. The fleet keeps running, but the failing agent will exit early on
 every firing until the cause is fixed.
 
 ```
-$ bash bin/doctor.sh
+$ alfred doctor
 [doctor] alfred-os doctor starting
 [doctor] ALFRED_HOME=~/.alfred
 [doctor] WORKSPACE_ROOT=~/code

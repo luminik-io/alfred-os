@@ -113,7 +113,7 @@ Then redeploy:
 
 ```sh
 bash deploy.sh
-bash bin/doctor.sh
+./bin/alfred doctor
 ```
 
 ## Specs-Led Workspace
@@ -180,7 +180,7 @@ alfred enable batman
 # Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs
 bash deploy.sh
-bash bin/doctor.sh
+./bin/alfred doctor
 ```
 
 Private fleets can add site-specific approval and execution layers on top of

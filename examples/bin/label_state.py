@@ -35,7 +35,7 @@ Subcommands:
 
 Doctor-mode contract:
     When ``ALFRED_DOCTOR=1`` is set, prints the OK sentinel and exits 0
-    so a fleet-wide ``doctor.sh`` sweep stays at 100%/100% without
+    so a fleet-wide ``alfred doctor`` sweep stays at 100%/100% without
     needing to special-case this binary.
 
 Layout note:

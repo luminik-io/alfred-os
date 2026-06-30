@@ -83,7 +83,7 @@ alfred pause lucius        # disable --now the timer, write the pause marker
 alfred resume lucius       # clear the marker, enable --now the timer
 alfred run lucius          # one-shot: stop + start the .service now
 alfred status              # health snapshot; reads the systemd timer roster
-bash bin/doctor.sh         # preflight every agent
+alfred doctor         # preflight every agent
 ```
 
 Raw `systemctl` still works if you prefer it:

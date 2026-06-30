@@ -32,7 +32,6 @@ class AlfredOs < Formula
     # Shell scripts compute their repo root from dirname "$0". Use wrappers
     # instead of symlinks so $0 is the real libexec path after exec.
     {
-      "alfred-doctor"  => libexec/"bin/doctor.sh",
       "alfred-install" => libexec/"install.sh",
       "alfred-deploy"  => libexec/"deploy.sh",
     }.each do |name, target|
@@ -54,7 +53,7 @@ class AlfredOs < Formula
         alfred-init            # interactive fleet configuration wizard
         alfred-install         # one-time fresh-machine setup (brew + npm + dirs + rc)
         alfred-deploy          # sync lib/+bin/ into $ALFRED_HOME; renders scheduler units when agents.conf exists
-        alfred-doctor          # preflight configured agents without running real work
+        alfred doctor          # preflight configured agents without running real work
         alfred-label-state     # CLI for the issue claim state machine
 
       This formula installs the latest tagged release by default.
@@ -68,7 +67,7 @@ class AlfredOs < Formula
         5. alfred-init                     # configure agents, deploy, run doctor
 
       Framework-only smoke test:
-        alfred-deploy && alfred-doctor
+        alfred-deploy && alfred doctor
 
       Want the desktop app too? Install the signed native client:
         brew install --cask alfred-os
@@ -82,10 +81,10 @@ class AlfredOs < Formula
   end
 
   test do
-    # Smoke: lib/ is intact and doctor.sh at least executes. It exits clean
+    # Smoke: lib/ is intact and `alfred doctor` at least executes. It exits clean
     # against an empty fleet.
     assert_path_exists libexec/".alfredrc.example"
     assert_path_exists libexec/"lib/agent_runner/__init__.py"
-    assert_match(/passed/, shell_output("bash #{libexec}/bin/doctor.sh"))
+    assert_match(/passed/, shell_output("#{bin}/alfred doctor"))
   end
 end

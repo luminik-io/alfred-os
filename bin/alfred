@@ -48,6 +48,8 @@ Subcommands today:
                               scheduled agents.
   alfred status               Show local fleet health, locks, pauses, and
                               approval waits.
+  alfred doctor               Run host preflight checks for the configured
+                              fleet without burning engine turns.
   alfred metrics              Weekly per-agent firings/cost/turns/tool-use
                               roll-up across spend, transcripts, and Codex
                               artifacts.
@@ -1610,6 +1612,19 @@ def cmd_status(args: argparse.Namespace) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def cmd_doctor(args: argparse.Namespace) -> int:
+    script = _HERE / "doctor.sh"
+    if not script.exists():
+        print(f"alfred doctor: missing {script}", file=sys.stderr)
+        return 2
+    cmd = ["bash", str(script)]
+    if args.dev:
+        cmd.append("--dev")
+    if args.lifecycle:
+        cmd.append("--lifecycle")
+    return subprocess.run(cmd, check=False).returncode
+
+
 _EXTRA_BOOTSTRAP_LABELS: tuple[tuple[str, str, str], ...] = (
     ("agent:authored", "1d76db", "PR authored by an Alfred agent."),
     (
@@ -2334,6 +2349,22 @@ def main(argv: list[str] | None = None) -> int:
     p_status.add_argument("--json", action="store_true")
     p_status.add_argument("--slack", action="store_true")
     p_status.set_defaults(func=cmd_status)
+
+    p_doctor = sub.add_parser(
+        "doctor",
+        help="run host preflight checks for the configured fleet",
+    )
+    p_doctor.add_argument(
+        "--dev",
+        action="store_true",
+        help="surface host configuration gaps without failing the run",
+    )
+    p_doctor.add_argument(
+        "--lifecycle",
+        action="store_true",
+        help="run only the Batman lifecycle-path doctor",
+    )
+    p_doctor.set_defaults(func=cmd_doctor)
 
     p_labels = sub.add_parser("labels", help="bootstrap GitHub labels on fleet repos")
     labels_sub = p_labels.add_subparsers(dest="labels_command", required=True)

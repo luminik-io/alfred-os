@@ -133,7 +133,7 @@ Steps:
 8. Verify:
    ~/.local/bin/alfred agents
    ~/.local/bin/alfred auth status
-   bash bin/doctor.sh
+   ~/.local/bin/alfred doctor
 ```
 
 ## Claude Code vs Codex as the Installer
@@ -293,7 +293,7 @@ alfred enable batman
 # Set BATMAN_AUTO_EXECUTE=approval-gate when you want approved child filing.
 alfred labels bootstrap my-org/specs
 bash deploy.sh
-bash bin/doctor.sh
+~/.local/bin/alfred doctor
 ```
 
 ## Expected Success Shape
@@ -303,7 +303,7 @@ After a clean install:
 ```sh
 alfred agents
 alfred auth status
-bash bin/doctor.sh
+alfred doctor
 ```
 
 Expected:
@@ -312,7 +312,7 @@ Expected:
   the memory harvest / auto-promote jobs.
 - `alfred auth status` shows Claude Code account routing and Codex status if
   Codex is installed.
-- `doctor.sh` reports the configured agents as pass, or names the exact missing
+- `alfred doctor` reports the configured agents as pass, or names the exact missing
   binary/auth/env var before any agent burns model turns.
 
 ## Common Assistant Mistakes

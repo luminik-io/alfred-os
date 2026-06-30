@@ -122,7 +122,7 @@ Run the public wizard. It chooses which agents are enabled, which repos they wat
 ./bin/alfred-init.py
 ```
 
-The wizard writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, and runs `bash bin/doctor.sh`.
+The wizard writes `launchd/agents.conf`, updates `~/.alfredrc`, runs `bash deploy.sh`, and runs `alfred doctor`.
 
 For a one-repo solo-builder fleet, you can drive the same setup without
 interactive choices:
@@ -177,12 +177,12 @@ subpackages) to `$ALFRED_HOME/lib` and every regular file in `bin/` to
 renders host scheduler units from that manifest: launchd plists on macOS,
 systemd user services/timers on Linux.
 
-## 5. Verify the host with `doctor.sh`
+## 5. Verify the host with `alfred doctor`
 
 Before firing any agent, sanity-check that every agent's preflight passes on this host:
 
 ```sh
-bash bin/doctor.sh
+alfred doctor
 ```
 
 Expected output:
@@ -201,14 +201,14 @@ doctor: 3 passed, 0 failed
 
 Any failure prints the `[<AGENT>-PREFLIGHT-FAILED]` block naming each gap: missing env var, missing CLI binary, dead AWS profile, expired `gh auth`, missing repo checkout. Fix and re-run until every configured agent passes. A framework-only deploy with no `agents.conf` reports `0 passed, 0 failed`.
 
-`ALFRED_DOCTOR=1` is the env var the agents themselves check; `doctor.sh` sets it and invokes every agent. You can also run a single agent in doctor mode:
+`ALFRED_DOCTOR=1` is the env var the agents themselves check; `alfred doctor` sets it and invokes every agent. You can also run a single agent in doctor mode:
 
 ```sh
 ALFRED_DOCTOR=1 ~/.alfred/bin/lucius.py
 # [LUCIUS-DOCTOR-OK]
 ```
 
-This is also the right command after you rotate AWS keys, refresh `aws sso login`, swap Claude account via `alfred claude swap`, or change anything in IAM policy: re-run `doctor.sh` and confirm every configured agent passes.
+This is also the right command after you rotate AWS keys, refresh `aws sso login`, swap Claude account via `alfred claude swap`, or change anything in IAM policy: re-run `alfred doctor` and confirm every configured agent passes.
 
 ## 6. First firing: dry run
 

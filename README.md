@@ -245,7 +245,7 @@ claude                            # Claude Code first-run auth
 
 The Homebrew formula installs the latest tagged release and exposes
 `alfred`, `alfred-init`, `alfred-install`, `alfred-deploy`, and
-`alfred-doctor` on your PATH.
+`alfred doctor` on your PATH.
 
 For a solo-builder setup that an AI coding tool can run without guessing at
 prompts or labels, pass one repo or an explicit comma-separated repo list:
@@ -273,7 +273,7 @@ issues. Huntress and Gordon stay as disabled scheduler rows until their required
 staging or ECS settings exist.
 
 For a framework-only install with no agents configured, use `bash deploy.sh &&
-bash bin/doctor.sh`; doctor reports `0 passed, 0 failed`. See
+./bin/alfred doctor`; doctor reports `0 passed, 0 failed`. See
 [`examples/bin/echo_summarise.py`](examples/bin/echo_summarise.py) for the
 smallest useful agent (the one [the tutorial](docs/TUTORIAL.md) builds) or
 [`examples/bin/hello.py`](examples/bin/hello.py) for the absolute minimum.
@@ -292,8 +292,7 @@ Use doctor and dry-run to verify the machine before trusting scheduled work:
 
 ```sh
 alfred auth status
-bash bin/doctor.sh       # source checkout
-# or: alfred-doctor      # Homebrew install
+alfred doctor
 alfred dry-run lucius
 ```
 
@@ -397,7 +396,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`lib/batman.py`](lib/batman.py) | Batman lifecycle primitives for parent-plan parsing, approval, child issue filing, reporting, and bundle labels. |
 | [`lib/planning_assistant.py`](lib/planning_assistant.py) | Shared issue/spec refinement helpers for `alfred serve`, `alfred spec refine`, and Slack plan amendments. |
 | [`lib/scheduler.py`](lib/scheduler.py) | Host-scheduler abstraction: `launchd` on macOS, `systemd --user` on Linux, behind one interface. |
-| [`bin/alfred`](bin/alfred) | Alfred CLI: `alfred agents`, `alfred status`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
+| [`bin/alfred`](bin/alfred) | Alfred CLI: `alfred agents`, `alfred status`, `alfred doctor`, `alfred enable <codename>`, `alfred disable <codename>`, `alfred pause` / `resume` / `run`, `alfred clear-lock`, `alfred telemetry status/on/off`, `alfred brain ...`, `alfred mcp serve`, `alfred spec ...`, `alfred labels bootstrap/check`, `alfred engine status/set`, `alfred claude status/primary/secondary/swap/probe`, `alfred codex status/probe`, `alfred auth status/probe`. |
 | [`bin/alfred-usage.py`](bin/alfred-usage.py) | Live Claude + Codex subscription usage for the rolling 5-hour and weekly limit windows, read from the engines' own local CLI state (no billing API). The same data is served over the live `GET /api/usage` endpoint; this is its `alfred usage` CLI front end. |
 | [`bin/alfred-shipped-summary.py`](bin/alfred-shipped-summary.py) | Daily/weekly shipped-work report across configured repos: merged PRs, issues, LOC, and model/config changes. Also available as `alfred shipped`. |
 | [`bin/shipped-summary-daily.sh`](bin/shipped-summary-daily.sh), [`bin/shipped-summary-weekly.sh`](bin/shipped-summary-weekly.sh) | Launchd wrappers for scheduled shipped-work Slack reports. |
@@ -406,7 +405,7 @@ the reporter into the host scheduler with `alfred-deploy` (Homebrew install) or
 | [`bin/memory-harvest.py`](bin/memory-harvest.py) | Optional scheduled memory-harvest wrapper. Queues reviewable repeated-failure candidates and nudges Slack when there is something to review. |
 | [`bin/proof-telemetry.py`](bin/proof-telemetry.py) | Anonymous usage-total reporter. Posts aggregate counts to Alfred's hosted collector by default; `ALFRED_TELEMETRY_ENABLED=0` turns it off; fail-soft. |
 | [`telemetry/worker/`](telemetry/worker/) | Cloudflare Worker for Alfred's hosted aggregate counter, also self-hostable for forks and private counters. |
-| [`bin/`](bin/) | Local helpers, including `doctor.sh` (host validator). |
+| [`bin/`](bin/) | Local helpers, including the `doctor.sh` implementation behind `alfred doctor`. |
 | [`launchd/`](launchd/) | `_template.plist` + `agents.conf.example` + `render.sh` (TSV → plists). |
 | [`systemd/`](systemd/) | `_template.service` + `_template.timer` + `render.sh` (TSV → `systemd --user` units) for the Linux path. |
 | [`deploy.sh`](deploy.sh) | Sync `lib/` + `bin/` into `${ALFRED_HOME}`. If `launchd/agents.conf` exists, render units and bootstrap the host scheduler; otherwise do a framework-only deploy. |

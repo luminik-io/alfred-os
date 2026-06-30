@@ -550,7 +550,7 @@ esac
 
 if [[ "$HOMEBREW_FORMULA_INSTALL" == "1" ]]; then
   DEPLOY_CMD="alfred-deploy"
-  DOCTOR_CMD="alfred-doctor"
+  DOCTOR_CMD="alfred doctor"
   INIT_CMD="alfred-init"
   SLACK_DOC="https://alfred.luminik.io/guides/slack/"
   INSTALL_DOC="https://alfred.luminik.io/getting-started/install/"
@@ -558,7 +558,7 @@ if [[ "$HOMEBREW_FORMULA_INSTALL" == "1" ]]; then
   LINUX_DOC="https://alfred.luminik.io/guides/linux/"
 else
   DEPLOY_CMD="bash deploy.sh"
-  DOCTOR_CMD="bash bin/doctor.sh"
+  DOCTOR_CMD="./bin/alfred doctor"
   INIT_CMD="./bin/alfred-init.py"
   SLACK_DOC="docs/SLACK_SETUP.md"
   INSTALL_DOC="INSTALL.md"

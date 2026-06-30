@@ -412,7 +412,7 @@ Every codename is operator-customisable at install time. Default Batman names; r
 - Repository renamed `luminik-io/pennyworth` → `luminik-io/alfred-os`. GitHub redirects in place. All env vars `PENNYWORTH_*` → `ALFRED_*` / `ALFRED_OS_*`. Operator config file `~/.pennyworthrc` → `~/.alfredrc`. Operator commands `pennyworth-*` → `alfred-*`.
 - `STANDARD_LABELS` includes the lifecycle labels; consumers no longer need to extend it for the state machine to work.
 - Per-repo configuration loaded from `~/.alfredrc.d/<codename>.toml` via stdlib `tomllib` (was PyYAML; PyYAML is not stdlib and shouldn't be required for a fresh install).
-- Doctor mode runs before env-config IDLE checks across all 12 agents: `bash bin/doctor.sh` now reports all-passing on a fresh install before the operator runs `alfred-init`.
+- Doctor mode runs before env-config IDLE checks across all 12 agents: `alfred doctor` now reports all-passing on a fresh install before the operator runs `alfred-init`.
 - `bin/doctor.sh` now falls back to the in-repo `bin/` and `lib/` paths before deploy, so a clean checkout can self-check without a pre-existing `$ALFRED_HOME`.
 - All docs voice-swept: removed audience-marketing intros, outcome-fantasy framing, hire/replace framing, LLM filler vocab, marketing emoji, sign-offs, vanity stats, em-dashes. ~210 lines of marketing prose deleted across 39 files; technical content preserved.
 

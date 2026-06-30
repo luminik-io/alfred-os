@@ -3,10 +3,10 @@
 End-to-end walkthrough. By the end:
 
 - A new codename agent `Echo` that picks the oldest open issue with a specific label, asks Claude to add a one-line summary as a comment, reports to Slack.
-- That agent firing every 30 minutes via launchd on macOS or systemd on Linux, isolated in a per-firing git worktree, claiming the issue via the state machine before posting, with a clean `bash bin/doctor.sh` pass.
+- That agent firing every 30 minutes via launchd on macOS or systemd on Linux, isolated in a per-firing git worktree, claiming the issue via the state machine before posting, with a clean `alfred doctor` pass.
 - The framework's mental model, so you can write the next codename without re-reading anything.
 
-Assumes you've completed [`INSTALL.md`](../INSTALL.md): `bash install.sh` has run, `gh auth login` and `claude` are authenticated, `bash deploy.sh && bash bin/doctor.sh` shows `0 passed, 0 failed`.
+Assumes you've completed [`INSTALL.md`](../INSTALL.md): `bash install.sh` has run, `gh auth login` and `claude` are authenticated, `bash deploy.sh && ./bin/alfred doctor` shows `0 passed, 0 failed`.
 
 ## What we're building
 
@@ -173,7 +173,7 @@ my.fleet.echo	echo.py	interval:1800	no	my.fleet.echo	Issue summariser
 ```sh
 chmod +x bin/echo.py
 bash deploy.sh
-bash bin/doctor.sh
+./bin/alfred doctor
 ```
 
 Expected output from doctor includes:
@@ -236,7 +236,7 @@ Every framework primitive Echo uses scales up to a richer agent without changing
 
 - `with_lock(AGENT)`: host-level mutex prevents concurrent firings.
 - `preflight(PREFLIGHT)`: fail loud and early on missing env / CLIs / auth.
-- `doctor_mode()`: `bash bin/doctor.sh` doesn't burn turns or commit side effects.
+- `doctor_mode()`: `alfred doctor` doesn't burn turns or commit side effects.
 - `is_globally_blocked()`: fleet-wide Claude-provider-limit block.
 - `SpendState(AGENT)`: per-agent per-day spend tracking.
 - `claim_issue()` / `release_issue()`: issue claim state machine ([STATE_MACHINE.md](STATE_MACHINE.md)).

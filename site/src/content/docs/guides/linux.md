@@ -87,7 +87,7 @@ alfred pause lucius        # disable the timer, write the pause marker
 alfred resume lucius       # clear the marker, re-enable the timer
 alfred run lucius          # one-shot run now
 alfred status              # health snapshot from the systemd timer roster
-bash bin/doctor.sh --dev   # preflight; --dev tolerates host-config gaps
+alfred doctor --dev   # preflight; --dev tolerates host-config gaps
 ```
 
 Raw `systemctl --user list-timers` and `journalctl --user -u <label>` still work if you prefer them.

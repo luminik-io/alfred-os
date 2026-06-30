@@ -244,7 +244,7 @@ def codex_sandbox_for_agent(
 
 
 def doctor_mode() -> bool:
-    """True when running under ``doctor.sh`` (``ALFRED_DOCTOR=1``).
+    """True when running under ``alfred doctor`` (``ALFRED_DOCTOR=1``).
 
     Agents check this after preflight passes and exit ``0`` with a
     ``[<AGENT>-DOCTOR-OK]`` sentinel instead of doing real work. Lets

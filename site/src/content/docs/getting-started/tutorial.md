@@ -9,7 +9,7 @@ Condensed companion to [`docs/TUTORIAL.md`](https://github.com/luminik-io/alfred
 
 ## Prerequisites
 
-You've completed [Install](/getting-started/install/). `bash bin/doctor.sh` shows `0 passed, 0 failed`. `gh auth login` and `claude` are authenticated.
+You've completed [Install](/getting-started/install/). `alfred doctor` shows `0 passed, 0 failed`. `gh auth login` and `claude` are authenticated.
 
 ## 1. Pick a target repo
 
@@ -50,7 +50,7 @@ my.fleet.echo	echo.py	interval:1800	no	my.fleet.echo	Issue summariser
 
 ```sh
 bash deploy.sh
-bash bin/doctor.sh
+./bin/alfred doctor
 ```
 
 Doctor should now report `1 passed, 0 failed` (or `N+1`).
@@ -94,7 +94,7 @@ Every framework primitive Echo uses scales up to a richer agent without changing
 
 - `with_lock(AGENT)`: host-level mutex prevents concurrent firings of the same codename.
 - `preflight(PREFLIGHT)`: fail loud and early on missing env / CLIs / auth.
-- `doctor_mode()`: `bash bin/doctor.sh` doesn't burn turns or commit side effects.
+- `doctor_mode()`: `alfred doctor` doesn't burn turns or commit side effects.
 - `is_globally_blocked()`: fleet-wide Claude-provider-limit block.
 - `SpendState(AGENT)`: per-agent per-day spend tracking.
 - `claim_issue()` / `release_issue()`: [issue claim state machine](/concepts/state-machine/).

@@ -33,7 +33,7 @@ alfred-init                       # choose agents, repos, codenames, Slack
 
 The Homebrew formula installs the latest tagged release and puts the Alfred
 commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
-`alfred-deploy`, and `alfred-doctor`. Use the source checkout path when you
+`alfred-deploy`, and `alfred doctor`. Use the source checkout path when you
 want `main`, framework edits, or Linux.
 
 ## Recommended: Install the runtime, then Alfred Desktop
@@ -102,7 +102,7 @@ parent planning repo, approval channel, trusted operator settings, and
 `alfred enable batman`.
 
 For a framework-only install with no agents configured, run `bash deploy.sh &&
-bash bin/doctor.sh`; doctor should report `0 passed, 0 failed`.
+./bin/alfred doctor`; doctor should report `0 passed, 0 failed`.
 
 ## Install With Claude Code or Codex
 
@@ -117,7 +117,7 @@ The important rules:
 - keep Slack skipped unless you paste a webhook
 - do not create AWS profiles during first install
 - pause for browser auth flows
-- run `alfred auth status` and `doctor.sh` before trusting scheduled firings
+- run `alfred auth status` and `alfred doctor` before trusting scheduled firings
 
 For repo checkout layout, read [Workspace patterns](/getting-started/workspace-patterns/).
 

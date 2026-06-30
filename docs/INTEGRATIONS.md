@@ -48,9 +48,9 @@ Alfred should not bundle:
 - a hosted vector database
 - a required external agent runtime
 - third-party skill bundles fetched at runtime without review
-- opaque background services that are not visible in `doctor.sh`
+- opaque background services that are not visible in `alfred doctor`
 
-This keeps `bash install.sh && bash deploy.sh && bash bin/doctor.sh` explainable
+This keeps `bash install.sh && bash deploy.sh && alfred doctor` explainable
 on a new machine.
 
 ## Common Profiles
