@@ -69,12 +69,11 @@ const stateLabel: Record<Agent["state"], string> = {
   <div class="ncs__app">
     <!-- left rail -->
     <nav class="ncs__rail" aria-hidden="true">
-      <span class="ncs__rail-item ncs__rail-item--active"><span class="ncs__rail-ico">◧</span>Home</span>
-      <span class="ncs__rail-item"><span class="ncs__rail-ico">✎</span>Compose</span>
-      <span class="ncs__rail-item"><span class="ncs__rail-ico">▤</span>Plans</span>
-      <span class="ncs__rail-item"><span class="ncs__rail-ico">◇</span>Memory</span>
-      <span class="ncs__rail-item"><span class="ncs__rail-ico">⣿</span>Fleet</span>
-      <span class="ncs__rail-item"><span class="ncs__rail-ico">≣</span>Logs</span>
+      <span class="ncs__rail-item ncs__rail-item--active"><span class="ncs__rail-ico">◧</span>Inbox</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">✎</span>Ask</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">▤</span>Work</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">⣿</span>Agents</span>
+      <span class="ncs__rail-item"><span class="ncs__rail-ico">◇</span>Setup</span>
       <span class="ncs__rail-foot">
         <span class="ncs__rail-item ncs__rail-item--ok"><span class="m-dot m-dot--live">●</span>serve healthy</span>
       </span>
@@ -82,11 +81,19 @@ const stateLabel: Record<Agent["state"], string> = {
 
     <!-- main column -->
     <div class="ncs__main">
-      <!-- ===== capacity panel ===== -->
-      <section class="ncs__block" aria-label="Usage capacity">
+      <!-- ===== setup checks + capacity panel ===== -->
+      <section class="ncs__block" aria-label="Setup checks and usage capacity">
         <div class="ncs__block-head">
-          <span class="m-mono ncs__kicker">USAGE LEFT</span>
-          <span class="m-mono m-mute">on your subscription &middot; $0.00 extra</span>
+          <span class="m-mono ncs__kicker">SETUP CHECKS</span>
+          <span class="m-mono m-mute">existing install detected</span>
+        </div>
+        <div class="ncs__steps" aria-label="First-run setup checklist">
+          {["Tools", "GitHub", "Repos", "Team", "Slack", "First request"].map((step, index) => (
+            <span class={`ncs__step ${index < 4 ? "ncs__step--done" : index === 4 ? "ncs__step--optional" : ""}`}>
+              <span class="ncs__step-dot" aria-hidden="true"></span>
+              {step}
+            </span>
+          ))}
         </div>
         <div class="ncs__caps">
           <div class="cap cap--claude">
@@ -120,7 +127,7 @@ const stateLabel: Record<Agent["state"], string> = {
       <section class="ncs__block" aria-label="Agent roster">
         <div class="ncs__block-head">
           <span class="m-mono ncs__kicker">YOUR AGENTS</span>
-          <span class="m-mono m-mute">8 agents &middot; 1 waiting for your approval</span>
+          <span class="m-mono m-mute">Batman roster &middot; custom names ready</span>
         </div>
         <ul class="ncs__roster">
           {roster.map((a) => (
@@ -173,8 +180,8 @@ const stateLabel: Record<Agent["state"], string> = {
   </div>
 
   <figcaption class="ncs__cap">
-    Alfred Desktop puts agents, usage, plans, memory, and logs in one local app.
-    Slack stays connected for approvals and conversation.
+    Alfred Desktop puts onboarding, agents, work, and local runtime checks in one
+    app. Slack stays connected for approvals and conversation.
   </figcaption>
 </figure>
 
@@ -281,6 +288,42 @@ const stateLabel: Record<Agent["state"], string> = {
     font-size: 11px;
   }
   .ncs__block-head .m-mute { font-size: 12px; }
+
+  .ncs__steps {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 13px;
+  }
+  .ncs__step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    border: 1px solid var(--alfred-border-strong);
+    border-radius: 7px;
+    background: var(--alfred-surface);
+    color: var(--alfred-mute);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    line-height: 1.2;
+    padding: 8px 6px;
+    white-space: nowrap;
+  }
+  .ncs__step-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--alfred-border-strong);
+    flex: none;
+  }
+  .ncs__step--done {
+    color: var(--alfred-text);
+    border-color: color-mix(in oklab, var(--alfred-accent) 42%, var(--alfred-border-strong));
+  }
+  .ncs__step--done .ncs__step-dot { background: var(--alfred-accent); }
+  .ncs__step--optional .ncs__step-dot { background: var(--alfred-warn); }
 
   /* ===== capacity ===== */
   .ncs__caps {
@@ -511,6 +554,7 @@ const stateLabel: Record<Agent["state"], string> = {
 
   /* ===== responsive ===== */
   @media (max-width: 900px) {
+    .ncs__steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .ncs__caps { grid-template-columns: 1fr; }
     .ncs__roster { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
@@ -530,6 +574,7 @@ const stateLabel: Record<Agent["state"], string> = {
     .ncs__main { padding: 18px 16px 22px; gap: 18px; }
   }
   @media (max-width: 460px) {
+    .ncs__steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .ncs__roster { grid-template-columns: 1fr; }
     .ncs__rail-item:not(.ncs__rail-item--active):not(.ncs__rail-item--ok) { display: none; }
     .ncs__path { display: none; }

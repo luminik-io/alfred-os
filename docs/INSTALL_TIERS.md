@@ -27,7 +27,7 @@ cd ~/code/alfred-os
 bash install.sh
 exec $SHELL
 gh auth login
-claude
+claude auth login
 ./bin/alfred-init.py
 ```
 

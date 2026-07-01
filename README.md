@@ -229,7 +229,7 @@ brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
 brew install alfred-os
 alfred-install
 gh auth login                     # GitHub
-claude                            # Claude Code first-run auth
+claude auth login                 # Claude Code auth
 alfred-init                       # choose agents, repos, codenames, Slack
 ```
 
@@ -240,7 +240,7 @@ git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
 cd ~/code/alfred-os
 bash install.sh
 gh auth login                     # GitHub
-claude                            # Claude Code first-run auth
+claude auth login                 # Claude Code auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 

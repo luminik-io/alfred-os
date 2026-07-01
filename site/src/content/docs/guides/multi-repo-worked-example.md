@@ -1,10 +1,10 @@
 ---
 title: "Worked example: Batman across three repos"
-description: One feature shipped across backend, frontend, and mobile using the default Alfred fleet plus Batman, from parent issue to bundle rollup.
+description: One feature shipped across backend, frontend, and mobile using the default full Alfred fleet, including Batman, from parent issue to bundle rollup.
 ---
 
 This walkthrough shows one feature shipped across three repos using the
-default Alfred fleet plus Batman. The example is "add an organization slug
+default full Alfred fleet, including Batman. The example is "add an organization slug
 to every account-scoped URL" because it is a small realistic change that
 requires coordinated edits to backend, frontend, and mobile.
 
@@ -372,9 +372,10 @@ counting the planning parent as shipped work. The bundle is tracked by the
 
 ## Step 9: final bundle rollup
 
-When the last child PR in the bundle merges, you (or a custom extension to
-Batman) posts a closing rollup. The OSS package closes the parent after
-successful child fan-out, but does not yet watch every child PR through merge.
+When the last child PR in the bundle merges, you or a custom extension to Batman
+can post a closing rollup. The current OSS package closes the parent after
+successful child fan-out and leaves per-child PR completion to the normal fleet
+surfaces: GitHub PRs, Slack summaries, shipped reports, and the Work board.
 
 Example closing rollup post:
 

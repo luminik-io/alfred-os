@@ -6,11 +6,11 @@ For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTR
 
 ## Two ways to install
 
-**Desktop app, no terminal.** Download the signed Alfred app for macOS or Linux from [alfred.luminik.io/download](https://alfred.luminik.io/download/), open it, and follow the guided Setup tab. It connects GitHub and Claude, helps you pick repos and agents, and starts the local runtime for you, with no terminal commands. This is the simplest path on a single machine.
+**Desktop-first path.** On macOS, the Homebrew cask installs the signed Alfred app and the CLI/runtime it controls. Open Alfred and follow the guided Setup tab: it detects an existing install, connects GitHub plus Claude or Codex, helps you pick repos and agents, chooses a roster theme or custom display names, and starts or reconnects the local runtime. Direct macOS downloads install the app only. Linux downloads also install the app only, so use the command-line core install below as the primary Linux runtime path.
 
-**Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime only; the desktop app is a recommended local onboarding and control surface that can connect to the same runtime later.
+**Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime; the desktop app is the recommended local onboarding and control surface that can connect to the same runtime later.
 
-Both paths install the `core` tier: the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The desktop `client` tier is recommended for local setup and day-two operations; Slack `slack` layers on top for team collaboration. See [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
+Alfred core is the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The desktop `client` tier is recommended for local setup and day-two operations; Slack `slack` layers on top for team collaboration. See [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
 
 ## TL;DR
 
@@ -21,7 +21,7 @@ git clone https://github.com/luminik-io/alfred-os.git ~/code/alfred-os
 cd ~/code/alfred-os
 bash install.sh
 gh auth login                     # GitHub auth
-claude                            # Claude Code first-run auth
+claude auth login                 # Claude Code auth
 ./bin/alfred-init.py              # choose agents, repos, codenames, Slack
 ```
 
@@ -32,7 +32,7 @@ brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
 brew install alfred-os
 alfred-install
 gh auth login                     # GitHub auth
-claude                            # Claude Code first-run auth
+claude auth login                 # Claude Code auth
 alfred-init                       # choose agents, repos, codenames, Slack
 ```
 
@@ -134,10 +134,10 @@ Pick HTTPS, log in via web, grant `repo` + `workflow` scopes. The agents push br
 Claude Code:
 
 ```sh
-claude
+claude auth login
 ```
 
-First-run opens a browser to authenticate against your Anthropic account. For the default setup, use Claude Code through a Pro or Max subscription login. Alfred runs `claude -p` against the CLI account you authenticated and does not require an Anthropic API key.
+This opens a browser to authenticate against your Anthropic account. For the default setup, use Claude Code through a Pro or Max subscription login. Alfred runs `claude -p` against the CLI account you authenticated and does not require an Anthropic API key.
 
 If `ANTHROPIC_API_KEY` is set in your shell or `$ALFRED_HOME/.env`, Claude Code may prefer API billing over subscription auth. Unset it for subscription-backed Alfred runs.
 
