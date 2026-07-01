@@ -477,16 +477,23 @@ def _runtime_repo_scope_values_for_save(
     runtime_value: str,
 ) -> dict[str, str]:
     values: dict[str, str] = {}
-    setup_owned_values = _setup_owned_runtime_repo_values(runtime_env)
     for key in RUNTIME_REPO_SCOPE_ENV_KEYS:
         existing = _code_memory_config(runtime_env, key)
-        values[key] = existing if existing and existing not in setup_owned_values else runtime_value
+        values[key] = (
+            existing
+            if existing and not _runtime_scope_matches_board(existing, runtime_env)
+            else runtime_value
+        )
     return values
 
 
-def _setup_owned_runtime_repo_values(runtime_env: dict[str, str]) -> set[str]:
-    board_local_value = _format_repo_value(_repo_local_names(setup_board_repos(runtime_env)))
-    return {board_local_value} if board_local_value else set()
+def _runtime_scope_matches_board(existing: str, runtime_env: dict[str, str]) -> bool:
+    board_names = set(_repo_local_names(setup_board_repos(runtime_env)))
+    return bool(board_names) and _local_scope_tokens(existing) == board_names
+
+
+def _local_scope_tokens(raw: str) -> set[str]:
+    return {part.strip().lower() for part in re.split(r"[\s,]+", raw) if part.strip()}
 
 
 def _validate_repo_scope_owner(owner: str | None, runtime_env: dict[str, str]) -> None:
@@ -495,11 +502,7 @@ def _validate_repo_scope_owner(owner: str | None, runtime_env: dict[str, str]) -
     existing_owner = _code_memory_config(runtime_env, GH_ORG_ENV).lower()
     if not existing_owner or existing_owner == owner:
         return
-    has_custom_runtime_scope = any(
-        _code_memory_config(runtime_env, key) for key in RUNTIME_REPO_SCOPE_ENV_KEYS
-    )
-    if has_custom_runtime_scope:
-        raise ValueError("repo selection owner does not match existing GH_ORG")
+    raise ValueError("repo selection owner does not match existing GH_ORG")
 
 
 def _effective_queue_scope_for_save(runtime_env: dict[str, str]) -> tuple[bool, list[str]]:
