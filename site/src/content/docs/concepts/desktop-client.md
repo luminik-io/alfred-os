@@ -54,7 +54,7 @@ flowchart TB
 | Ask | Plain-language planning intake backed by the same readiness engine as Slack. |
 | Work | Kanban board, saved plans, Slack follow-ups, local draft actions, and issue queue controls. |
 | Agents | Roster, activity feed, latest-run inspector, memory learning queue, and safe per-agent controls. |
-| Setup | Install or repair the local runtime, seed and deploy the full built-in fleet, choose repo scope and roster naming, and run fleet/auth/agent/memory/Slack checks in-app. |
+| Setup | Install or repair the local runtime, seed and deploy the full built-in fleet, choose repo scope and roster naming, and run first-run readiness plus fleet/auth/agent/memory/Slack checks in-app. |
 
 ## Boundary
 

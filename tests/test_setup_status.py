@@ -69,6 +69,165 @@ def test_bootstrap_status_reports_code_memory_defaults(
     assert code_memory["index_present"] is False
 
 
+def test_bootstrap_status_includes_ready_first_run_checklist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    workspace = tmp_path / "workspace"
+    (workspace / "web" / ".git").mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "octocat/web")
+
+    home = tmp_path / ".alfred"
+    (home / "state").mkdir(parents=True)
+    (home / "state" / "server-token").write_text("secret\n", encoding="utf-8")
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+
+    payload = setup_mod.bootstrap_status()
+    first_run = payload["first_run"]
+    by_key = {check["key"]: check for check in first_run["checks"]}
+
+    assert payload["ready"] is True
+    assert first_run["ready"] is True
+    assert first_run["summary"]["required_ready"] == first_run["summary"]["required_total"]
+    assert first_run["summary"]["blockers"] == []
+    assert by_key["repo_local_paths"]["ready"] is True
+    assert by_key["repo_local_paths"]["detected"] == [
+        {
+            "repo": "octocat/web",
+            "path": str(workspace / "web"),
+            "exists": True,
+            "source": "workspace",
+        }
+    ]
+    assert by_key["batman_parent_repo"]["state"] == "optional"
+
+
+def test_bootstrap_status_first_run_blocks_missing_queue_and_local_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "octocat/web")
+
+    home = tmp_path / ".alfred"
+    (home / "state").mkdir(parents=True)
+    (home / "state" / "server-token").write_text("secret\n", encoding="utf-8")
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+
+    first_run = setup_mod.bootstrap_status()["first_run"]
+    by_key = {check["key"]: check for check in first_run["checks"]}
+
+    assert first_run["ready"] is False
+    assert first_run["headline"] == "2 required setup items need action."
+    assert set(first_run["summary"]["blockers"]) == {"queue_coverage", "repo_local_paths"}
+    assert by_key["queue_coverage"]["detail"] == (
+        "Queue actions are missing selected repos: octocat/web."
+    )
+    assert by_key["repo_local_paths"]["detected"] == [
+        {
+            "repo": "octocat/web",
+            "path": str(workspace / "web"),
+            "exists": False,
+            "source": "workspace",
+        }
+    ]
+
+
+def test_bootstrap_status_first_run_uses_singular_blocker_headline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "octocat/web")
+
+    home = tmp_path / ".alfred"
+    (home / "state").mkdir(parents=True)
+    (home / "state" / "server-token").write_text("secret\n", encoding="utf-8")
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+
+    first_run = setup_mod.bootstrap_status()["first_run"]
+
+    assert first_run["ready"] is False
+    assert first_run["summary"]["blockers"] == ["repo_local_paths"]
+    assert first_run["headline"] == "1 required setup item needs action."
+    by_key = {check["key"]: check for check in first_run["checks"]}
+    assert by_key["repo_local_paths"]["detail"] == "1 selected repo needs local path mapping."
+
+
+def test_bootstrap_status_first_run_local_path_source_matches_found_checkout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _stub_common(monkeypatch)
+    _isolate_launcher_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(setup_mod.shutil, "which", lambda *_args, **_kwargs: None)
+    workspace = tmp_path / "workspace"
+    (workspace / "web" / ".git").mkdir(parents=True)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+    monkeypatch.setenv("WORKSPACE_SUBDIR", "")
+    monkeypatch.setenv("ALFRED_QUEUE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_SHIPPED_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_BRIDGE_REPOS", "octocat/web")
+    monkeypatch.setenv("ALFRED_REPO_LOCAL_MAP", f"octocat/web={tmp_path / 'missing-web'}")
+
+    home = tmp_path / ".alfred"
+    (home / "state").mkdir(parents=True)
+    (home / "state" / "server-token").write_text("secret\n", encoding="utf-8")
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "alfred.lucius\tlucius.py\tinterval:1200\tyes\t\tSingle-repo engineer\n",
+        encoding="utf-8",
+    )
+
+    first_run = setup_mod.bootstrap_status()["first_run"]
+    by_key = {check["key"]: check for check in first_run["checks"]}
+
+    assert first_run["ready"] is True
+    assert by_key["repo_local_paths"]["detected"] == [
+        {
+            "repo": "octocat/web",
+            "path": str(workspace / "web"),
+            "exists": True,
+            "source": "workspace",
+        }
+    ]
+
+
 def test_bootstrap_status_reports_configured_code_memory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

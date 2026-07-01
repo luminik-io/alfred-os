@@ -209,6 +209,8 @@ POST /api/conversation/control
 
 `GET /api/usage` is served by `alfred serve` today and backs the capacity rail. It reports your real Claude and Codex subscription headroom for the rolling 5-hour and weekly windows, read from the engines' own local CLI state files on the host.
 
+`GET /api/setup/status` also returns `first_run`, the Setup go/no-go contract for the first real local workflow. Required rows cover GitHub auth, at least one engine CLI, repo scope, queue coverage, local checkout mapping, scheduled fleet deployment, and the Desktop action token. Recommended rows cover code graph memory, Headroom-style context compression, and engineering skill packs. Optional rows cover Batman's parent repo and Slack collaboration. The Setup tab renders required blockers first and keeps recommended upgrades visible without blocking a basic run.
+
 `GET /api/usage/providers` is also served by `alfred serve` (a flat per-engine re-projection of `/api/usage`), and the same usage numbers are available from the command line with `alfred usage`.
 
 The native client also has a narrow local command allowlist:

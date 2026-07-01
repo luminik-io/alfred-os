@@ -17,6 +17,7 @@ import { errorDetail, loadSetupStatus, supportsNativeActions } from "../api";
 import type { ActionNotice, NativeActionRequest } from "../lib/uiTypes";
 import type { SetupStatus, TrustedSlackUsersResponse } from "../types";
 import { EmptyState, PanelHeader } from "./atoms";
+import { FirstRunReadinessPanel } from "./onboarding/FirstRunReadinessPanel";
 import { InstallInventoryPanel } from "./onboarding/InstallInventoryPanel";
 import { Tabs, type TabItem } from "./Tabs";
 
@@ -160,6 +161,7 @@ export function SetupView({
               Slack stays the collaboration UI, and the CLI remains the inspectable headless path
               underneath.
             </p>
+            <FirstRunReadinessPanel readiness={setupStatus?.first_run} compact />
             <InstallInventoryPanel
               inventory={setupStatus?.install ?? null}
               queue={setupStatus?.queue ?? null}

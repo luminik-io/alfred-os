@@ -1290,6 +1290,18 @@ def bootstrap_status() -> dict[str, Any]:
     any_engine = any(e["installed"] for e in engines)
     code_memory = code_memory_status(runtime_env)
     capability_plane = capability_status(code_memory, launcher_env=runtime_env)
+    install = install_inventory(repos=repos, env=runtime_env)
+    first_run = first_run_readiness_status(
+        gh=gh,
+        engines=engines,
+        repos=repos,
+        queue_repos=queue_repos,
+        queue_missing=queue_missing,
+        install=install,
+        code_memory=code_memory,
+        capability_plane=capability_plane,
+        runtime_env=runtime_env,
+    )
     return {
         "github": gh,
         "engines": engines,
@@ -1308,13 +1320,345 @@ def bootstrap_status() -> dict[str, Any]:
             "missing_selected": queue_missing,
         },
         "demo": {"present": any(load_demo_cards().values())},
-        "install": install_inventory(repos=repos, env=runtime_env),
+        "install": install,
+        "first_run": first_run,
         "ready": bool(gh["ok"] and any_engine and repos and queue_repos and queue_covers_selected),
     }
 
 
 def _setup_queue_repos_for_status(env: dict[str, str]) -> set[str]:
     return _repos_from_env(env, (QUEUE_REPOS_ENV,))
+
+
+def first_run_readiness_status(
+    *,
+    gh: dict[str, Any],
+    engines: list[dict[str, Any]],
+    repos: list[str],
+    queue_repos: set[str],
+    queue_missing: list[str],
+    install: dict[str, Any],
+    code_memory: dict[str, Any],
+    capability_plane: dict[str, Any],
+    runtime_env: dict[str, str],
+) -> dict[str, Any]:
+    """Roll setup probes into a user-facing go/no-go for the first real run."""
+
+    checks = [
+        _github_readiness_check(gh),
+        _engine_readiness_check(engines),
+        _repo_scope_readiness_check(repos),
+        _queue_readiness_check(repos, queue_repos, queue_missing),
+        _repo_local_paths_readiness_check(repos, runtime_env),
+        _scheduled_fleet_readiness_check(install),
+        _desktop_token_readiness_check(install),
+        _code_graph_readiness_check(capability_plane, code_memory),
+        _context_compression_readiness_check(capability_plane),
+        _engineering_skills_readiness_check(capability_plane),
+        _batman_parent_repo_readiness_check(runtime_env),
+        _slack_readiness_check(install),
+    ]
+    required = [check for check in checks if check["required"]]
+    recommended = [check for check in checks if check["tier"] == "recommended"]
+    optional = [check for check in checks if check["tier"] == "optional"]
+    blockers = [check["key"] for check in required if not check["ready"]]
+    ready = not blockers
+    if ready:
+        headline = "Ready for the first real run."
+    elif len(blockers) == 1:
+        headline = "1 required setup item needs action."
+    else:
+        headline = f"{len(blockers)} required setup items need action."
+    return {
+        "version": 1,
+        "ready": ready,
+        "status": "ready" if ready else "needs_action",
+        "headline": headline,
+        "summary": {
+            "required_ready": sum(1 for check in required if check["ready"]),
+            "required_total": len(required),
+            "recommended_ready": sum(1 for check in recommended if check["ready"]),
+            "recommended_total": len(recommended),
+            "optional_ready": sum(1 for check in optional if check["ready"]),
+            "optional_total": len(optional),
+            "blockers": blockers,
+        },
+        "checks": checks,
+    }
+
+
+def _readiness_check(
+    key: str,
+    title: str,
+    *,
+    category: str,
+    tier: str,
+    ready: bool,
+    detail: str,
+    action: str,
+    path: str | None = None,
+) -> dict[str, Any]:
+    required = tier == "required"
+    state = "ready" if ready else ("optional" if tier == "optional" else "actionable")
+    return {
+        "key": key,
+        "title": title,
+        "category": category,
+        "tier": tier,
+        "required": required,
+        "ready": bool(ready),
+        "state": state,
+        "detail": detail,
+        "action": action,
+        "path": path,
+    }
+
+
+def _github_readiness_check(gh: dict[str, Any]) -> dict[str, Any]:
+    ok = bool(gh.get("ok"))
+    return _readiness_check(
+        "github",
+        "GitHub auth",
+        category="auth",
+        tier="required",
+        ready=ok,
+        detail=str(gh.get("detail") or ("GitHub is ready." if ok else "GitHub is not ready.")),
+        action="Run `gh auth login` once, then recheck setup.",
+    )
+
+
+def _engine_readiness_check(engines: list[dict[str, Any]]) -> dict[str, Any]:
+    installed = [str(engine.get("name")) for engine in engines if engine.get("installed")]
+    return _readiness_check(
+        "engine_clis",
+        "Claude or Codex CLI",
+        category="engines",
+        tier="required",
+        ready=bool(installed),
+        detail=(
+            f"Found {', '.join(installed)}."
+            if installed
+            else "No Claude or Codex CLI was found on PATH."
+        ),
+        action="Install and sign in to Claude Code or Codex CLI, then recheck setup.",
+    )
+
+
+def _repo_scope_readiness_check(repos: list[str]) -> dict[str, Any]:
+    return _readiness_check(
+        "repo_scope",
+        "Repository scope",
+        category="repos",
+        tier="required",
+        ready=bool(repos),
+        detail=(
+            f"{len(repos)} repository scope{'' if len(repos) == 1 else 's'} selected."
+            if repos
+            else "No repositories are selected for Alfred yet."
+        ),
+        action="Select at least one repository in Setup so the fleet knows what it may touch.",
+    )
+
+
+def _queue_readiness_check(
+    repos: list[str], queue_repos: set[str], queue_missing: list[str]
+) -> dict[str, Any]:
+    ready = bool(repos) and bool(queue_repos) and not queue_missing
+    if queue_missing:
+        detail = f"Queue actions are missing selected repos: {', '.join(queue_missing)}."
+    elif queue_repos:
+        detail = f"Queue actions cover {len(queue_repos)} repos."
+    else:
+        detail = "Queue actions have no repository allowlist yet."
+    return _readiness_check(
+        "queue_coverage",
+        "Queue coverage",
+        category="repos",
+        tier="required",
+        ready=ready,
+        detail=detail,
+        action="Save the repository selection again or add the missing repos to ALFRED_QUEUE_REPOS.",
+    )
+
+
+def _repo_local_paths_readiness_check(repos: list[str], env: dict[str, str]) -> dict[str, Any]:
+    resolved = _selected_repo_local_paths(repos, env)
+    missing = [row["repo"] for row in resolved if not row["exists"]]
+    ready = bool(repos) and not missing
+    if not repos:
+        detail = "Local checkout verification waits for a selected repository."
+    elif missing:
+        detail = (
+            "1 selected repo needs local path mapping."
+            if len(missing) == 1
+            else f"{len(missing)} selected repos need local path mapping."
+        )
+    else:
+        detail = f"Found local checkouts for {len(resolved)} selected repo{'' if len(resolved) == 1 else 's'}."
+    return _readiness_check(
+        "repo_local_paths",
+        "Local repo paths",
+        category="repos",
+        tier="required",
+        ready=ready,
+        detail=detail,
+        action=(
+            "Clone the missing repo locally or set ALFRED_REPO_LOCAL_MAP with repo=path entries."
+        ),
+        path=", ".join(row["path"] for row in resolved if row["exists"]) or None,
+    ) | {"detected": resolved}
+
+
+def _selected_repo_local_paths(repos: list[str], env: dict[str, str]) -> list[dict[str, Any]]:
+    repo_map = _code_memory_repo_map(env)
+    workspace = _code_memory_workspace(env)
+    out: list[dict[str, Any]] = []
+    for slug in repos:
+        local_name = slug.rsplit("/", 1)[-1]
+        candidates: list[tuple[Path, str]] = []
+        for key in (slug, local_name):
+            if key in repo_map:
+                candidates.append((_code_memory_configured_repo_path(env, key, repo_map), "map"))
+        candidates.append((workspace / local_name, "workspace"))
+        path, source = _first_existing_git_repo_candidate(candidates) or candidates[0]
+        out.append(
+            {
+                "repo": slug,
+                "path": str(path),
+                "exists": _is_code_memory_git_repo(path),
+                "source": source,
+            }
+        )
+    return out
+
+
+def _first_existing_git_repo_candidate(
+    candidates: list[tuple[Path, str]],
+) -> tuple[Path, str] | None:
+    for path, source in candidates:
+        if _is_code_memory_git_repo(path):
+            return path, source
+    return None
+
+
+def _scheduled_fleet_readiness_check(install: dict[str, Any]) -> dict[str, Any]:
+    runs = int(install.get("scheduled_runs") or 0)
+    ready = bool(install.get("agents_conf_present")) and runs > 0
+    return _readiness_check(
+        "scheduled_fleet",
+        "Scheduled fleet",
+        category="runtime",
+        tier="required",
+        ready=ready,
+        detail=(
+            f"{runs} scheduled run{'' if runs == 1 else 's'} found."
+            if ready
+            else "No deployed scheduled fleet was found."
+        ),
+        action="Use Desktop Install or repair, or run `bash deploy.sh`, then recheck setup.",
+        path=str(install.get("agents_conf_path") or "") or None,
+    )
+
+
+def _desktop_token_readiness_check(install: dict[str, Any]) -> dict[str, Any]:
+    ready = bool(install.get("server_token_present"))
+    return _readiness_check(
+        "desktop_token",
+        "Desktop action token",
+        category="runtime",
+        tier="required",
+        ready=ready,
+        detail=(
+            "Desktop mutation token is present." if ready else "Desktop mutation token is missing."
+        ),
+        action="Start `alfred serve` from Desktop so local actions can authenticate.",
+        path=str(Path(str(install.get("alfred_home") or "")) / "state" / "server-token")
+        if install.get("alfred_home")
+        else None,
+    )
+
+
+def _code_graph_readiness_check(
+    capability_plane: dict[str, Any], code_memory: dict[str, Any]
+) -> dict[str, Any]:
+    capability = _capability_by_key(capability_plane, "code_graph")
+    ready = capability.get("state") == "ready"
+    return _readiness_check(
+        "code_graph",
+        "Code graph memory",
+        category="memory",
+        tier="recommended",
+        ready=ready,
+        detail=str(capability.get("detail") or code_memory.get("detail") or ""),
+        action=str(capability.get("install_hint") or "Run `alfred code-memory doctor`."),
+        path=str(code_memory.get("graph_dir") or code_memory.get("index_dir") or "") or None,
+    )
+
+
+def _context_compression_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:
+    capability = _capability_by_key(capability_plane, "context_compression")
+    ready = capability.get("state") == "ready"
+    return _readiness_check(
+        "context_compression",
+        "Context compression",
+        category="tokens",
+        tier="recommended",
+        ready=ready,
+        detail=str(capability.get("detail") or ""),
+        action=str(capability.get("install_hint") or "Install and enable Headroom when ready."),
+    )
+
+
+def _engineering_skills_readiness_check(capability_plane: dict[str, Any]) -> dict[str, Any]:
+    capability = _capability_by_key(capability_plane, "engineering_skills")
+    ready = capability.get("state") == "ready"
+    return _readiness_check(
+        "engineering_skills",
+        "Engineering skill packs",
+        category="skills",
+        tier="recommended",
+        ready=ready,
+        detail=str(capability.get("detail") or ""),
+        action=str(capability.get("install_hint") or "Install the recommended skill packs."),
+    )
+
+
+def _batman_parent_repo_readiness_check(env: dict[str, str]) -> dict[str, Any]:
+    parent_repo = _code_memory_config(env, "BATMAN_PARENT_REPO")
+    ready = bool(parent_repo)
+    return _readiness_check(
+        "batman_parent_repo",
+        "Batman parent repo",
+        category="multi-repo",
+        tier="optional",
+        ready=ready,
+        detail=(
+            f"Batman will read large-feature plans from {parent_repo}."
+            if ready
+            else "Batman is installed but idle until BATMAN_PARENT_REPO is configured."
+        ),
+        action="Run `alfred batman setup` before using agent:large-feature.",
+    )
+
+
+def _slack_readiness_check(install: dict[str, Any]) -> dict[str, Any]:
+    ready = bool(install.get("slack_configured"))
+    return _readiness_check(
+        "slack",
+        "Slack collaboration",
+        category="collaboration",
+        tier="optional",
+        ready=ready,
+        detail=("Slack is configured." if ready else "Slack is optional for local Desktop use."),
+        action="Configure Slack when you want team thread approvals and status posts.",
+    )
+
+
+def _capability_by_key(capability_plane: dict[str, Any], key: str) -> dict[str, Any]:
+    for capability in capability_plane.get("capabilities") or []:
+        if capability.get("key") == key:
+            return capability
+    return {}
 
 
 def install_inventory(
