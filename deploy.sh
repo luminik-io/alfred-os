@@ -530,7 +530,14 @@ deploy_linux_systemd() {
 
 CONF="$REPO_DIR/launchd/agents.conf"
 RUNTIME_CONF="$RUNTIME_LAUNCHD/agents.conf"
-if [ -f "$CONF" ]; then
+
+has_runtime_agents_conf_rows() {
+  [ -f "$RUNTIME_CONF" ] && grep -Eq '^[[:space:]]*[^#[:space:]]' "$RUNTIME_CONF"
+}
+
+if [ "${ALFRED_DESKTOP_INSTALL:-}" = "1" ] && has_runtime_agents_conf_rows; then
+  echo "[alfred-os/deploy] using seeded runtime launchd/agents.conf"
+elif [ -f "$CONF" ]; then
   if [ -e "$RUNTIME_CONF" ] && [ "$CONF" -ef "$RUNTIME_CONF" ]; then
     echo "[alfred-os/deploy] using runtime launchd/agents.conf"
   else
@@ -544,10 +551,6 @@ else
     echo "[alfred-os/deploy] no launchd/agents.conf found; using an empty base roster"
   fi
 fi
-
-has_runtime_agents_conf_rows() {
-  grep -Eq '^[[:space:]]*[^#[:space:]]' "$RUNTIME_CONF"
-}
 
 if [ ! -f "$CONF" ] && ! has_runtime_agents_conf_rows; then
   has_custom_agents=0

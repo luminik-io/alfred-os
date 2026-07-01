@@ -339,6 +339,68 @@ def test_deploy_removes_stale_managed_plists(tmp_path):
     assert "alfred.new.plist" in log
 
 
+def test_desktop_deploy_prefers_seeded_runtime_roster(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "launchd" / "render.sh", src / "launchd" / "render.sh")
+    shutil.copy(REPO / "launchd" / "_template.plist", src / "launchd" / "_template.plist")
+    shutil.copy(REPO / "bin" / "agent-launch", src / "bin" / "agent-launch")
+    (src / "bin" / "probe.py").write_text("#!/usr/bin/env python3\nprint('[PROBE-OK]')\n")
+    (src / "bin" / "probe.py").chmod(0o755)
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+    (src / "launchd" / "agents.conf").write_text(
+        "alfred.source\tprobe.py\tinterval:60\tno\talfred.source\tStale source\n"
+    )
+    runtime_conf = alfred / "launchd" / "agents.conf"
+    runtime_conf.parent.mkdir(parents=True)
+    runtime_conf.write_text(
+        "alfred.seeded\tprobe.py\tinterval:60\tno\talfred.seeded\tSeeded runtime\n"
+    )
+
+    launch_agents = home / "Library" / "LaunchAgents"
+    launch_agents.mkdir(parents=True)
+    launchctl_log = tmp_path / "launchctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Darwin\n")
+    (fakebin / "launchctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(launchctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "launchctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "ALFRED_DESKTOP_INSTALL": "1",
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "using seeded runtime launchd/agents.conf" in res.stdout
+    assert runtime_conf.read_text().startswith("alfred.seeded\t")
+    assert (launch_agents / "alfred.seeded.plist").exists()
+    assert not (launch_agents / "alfred.source.plist").exists()
+
+
 def test_deploy_launchd_reaps_previous_custom_only_when_last_agent_removed(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"

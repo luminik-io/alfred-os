@@ -754,12 +754,15 @@ const GITHUB_AUTH_TIMEOUT_MS: u64 = 120_000;
 const CODE_MEMORY_FETCH_TIMEOUT_DEFAULT_S: u64 = 120;
 const CODE_MEMORY_DOCTOR_TIMEOUT_MARGIN_S: u64 = 30;
 const CORE_INSTALL_TIMEOUT_S: u64 = 1_800;
+const CORE_SEED_TIMEOUT_S: u64 = 120;
 const CORE_DEPLOY_TIMEOUT_S: u64 = 300;
 
 struct CoreInstallPlan {
     core_dir: Option<PathBuf>,
     install_program: String,
     install_args: Vec<String>,
+    seed_program: String,
+    seed_args: Vec<String>,
     deploy_program: String,
     deploy_args: Vec<String>,
     source_label: String,
@@ -793,6 +796,27 @@ fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, 
         ));
     }
 
+    let seed = run_core_install_step(
+        &plan.seed_program,
+        &plan.seed_args,
+        plan.core_dir.as_deref(),
+        Duration::from_secs(CORE_SEED_TIMEOUT_S),
+    )?;
+    append_step_output(&mut stdout, &mut stderr, "seed-runtime-roster", &seed);
+    if !seed.success {
+        return Ok(core_install_result(
+            preview,
+            stdout,
+            stderr,
+            seed.status,
+            false,
+            format!(
+                "Alfred core installed, but fleet roster seeding failed from {}.",
+                plan.source_label
+            ),
+        ));
+    }
+
     let deploy = run_core_install_step(
         &plan.deploy_program,
         &plan.deploy_args,
@@ -821,7 +845,7 @@ fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, 
         deploy.status,
         true,
         format!(
-            "Alfred core installed and deployed from {}.",
+            "Alfred core installed, fleet seeded, and deployed from {}.",
             plan.source_label
         ),
     ))
@@ -944,8 +968,9 @@ fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
     }
     parts.push("export ALFRED_NONINTERACTIVE=1 ALFRED_DESKTOP_INSTALL=1".to_string());
     parts.push(format!(
-        "{} && {}",
+        "{} && {} && {}",
         shell_command(&plan.install_program, &plan.install_args),
+        shell_command(&plan.seed_program, &plan.seed_args),
         shell_command(&plan.deploy_program, &plan.deploy_args)
     ));
     parts.push(
@@ -1012,6 +1037,17 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 core_dir.join("install.sh").to_string_lossy().into_owned(),
                 "--non-interactive".to_string(),
             ],
+            seed_program: "python3".to_string(),
+            seed_args: vec![
+                core_dir
+                    .join("bin")
+                    .join("alfred-init.py")
+                    .to_string_lossy()
+                    .into_owned(),
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
             source_label: "the bundled desktop runtime".to_string(),
@@ -1026,6 +1062,17 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
                 core_dir.join("install.sh").to_string_lossy().into_owned(),
                 "--non-interactive".to_string(),
             ],
+            seed_program: "python3".to_string(),
+            seed_args: vec![
+                core_dir
+                    .join("bin")
+                    .join("alfred-init.py")
+                    .to_string_lossy()
+                    .into_owned(),
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
             source_label: core_dir.to_string_lossy().into_owned(),
@@ -1033,10 +1080,19 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
         });
     }
 
-    if program_on_cli_path("alfred-install") && program_on_cli_path("alfred-deploy") {
+    if program_on_cli_path("alfred-install")
+        && program_on_cli_path("alfred-init")
+        && program_on_cli_path("alfred-deploy")
+    {
         return Ok(CoreInstallPlan {
             install_program: "alfred-install".to_string(),
             install_args: vec!["--non-interactive".to_string()],
+            seed_program: "alfred-init".to_string(),
+            seed_args: vec![
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
             deploy_program: "alfred-deploy".to_string(),
             deploy_args: Vec::new(),
             source_label: "the installed Alfred CLI package".to_string(),
@@ -1099,6 +1155,7 @@ fn is_core_dir(path: &Path) -> bool {
     path.join("install.sh").is_file()
         && path.join("deploy.sh").is_file()
         && path.join("bin").join("alfred").is_file()
+        && path.join("bin").join("alfred-init.py").is_file()
         && path.join("lib").is_dir()
 }
 
@@ -2037,6 +2094,7 @@ mod tests {
         touch(&root.join("install.sh"));
         touch(&root.join("deploy.sh"));
         touch(&root.join("bin").join("alfred"));
+        touch(&root.join("bin").join("alfred-init.py"));
         fs::create_dir_all(root.join("lib")).expect("lib dir should be created");
     }
 
@@ -2058,6 +2116,13 @@ mod tests {
             core_dir: Some(PathBuf::from("/tmp/alfred core")),
             install_program: "/bin/bash".to_string(),
             install_args: vec!["install.sh".to_string()],
+            seed_program: "python3".to_string(),
+            seed_args: vec![
+                "/tmp/alfred core/bin/alfred-init.py".to_string(),
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec!["deploy.sh".to_string()],
             source_label: "bundled runtime".to_string(),
@@ -2100,6 +2165,13 @@ mod tests {
                 "/tmp/alfred core/install.sh".to_string(),
                 "--non-interactive".to_string(),
             ],
+            seed_program: "python3".to_string(),
+            seed_args: vec![
+                "/tmp/alfred core/bin/alfred-init.py".to_string(),
+                "--seed-runtime-roster".to_string(),
+                "--agents".to_string(),
+                "all".to_string(),
+            ],
             deploy_program: "/bin/bash".to_string(),
             deploy_args: vec!["/tmp/alfred core/deploy.sh".to_string()],
             source_label: "bundled runtime".to_string(),
@@ -2110,7 +2182,26 @@ mod tests {
         assert!(command.contains("cd '/tmp/alfred core'"));
         assert!(command.contains("ALFRED_DESKTOP_INSTALL=1"));
         assert!(command.contains("'/tmp/alfred core/install.sh'"));
+        assert!(command.contains(
+            "python3 '/tmp/alfred core/bin/alfred-init.py' --seed-runtime-roster --agents all"
+        ));
         assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
+        assert!(
+            command
+                .find("'/tmp/alfred core/install.sh'")
+                .expect("install command should exist")
+                < command
+                    .find("--seed-runtime-roster")
+                    .expect("seed command should exist")
+        );
+        assert!(
+            command
+                .find("--seed-runtime-roster")
+                .expect("seed command should exist")
+                < command
+                    .find("'/tmp/alfred core/deploy.sh'")
+                    .expect("deploy command should exist")
+        );
     }
 
     #[test]

@@ -1657,6 +1657,69 @@ def step_9_generate(state: WizardState, *, non_interactive: bool) -> None:
         sys.exit(1)
 
 
+def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
+    """Seed a deployable runtime roster without account probes.
+
+    Desktop install uses this between install.sh and deploy.sh. It should leave
+    repo-scoped agents idle until onboarding saves repos, while still giving the
+    scheduler a full local roster to load.
+    """
+    step("Seed runtime fleet roster")
+    if not state.env_file.exists():
+        fail(f"{state.env_file} missing. Run install.sh before seeding the runtime roster.")
+        return 1
+
+    available = discover_agents(state.repo_root / "bin")
+    if not available:
+        fail(f"No agent runners discovered under {state.repo_root / 'bin'}.")
+        return 1
+
+    if state.enabled_roles and not agents_arg:
+        state.enabled_roles = [
+            role for role in AGENT_CATALOG if role in state.enabled_roles and role in available
+        ]
+        if not state.enabled_roles:
+            fail("--config agents did not match any discovered agents.")
+            return 1
+    else:
+        state.enabled_roles = roles_from_agents_arg(agents_arg or "all", available)
+        if not state.enabled_roles:
+            fail("--agents did not match any discovered agents.")
+            return 1
+
+    ok(f"Enabled full runtime roster ({len(state.enabled_roles)} agents).")
+    step_6_codenames(state, non_interactive=True)
+    for role in state.enabled_roles:
+        state.role_to_repos.setdefault(role, [])
+    step_8_schedule(state, non_interactive=True)
+
+    # Roster seeding is local-only. Leave proof telemetry unscheduled until a
+    # full interactive or configured onboarding step makes that choice.
+    state.telemetry_url = ""
+
+    conf = render_agents_conf(state)
+    target = state.alfred_home / "launchd" / "agents.conf"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(conf)
+    ok(f"wrote {target}")
+
+    env_kvs = env_assignments_for(state)
+    upsert_env_file(state.env_file, env_kvs)
+    ok(f"updated {state.env_file} with {len(env_kvs)} fleet key(s)")
+
+    created_prompts = seed_prompt_templates(state)
+    if created_prompts:
+        ok(
+            f"seeded {len(created_prompts)} prompt template(s) under {state.alfred_home / 'prompts'}"
+        )
+    else:
+        ok("prompt templates already present or not needed")
+
+    write_opt_in_gate(state)
+    ok("repo-scoped agents will stay idle until onboarding saves repositories")
+    return 0
+
+
 def step_10_labels(state: WizardState, *, skip: bool = False) -> None:
     step("GitHub labels")
     if skip:
@@ -1798,6 +1861,14 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
         "--skip-label-setup",
         action="store_true",
         help="Do not create the standard Alfred GitHub labels during setup.",
+    )
+    p.add_argument(
+        "--seed-runtime-roster",
+        action="store_true",
+        help=(
+            "Seed ALFRED_HOME/launchd/agents.conf and prompts without GitHub, "
+            "Claude, labels, deploy, or doctor."
+        ),
     )
     p.add_argument(
         "--repo-root",
@@ -1986,6 +2057,9 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     if args.config:
         apply_config_overrides(state, load_config(args.config))
+
+    if args.seed_runtime_roster:
+        return seed_runtime_roster(state, agents_arg=args.agents)
 
     step_0_preflight(state)
     step_1_claude(non_interactive=non_interactive)
