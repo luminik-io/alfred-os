@@ -5,8 +5,8 @@ import * as api from "../api";
 import type { SetupStatus } from "../types";
 import { SetupView } from "./SetupView";
 
-function setupStatus(home: string): SetupStatus {
-  return {
+function setupStatus(home: string, overrides: Partial<SetupStatus> = {}): SetupStatus {
+  const base: SetupStatus = {
     github: { ok: true, account: "octocat", detail: "Signed in to GitHub as octocat." },
     engines: [{ name: "claude", installed: true, path: "/opt/homebrew/bin/claude" }],
     engine_ready: true,
@@ -42,7 +42,49 @@ function setupStatus(home: string): SetupStatus {
         },
       ],
     },
+    first_run: {
+      version: 1,
+      ready: true,
+      status: "ready",
+      headline: "Ready for the first real run.",
+      summary: {
+        required_ready: 7,
+        required_total: 7,
+        recommended_ready: 1,
+        recommended_total: 3,
+        optional_ready: 0,
+        optional_total: 2,
+        blockers: [],
+      },
+      checks: [
+        {
+          key: "github",
+          title: "GitHub auth",
+          category: "auth",
+          tier: "required",
+          required: true,
+          ready: true,
+          state: "ready",
+          detail: "Signed in.",
+          action: "Run gh auth login.",
+          path: null,
+        },
+        {
+          key: "code_graph",
+          title: "Code graph memory",
+          category: "memory",
+          tier: "recommended",
+          required: false,
+          ready: true,
+          state: "ready",
+          detail: "Code-memory binary and index are present.",
+          action: "Run alfred code-memory doctor.",
+          path: `${home}/state/code-memory`,
+        },
+      ],
+    },
   };
+  return { ...base, ...overrides };
 }
 
 function deferred<T>() {
@@ -141,5 +183,64 @@ describe("SetupView", () => {
     await waitFor(() => {
       expect(screen.queryByText("/tmp/stale-alfred-home")).not.toBeInTheDocument();
     });
+  });
+
+  it("surfaces first-run readiness blockers on the connection setup tab", async () => {
+    vi.spyOn(api, "supportsNativeActions").mockReturnValue(true);
+    vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
+      setupStatus("/tmp/alfred-home", {
+        first_run: {
+          version: 1,
+          ready: false,
+          status: "needs_action",
+          headline: "1 required setup item needs action.",
+          summary: {
+            required_ready: 6,
+            required_total: 7,
+            recommended_ready: 0,
+            recommended_total: 3,
+            optional_ready: 0,
+            optional_total: 2,
+            blockers: ["repo_local_paths"],
+          },
+          checks: [
+            {
+              key: "repo_local_paths",
+              title: "Local repo paths",
+              category: "repos",
+              tier: "required",
+              required: true,
+              ready: false,
+              state: "actionable",
+              detail: "1 selected repo needs local path mapping.",
+              action:
+                "Clone the missing repo locally or set ALFRED_REPO_LOCAL_MAP with repo=path entries.",
+              path: null,
+            },
+            {
+              key: "code_graph",
+              title: "Code graph memory",
+              category: "memory",
+              tier: "recommended",
+              required: false,
+              ready: false,
+              state: "actionable",
+              detail: "Code-memory binary is present; run an index before relying on graph queries.",
+              action: "Run `alfred code-memory doctor`, then `alfred code-memory index`.",
+              path: "/tmp/alfred-home/state/code-memory",
+            },
+          ],
+        },
+      }),
+    );
+
+    render(renderSetup("http://127.0.0.1:7010"));
+
+    expect(await screen.findByText("Ready for first real run")).toBeInTheDocument();
+    expect(screen.getByText("1 blocking")).toBeInTheDocument();
+    expect(screen.getByText("Local repo paths")).toBeInTheDocument();
+    expect(screen.getByText(/ALFRED_REPO_LOCAL_MAP/)).toBeInTheDocument();
+    expect(screen.getByText("Code graph memory")).toBeInTheDocument();
+    expect(screen.getByText(/0 of 3 recommended ready/)).toBeInTheDocument();
   });
 });

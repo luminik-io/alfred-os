@@ -577,6 +577,37 @@ export type SetupCapabilityPlane = {
   capabilities: SetupCapability[];
 };
 
+export type SetupFirstRunCheck = {
+  key: string;
+  title: string;
+  category: string;
+  tier: "required" | "recommended" | "optional" | string;
+  required: boolean;
+  ready: boolean;
+  state: "ready" | "actionable" | "optional" | string;
+  detail: string;
+  action: string;
+  path: string | null;
+  detected?: unknown;
+};
+
+export type SetupFirstRunReadiness = {
+  version: number;
+  ready: boolean;
+  status: "ready" | "needs_action" | string;
+  headline: string;
+  summary: {
+    required_ready: number;
+    required_total: number;
+    recommended_ready: number;
+    recommended_total: number;
+    optional_ready: number;
+    optional_total: number;
+    blockers: string[];
+  };
+  checks: SetupFirstRunCheck[];
+};
+
 export type SetupInstallItem = {
   key: string;
   label: string;
@@ -649,6 +680,7 @@ export type SetupStatus = {
   };
   demo: { present: boolean };
   install?: SetupInstallInventory;
+  first_run?: SetupFirstRunReadiness;
   ready: boolean;
   error?: string;
 };

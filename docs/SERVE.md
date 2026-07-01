@@ -252,6 +252,44 @@ POST /api/slack/trusted-users/{user_id}/remove
 
 Read endpoints intentionally mirror the HTML pages.
 
+`GET /api/setup/status` includes a `first_run` readiness block for native
+onboarding. It rolls up GitHub auth, engine CLIs, repo scope, queue coverage,
+local checkout mapping, scheduled fleet deployment, Desktop action token,
+recommended code graph memory, context compression, engineering skill packs,
+optional Batman parent-repo setup, and optional Slack collaboration into one
+contract:
+
+```json
+{
+  "first_run": {
+    "ready": false,
+    "status": "needs_action",
+    "headline": "1 required setup item needs action.",
+    "summary": {
+      "required_ready": 6,
+      "required_total": 7,
+      "recommended_ready": 1,
+      "recommended_total": 3,
+      "blockers": ["repo_local_paths"]
+    },
+    "checks": [
+      {
+        "key": "repo_local_paths",
+        "tier": "required",
+        "ready": false,
+        "detail": "1 selected repo needs local path mapping.",
+        "action": "Clone the missing repo locally or set ALFRED_REPO_LOCAL_MAP with repo=path entries."
+      }
+    ]
+  }
+}
+```
+
+Required rows decide whether the first real run is safe to start. Recommended
+rows are visible but do not block: code graph, Headroom-style context
+compression, and engineering skill packs can be finished without hiding the core
+install state.
+
 `GET /api/usage` is served by `alfred serve` today and backs Alfred Desktop's
 capacity rail. It reports your real Claude subscription headroom for
 the rolling 5-hour and weekly windows, plus Codex's latest-day token usage. Codex
