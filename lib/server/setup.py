@@ -254,6 +254,25 @@ def normalize_repo_slugs(values: Any) -> list[str]:
     return out
 
 
+def _normalize_repo_slugs_preserve_case(values: Any) -> list[str]:
+    if not isinstance(values, (list, tuple)):
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in values:
+        slug = str(raw or "").strip()
+        if not _REPO_SLUG_RE.match(slug):
+            continue
+        if any(part == ".." for part in slug.split("/")):
+            continue
+        folded = slug.lower()
+        if folded in seen:
+            continue
+        seen.add(folded)
+        out.append(slug)
+    return out
+
+
 def selected_repos(env: dict[str, str] | None = None) -> list[str]:
     """The board-visible repos selected for first-run setup.
 
@@ -409,6 +428,7 @@ def persist_selected_repos(
     queue scope. Existing queue scopes are only replaced by
     ``replace_queue_repos``.
     """
+    case_preserved = _normalize_repo_slugs_preserve_case(repos)
     clean = normalize_repo_slugs(repos)
     clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
     owner = _repo_scope_owner(clean)
@@ -419,6 +439,7 @@ def persist_selected_repos(
         queue_repos=clean_queue,
         replace_queue_repos=replace_queue_repos,
         runtime_env=runtime_env,
+        runtime_repos=_repo_local_names(case_preserved),
     )
     if owner:
         values = {GH_ORG_ENV: owner, **values}
@@ -444,6 +465,7 @@ def _repo_scope_values_for_save(
     queue_repos: list[str] | None = None,
     replace_queue_repos: bool = False,
     runtime_env: dict[str, str] | None = None,
+    runtime_repos: list[str] | None = None,
 ) -> dict[str, str]:
     """Repo keys to persist for a setup repo save.
 
@@ -456,7 +478,7 @@ def _repo_scope_values_for_save(
     """
 
     value = _format_repo_value(repos)
-    runtime_value = _format_repo_value(_repo_local_names(repos))
+    runtime_value = _format_repo_value(runtime_repos or _repo_local_names(repos))
     resolved_env = runtime_env if runtime_env is not None else _runtime_config_env()
     values = {
         SHIPPED_REPOS_ENV: value,
@@ -479,11 +501,13 @@ def _runtime_repo_scope_values_for_save(
     values: dict[str, str] = {}
     for key in RUNTIME_REPO_SCOPE_ENV_KEYS:
         existing = _code_memory_config(runtime_env, key)
-        values[key] = (
-            existing
-            if existing and not _runtime_scope_matches_board(existing, runtime_env)
-            else runtime_value
-        )
+        if existing and (
+            not _runtime_scope_matches_board(existing, runtime_env)
+            or _local_scope_tokens(existing) == _local_scope_tokens(runtime_value)
+        ):
+            values[key] = existing
+        else:
+            values[key] = runtime_value
     return values
 
 

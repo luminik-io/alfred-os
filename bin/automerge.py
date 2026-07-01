@@ -41,6 +41,7 @@ from agent_runner import (
     PreflightSpec,
     SpendState,
     doctor_mode,
+    doctor_requested,
     gh_issue_edit,
     gh_json,
     is_repo_paused,
@@ -372,6 +373,10 @@ def is_mergeable(
 def main() -> int:
     with_lock(AGENT)
 
+    if not WATCH_REPOS and not doctor_requested():
+        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_AUTOMERGE_REPOS)")
+        return 0
+
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -379,10 +384,6 @@ def main() -> int:
 
     if doctor_mode():
         print(f"[{AGENT.upper()}-DOCTOR-OK]")
-        return 0
-
-    if not WATCH_REPOS:
-        print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_AUTOMERGE_REPOS)")
         return 0
 
     spend = SpendState(AGENT)
