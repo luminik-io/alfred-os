@@ -529,14 +529,27 @@ deploy_linux_systemd() {
 }
 
 CONF="$REPO_DIR/launchd/agents.conf"
+RUNTIME_CONF="$RUNTIME_LAUNCHD/agents.conf"
 if [ -f "$CONF" ]; then
-  cp "$CONF" "$RUNTIME_LAUNCHD/agents.conf"
+  if [ -e "$RUNTIME_CONF" ] && [ "$CONF" -ef "$RUNTIME_CONF" ]; then
+    echo "[alfred-os/deploy] using runtime launchd/agents.conf"
+  else
+    cp "$CONF" "$RUNTIME_CONF"
+  fi
 else
-  : > "$RUNTIME_LAUNCHD/agents.conf"
-  echo "[alfred-os/deploy] no launchd/agents.conf found; using an empty base roster"
+  if [ -f "$RUNTIME_CONF" ]; then
+    echo "[alfred-os/deploy] no source launchd/agents.conf found; preserving runtime roster"
+  else
+    : > "$RUNTIME_CONF"
+    echo "[alfred-os/deploy] no launchd/agents.conf found; using an empty base roster"
+  fi
 fi
 
-if [ ! -f "$CONF" ]; then
+has_runtime_agents_conf_rows() {
+  grep -Eq '^[[:space:]]*[^#[:space:]]' "$RUNTIME_CONF"
+}
+
+if [ ! -f "$CONF" ] && ! has_runtime_agents_conf_rows; then
   has_custom_agents=0
   custom_agent_status=0
   if has_enabled_custom_agents; then
@@ -565,15 +578,15 @@ if [ ! -f "$CONF" ]; then
 fi
 
 if [ "$(uname -s)" = "Linux" ]; then
-  deploy_linux_systemd "$RUNTIME_LAUNCHD/agents.conf"
+  deploy_linux_systemd "$RUNTIME_CONF"
   echo "[alfred-os/deploy] done"
   exit 0
 fi
 
 OUT_DIR="$RUNTIME_LAUNCHD/_generated"
 mkdir -p "$OUT_DIR"
-echo "[alfred-os/deploy] rendering launchd plists from $RUNTIME_LAUNCHD/agents.conf"
-ALFRED_AGENTS_CONF="$RUNTIME_LAUNCHD/agents.conf" bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"
+echo "[alfred-os/deploy] rendering launchd plists from $RUNTIME_CONF"
+ALFRED_AGENTS_CONF="$RUNTIME_CONF" bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"
 
 if [ "$(uname -s)" = "Darwin" ]; then
   LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"
