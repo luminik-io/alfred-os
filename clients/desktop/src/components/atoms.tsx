@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  Download,
   ExternalLink,
   Inbox,
   ListChecks,
@@ -76,11 +77,13 @@ export function ConnectionBanner({
   error,
   errorRaw,
   nativeBusy,
+  onInstallCore,
   onStartRuntime,
 }: {
   error: string;
   errorRaw?: string | null;
   nativeBusy: string | null;
+  onInstallCore: () => void;
   onStartRuntime: () => void;
 }) {
   const canRun = supportsNativeActions();
@@ -101,15 +104,32 @@ export function ConnectionBanner({
         ) : null}
       </div>
       {canRun ? (
-        <button
-          className="icon-button"
-          type="button"
-          disabled={nativeBusy === "runtime:start"}
-          onClick={onStartRuntime}
-        >
-          <Play size={16} aria-hidden="true" />
-          <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
-        </button>
+        <div className="card-actions">
+          <button
+            className="icon-button"
+            type="button"
+            disabled={nativeBusy === "core:install" || nativeBusy === "runtime:start"}
+            onClick={onInstallCore}
+          >
+            <Download size={16} aria-hidden="true" />
+            <span>
+              {nativeBusy === "core:install"
+                ? "Installing"
+                : nativeBusy === "runtime:start"
+                  ? "Starting"
+                  : "Install or repair"}
+            </span>
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={nativeBusy === "runtime:start" || nativeBusy === "core:install"}
+            onClick={onStartRuntime}
+          >
+            <Play size={16} aria-hidden="true" />
+            <span>{nativeBusy === "runtime:start" ? "Starting" : "Start runtime"}</span>
+          </button>
+        </div>
       ) : (
         <p className="fallback-note">
           Open Alfred as a desktop app to start the local runtime from here.

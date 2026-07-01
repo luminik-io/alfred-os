@@ -114,7 +114,7 @@ If you expected activity and Slack is silent, walk this list in order. Each step
 alfred auth status
 ```
 
-If Claude reports unauthenticated, run `claude` interactively once. The auth blob at `~/.claude/` expires rarely but does expire. The hybrid agents will have been failing over to Codex; pure-Claude agents will have been silent. See [Engine routing](/concepts/engine-routing/).
+If Claude reports unauthenticated, run `claude auth login`. The auth blob at `~/.claude/` expires rarely but does expire. The hybrid agents will have been failing over to Codex; pure-Claude agents will have been silent. See [Engine routing](/concepts/engine-routing/).
 
 ### 2. Global block engaged
 

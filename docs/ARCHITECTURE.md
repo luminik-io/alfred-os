@@ -224,7 +224,7 @@ flowchart TB
     ui -.->|open outside the app| slackthread
 ```
 
-The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; local plans and firing traces stay in native inspector panes, while explicit Slack and GitHub links open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, pause/resume/run, and local follow-up planning) and surface command audit detail with the result. There is no arbitrary shell execution. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design, the tab-by-tab control surface, and how to build native installers, and [`SERVE.md`](SERVE.md) for the API contract.
+The boundary is enforced in the Tauri layer, not just by convention. The fetch command only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`; local plans and firing traces stay in native inspector panes, while explicit Slack and GitHub links open *outside* the app through Tauri's opener plugin. State-changing controls use a narrow native allowlist (install/repair bundled core, start the runtime, run fleet/auth/agent/memory/Redis checks, safe agent dry-runs, pause/resume/run, and local follow-up planning) and surface command audit detail with the result. There is no arbitrary shell execution. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design, the tab-by-tab control surface, and how to build native installers, and [`SERVE.md`](SERVE.md) for the API contract.
 
 ## Disk guardian
 
@@ -268,8 +268,8 @@ flowchart TB
         serve["alfred serve<br/>localhost JSON API (127.0.0.1)"]
     end
 
-    subgraph client["client (optional)"]
-        desktop["Alfred Desktop<br/>clients/desktop"]
+    subgraph client["client (recommended)"]
+        desktop["Alfred Desktop<br/>clients/desktop<br/>installer + control surface"]
     end
 
     subgraph slack["slack (optional)"]
@@ -291,7 +291,7 @@ flowchart TB
 ```
 
 - **`core`** is the fleet (`lib/agent_runner/` plus the `bin/*.py` runners), the Alfred CLI (`bin/alfred`), the host scheduler (launchd on macOS, `systemd --user` on Linux), and `alfred serve`, a localhost JSON API over `$ALFRED_HOME/state`. Core is headless and Linux-friendly: nothing here needs a desktop, a browser, or Slack. This is the only tier you must install.
-- **`client`** is Alfred Desktop under `clients/desktop`: fleet service control, a command center, plan/run/memory views, and safe local actions. It is a thin local control surface, not a second runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
+- **`client`** is Alfred Desktop under `clients/desktop`: bundled core install/repair, fleet service control, a command center, plan/run/memory views, and safe local actions. It is the recommended local installer and control surface, not a second scheduler or hosted runtime. It talks to core over the `alfred serve` JSON seam, restricted to `http://localhost` / `http://127.0.0.1` / `http://[::1]` and a fixed set of read paths plus a narrow native command allowlist. Run Alfred with or without it.
 - **`slack`** is the planning listener plus the issue bridge. The listener (`lib/slack_listener.py`) runs in Socket Mode; the bridge (`lib/slack_issue_bridge.py`) is off by default and only ever files a labeled issue. `alfred serve` is part of core because Alfred Desktop uses it by default; FastAPI, httpx, uvicorn, Jinja2, `slack-sdk`, and `boto3` are base runtime dependencies.
 
 The boundary matters: Alfred Desktop and any future surface read and write the same `$ALFRED_HOME` state, GitHub issues and PRs, and Slack threads. The desktop app adds a safer local UI; it does not replace the fleet. See [`INSTALL_TIERS.md`](INSTALL_TIERS.md) for how to install each tier and [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) and [`SERVE.md`](SERVE.md) for the client and API contracts.

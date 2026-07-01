@@ -6,9 +6,9 @@ For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTR
 
 ## Two ways to install
 
-**Desktop-first path.** On macOS, the Homebrew cask installs the signed Alfred app and the CLI/runtime it controls. Open Alfred and follow the guided Setup tab: it detects an existing install, connects GitHub plus Claude or Codex, helps you pick repos and agents, chooses a roster theme or custom display names, and starts or reconnects the local runtime. Direct macOS downloads install the app only. Linux downloads also install the app only, so use the command-line core install below as the primary Linux runtime path.
+**Desktop-first path.** Install the signed Alfred app on macOS or Linux, open it, and click **Install or repair** in Setup. The native app bundles Alfred core resources, bootstraps dependencies, deploys the local CLI/agents into `~/.alfred`, starts `alfred serve`, detects existing installs, connects GitHub plus Claude or Codex, helps you pick repos and agents, chooses a roster theme or custom display names, and keeps the setup repairable. The Homebrew cask also depends on the CLI formula, but direct DMG/AppImage/.deb installs no longer need a separate CLI install first.
 
-**Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime; the desktop app is the recommended local onboarding and control surface that can connect to the same runtime later.
+**Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal without the GUI. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime; the desktop app remains the recommended local onboarding and control surface.
 
 Alfred core is the fleet, the operator CLI, the host scheduler, and the `alfred serve` JSON API. Core is fully standalone and runs headless on Linux. The desktop `client` tier is recommended for local setup and day-two operations; Slack `slack` layers on top for team collaboration. See [`docs/INSTALL_TIERS.md`](docs/INSTALL_TIERS.md).
 

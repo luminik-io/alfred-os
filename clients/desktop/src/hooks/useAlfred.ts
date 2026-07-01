@@ -7,6 +7,7 @@ import {
   decidePlan,
   discardPlan,
   errorDetail,
+  installAlfredCore,
   filePlanIssue,
   initialBaseUrl,
   loadShipped,
@@ -81,6 +82,19 @@ function assignmentNoticeMessage(
   const detail = result.detail?.trim();
   if (detail) return detail;
   return `${repo}#${issueNumber} needs human scoping before an agent can pick it up.`;
+}
+
+function runtimePortFromBaseUrl(raw: string): number {
+  try {
+    const url = new URL(raw);
+    const port = Number(url.port);
+    if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
+      return port;
+    }
+  } catch {
+    // Fall through to the default runtime port.
+  }
+  return 7010;
 }
 
 export function useAlfred() {
@@ -551,16 +565,44 @@ export function useAlfred() {
     setNativeErrorRaw(null);
     setNativeResult(null);
     try {
-      const result = await startLocalRuntime();
+      const result = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
       setNativeResult(result);
-      window.setTimeout(() => void refresh("http://127.0.0.1:7010"), 900);
+      window.setTimeout(() => void refresh(baseUrl), 900);
     } catch (err) {
       setNativeError(err instanceof Error ? err.message : String(err));
       setNativeErrorRaw(errorDetail(err));
     } finally {
       setNativeBusy(null);
     }
-  }, [refresh]);
+  }, [baseUrl, refresh]);
+
+  const installCore = useCallback(async () => {
+    setNativeBusy("core:install");
+    setNativeError(null);
+    setNativeErrorRaw(null);
+    setNativeResult(null);
+    try {
+      const result = await installAlfredCore();
+      setNativeResult(result);
+      if (!result.success) {
+        return;
+      }
+      setNativeBusy("runtime:start");
+      const runtime = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
+      setNativeResult({
+        ...runtime,
+        message: runtime.success
+          ? "Alfred core installed and the local runtime started."
+          : runtime.message || "Alfred core installed, but the local runtime did not start.",
+      });
+      window.setTimeout(() => void refresh(baseUrl), 900);
+    } catch (err) {
+      setNativeError(err instanceof Error ? err.message : String(err));
+      setNativeErrorRaw(errorDetail(err));
+    } finally {
+      setNativeBusy(null);
+    }
+  }, [baseUrl, refresh]);
 
   const clearNativeResult = useCallback(() => {
     setNativeResult(null);
@@ -687,6 +729,7 @@ export function useAlfred() {
     addTrustedUser,
     removeTrustedUser,
     runLocalAction,
+    installCore,
     startRuntime,
   };
 }

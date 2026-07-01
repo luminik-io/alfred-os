@@ -16,12 +16,14 @@ import {
   decidePlan,
   errorDetail,
   hasStoredBaseUrl,
+  installAlfredCore,
   initialBaseUrl,
   loadRosterTheme,
   loadShipped,
   loadSnapshot,
   promoteMemoryCandidate,
   saveRosterTheme,
+  startLocalRuntime,
   streamComposeConverse,
   streamFiringTail,
 } from "./api";
@@ -859,5 +861,47 @@ describe("roster theme persistence", () => {
     await expect(
       saveRosterTheme(DEFAULT_BASE_URL, { theme: "not-real" }),
     ).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe("native runtime install bridge", () => {
+  it("invokes the dedicated install command in the desktop app", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    invokeMock.mockResolvedValue({
+      command: ["alfred-desktop", "install-core"],
+      stdout: "",
+      stderr: "",
+      status: 0,
+      success: true,
+      pid: null,
+      message: "Alfred core installed and deployed.",
+    });
+
+    const result = await installAlfredCore();
+
+    expect(invokeMock).toHaveBeenCalledWith("install_alfred_core");
+    expect(result.success).toBe(true);
+  });
+
+  it("keeps runtime launch separate from full core install", async () => {
+    window.__TAURI_INTERNALS__ = {};
+    invokeMock.mockResolvedValue({
+      command: ["alfred", "serve", "--port", "7010", "--no-browser"],
+      stdout: "",
+      stderr: "",
+      status: null,
+      success: true,
+      pid: 123,
+      message: "started Alfred local runtime on port 7010",
+    });
+
+    await startLocalRuntime();
+
+    expect(invokeMock).toHaveBeenCalledWith("start_alfred_runtime", { port: 7010 });
+  });
+
+  it("does not expose native install from browser preview", async () => {
+    await expect(installAlfredCore()).rejects.toThrow(/desktop app/i);
+    expect(invokeMock).not.toHaveBeenCalled();
   });
 });

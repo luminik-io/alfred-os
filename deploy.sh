@@ -132,16 +132,46 @@ export ALFRED_HOME WORKSPACE_ROOT
 RUNTIME_BIN="$ALFRED_HOME/bin"
 RUNTIME_LIB="$ALFRED_HOME/lib"
 RUNTIME_LAUNCHD="$ALFRED_HOME/launchd"
+RUNTIME_SYSTEMD="$ALFRED_HOME/systemd"
 RUNTIME_PROMPTS="$ALFRED_HOME/prompts"
 LOCAL_BIN="${HOME}/.local/bin"
 
-mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_PROMPTS" "$LOCAL_BIN"
+mkdir -p "$RUNTIME_BIN" "$RUNTIME_LIB" "$RUNTIME_LAUNCHD" "$RUNTIME_SYSTEMD" "$RUNTIME_PROMPTS" "$LOCAL_BIN"
 
 echo "[alfred-os/deploy] ALFRED_HOME=$ALFRED_HOME WORKSPACE_ROOT=$WORKSPACE_ROOT"
 
 printf '%s\n' "$REPO_DIR" > "$RUNTIME_LAUNCHD/source-repo.txt"
 chmod 644 "$RUNTIME_LAUNCHD/source-repo.txt"
 rm -f "$RUNTIME_LAUNCHD/alfredrc.path"
+
+same_dir() {
+  local left="$1" right="$2"
+  [ -d "$left" ] || return 1
+  [ -d "$right" ] || return 1
+  [ "$(cd "$left" && pwd -P)" = "$(cd "$right" && pwd -P)" ]
+}
+
+copy_file_if_different() {
+  local src="$1" dest="$2" mode="${3:-644}"
+  [ -f "$src" ] || return 0
+  mkdir -p "$(dirname "$dest")"
+  if [ -e "$dest" ] && [ "$src" -ef "$dest" ]; then
+    :
+  else
+    cp "$src" "$dest"
+  fi
+  chmod "$mode" "$dest"
+}
+
+echo "[alfred-os/deploy] copying runtime support files"
+copy_file_if_different "$REPO_DIR/deploy.sh" "$ALFRED_HOME/deploy.sh" 755
+copy_file_if_different "$REPO_DIR/install.sh" "$ALFRED_HOME/install.sh" 755
+copy_file_if_different "$REPO_DIR/launchd/_template.plist" "$RUNTIME_LAUNCHD/_template.plist" 644
+copy_file_if_different "$REPO_DIR/launchd/agents.conf.example" "$RUNTIME_LAUNCHD/agents.conf.example" 644
+copy_file_if_different "$REPO_DIR/launchd/render.sh" "$RUNTIME_LAUNCHD/render.sh" 755
+copy_file_if_different "$REPO_DIR/systemd/_template.service" "$RUNTIME_SYSTEMD/_template.service" 644
+copy_file_if_different "$REPO_DIR/systemd/_template.timer" "$RUNTIME_SYSTEMD/_template.timer" 644
+copy_file_if_different "$REPO_DIR/systemd/render.sh" "$RUNTIME_SYSTEMD/render.sh" 755
 
 echo "[alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackages)"
 # v0.4.0 introduced subpackages (agent_runner/, connectors/,
@@ -150,7 +180,11 @@ echo "[alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackage
 # on a clean install crashed at first `from agent_runner import ...`.
 # `cp -R lib/. <dest>/` recursively copies everything under lib/ including
 # the dot-prefixed contents, preserving the package layout.
-cp -R "$REPO_DIR/lib/." "$RUNTIME_LIB/"
+if same_dir "$REPO_DIR/lib" "$RUNTIME_LIB"; then
+  echo "[alfred-os/deploy] lib/ already in runtime root"
+else
+  cp -R "$REPO_DIR/lib/." "$RUNTIME_LIB/"
+fi
 # Restore file permissions; -R does not normalise modes uniformly.
 find "$RUNTIME_LIB" -name '*.py' -type f -exec chmod 644 {} +
 # Sanity check: assert the five v0.4.x subpackages landed. If any are
@@ -163,11 +197,19 @@ for pkg in agent_runner connectors fleet_brain memory server; do
 done
 
 echo "[alfred-os/deploy] copying bin/ (every regular file)"
-for f in "$REPO_DIR/bin/"*; do
-  [ -f "$f" ] || continue
-  cp "$f" "$RUNTIME_BIN/"
-  chmod +x "$RUNTIME_BIN/$(basename "$f")"
-done
+if same_dir "$REPO_DIR/bin" "$RUNTIME_BIN"; then
+  echo "[alfred-os/deploy] bin/ already in runtime root"
+  for f in "$RUNTIME_BIN/"*; do
+    [ -f "$f" ] || continue
+    chmod +x "$f"
+  done
+else
+  for f in "$REPO_DIR/bin/"*; do
+    [ -f "$f" ] || continue
+    cp "$f" "$RUNTIME_BIN/"
+    chmod +x "$RUNTIME_BIN/$(basename "$f")"
+  done
+fi
 
 ensure_runtime_python_deps() {
   local venv_python="$ALFRED_HOME/venv/bin/python"
@@ -198,10 +240,12 @@ ensure_runtime_python_deps() {
 
 ensure_runtime_python_deps
 
-if [ -f "$REPO_DIR/prompts/spec-interrogator.md" ]; then
-  cp "$REPO_DIR/prompts/spec-interrogator.md" "$RUNTIME_PROMPTS/spec-interrogator.md"
-  chmod 644 "$RUNTIME_PROMPTS/spec-interrogator.md"
-  echo "[alfred-os/deploy] copied prompts/spec-interrogator.md"
+if [ -d "$REPO_DIR/prompts" ]; then
+  for f in "$REPO_DIR/prompts/"*.md; do
+    [ -f "$f" ] || continue
+    copy_file_if_different "$f" "$RUNTIME_PROMPTS/$(basename "$f")" 644
+  done
+  echo "[alfred-os/deploy] copied prompts/"
 fi
 
 if [ -f "$RUNTIME_BIN/alfred" ]; then
@@ -393,12 +437,12 @@ deploy_linux_systemd() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local runtime_systemd="$ALFRED_HOME/systemd"
   local managed_labels_file="$runtime_systemd/managed-labels.txt"
-  local out_dir="$REPO_DIR/systemd/_generated"
+  local out_dir="$runtime_systemd/_generated"
   local pause_dir="$ALFRED_HOME/state/_paused"
-  mkdir -p "$systemd_user_dir" "$runtime_systemd"
+  mkdir -p "$systemd_user_dir" "$runtime_systemd" "$out_dir"
 
   echo "[alfred-os/deploy] rendering systemd user units from $conf"
-  bash "$REPO_DIR/systemd/render.sh" "$out_dir"
+  ALFRED_AGENTS_CONF="$conf" bash "$REPO_DIR/systemd/render.sh" "$out_dir"
 
   # Build the keep-list (labels deployed this run) so the reaper can spot rows
   # that were removed from agents.conf. The reaper is intentionally scoped to
@@ -485,14 +529,27 @@ deploy_linux_systemd() {
 }
 
 CONF="$REPO_DIR/launchd/agents.conf"
+RUNTIME_CONF="$RUNTIME_LAUNCHD/agents.conf"
 if [ -f "$CONF" ]; then
-  cp "$CONF" "$RUNTIME_LAUNCHD/agents.conf"
+  if [ -e "$RUNTIME_CONF" ] && [ "$CONF" -ef "$RUNTIME_CONF" ]; then
+    echo "[alfred-os/deploy] using runtime launchd/agents.conf"
+  else
+    cp "$CONF" "$RUNTIME_CONF"
+  fi
 else
-  : > "$RUNTIME_LAUNCHD/agents.conf"
-  echo "[alfred-os/deploy] no launchd/agents.conf found; using an empty base roster"
+  if [ -f "$RUNTIME_CONF" ]; then
+    echo "[alfred-os/deploy] no source launchd/agents.conf found; preserving runtime roster"
+  else
+    : > "$RUNTIME_CONF"
+    echo "[alfred-os/deploy] no launchd/agents.conf found; using an empty base roster"
+  fi
 fi
 
-if [ ! -f "$CONF" ]; then
+has_runtime_agents_conf_rows() {
+  grep -Eq '^[[:space:]]*[^#[:space:]]' "$RUNTIME_CONF"
+}
+
+if [ ! -f "$CONF" ] && ! has_runtime_agents_conf_rows; then
   has_custom_agents=0
   custom_agent_status=0
   if has_enabled_custom_agents; then
@@ -521,14 +578,15 @@ if [ ! -f "$CONF" ]; then
 fi
 
 if [ "$(uname -s)" = "Linux" ]; then
-  deploy_linux_systemd "$CONF"
+  deploy_linux_systemd "$RUNTIME_CONF"
   echo "[alfred-os/deploy] done"
   exit 0
 fi
 
-OUT_DIR="$REPO_DIR/launchd/_generated"
-echo "[alfred-os/deploy] rendering launchd plists from $CONF"
-bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"
+OUT_DIR="$RUNTIME_LAUNCHD/_generated"
+mkdir -p "$OUT_DIR"
+echo "[alfred-os/deploy] rendering launchd plists from $RUNTIME_CONF"
+ALFRED_AGENTS_CONF="$RUNTIME_CONF" bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"
 
 if [ "$(uname -s)" = "Darwin" ]; then
   LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"

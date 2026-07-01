@@ -1,9 +1,11 @@
 import {
   ArrowLeft,
   ArrowRight,
+  Bot,
   GitPullRequest,
   ListChecks,
   MessageCircle,
+  Plus,
   Plug,
   Settings2,
   Sparkles,
@@ -54,7 +56,7 @@ import { cn } from "@/lib/utils";
  *   1 Tools          detect Claude / Codex (no API keys)
  *   2 GitHub         reuse the gh sign-in (auto-advance when signed in)
  *   3 Repositories   pick by name + description (private badge)
- *   4 Team           pick roster theme / custom names
+ *   4 Team           pick roster theme / custom names, with a path to custom agents
  *   5 Slack          optional approvals, clearly skippable
  *   6 First request  a real Request, or a labelled sample
  *
@@ -178,6 +180,7 @@ export function OnboardingView({
   customNames,
   rosterSaveError,
   onConnectServer,
+  onInstallCore,
   onStartRuntime,
   onRunLocalAction,
   onRosterThemeChange,
@@ -197,6 +200,7 @@ export function OnboardingView({
   customNames: CustomRosterNames;
   rosterSaveError: string | null;
   onConnectServer: (url: string) => void;
+  onInstallCore: () => void;
   onStartRuntime: () => void;
   onRunLocalAction: (request: NativeActionRequest) => Promise<NativeCommandResult | null>;
   onRosterThemeChange: (next: RosterThemeId) => void;
@@ -364,7 +368,7 @@ export function OnboardingView({
       setGithubAuthFlow({
         ...IDLE_GITHUB_AUTH_FLOW,
         state: "error",
-        message: "Open Alfred in the desktop app and connect to the local runtime first.",
+        message: "Open Alfred in the desktop app and install or connect the local runtime first.",
       });
       return;
     }
@@ -711,6 +715,10 @@ export function OnboardingView({
             <WelcomeStep
               install={status?.install ?? null}
               queue={status?.queue ?? null}
+              connected={connected}
+              canRun={canRun}
+              nativeBusy={nativeBusy}
+              onInstallCore={onInstallCore}
               onGetStarted={() => goToStep("engine")}
               onDevShortcut={() => goToStep("github")}
             />
@@ -772,6 +780,7 @@ export function OnboardingView({
                 saveError={rosterSaveError}
                 onChange={onRosterThemeChange}
                 onEditCustom={onEditCustomTheme}
+                onOpenCustomAgents={onSwitch ? () => onSwitch("fleet") : undefined}
               />
             </StepFrame>
           ) : null}
@@ -858,12 +867,14 @@ function RosterThemeStep({
   saveError,
   onChange,
   onEditCustom,
+  onOpenCustomAgents,
 }: {
   customNames: CustomRosterNames;
   rosterTheme: RosterThemeId;
   saveError: string | null;
   onChange: (next: RosterThemeId) => void;
   onEditCustom: () => void;
+  onOpenCustomAgents?: () => void;
 }) {
   const preview = useMemo(
     () =>
@@ -907,6 +918,27 @@ function RosterThemeStep({
       <p className="text-xs text-muted-foreground">
         Roles, permissions, schedules, labels, worktrees, and merge gates stay unchanged.
       </p>
+      {onOpenCustomAgents ? (
+        <div className="rounded-lg border border-border/70 bg-card/60 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-md border border-primary/25 bg-primary/10 text-primary">
+                <Bot size={17} aria-hidden="true" />
+              </span>
+              <span className="min-w-0">
+                <p className="text-sm font-medium text-foreground">Need another role?</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Add a custom agent with its own engine, prompt, schedule, and repo scope.
+                </p>
+              </span>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={onOpenCustomAgents}>
+              <Plus size={15} aria-hidden="true" />
+              <span>Add custom agent</span>
+            </Button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

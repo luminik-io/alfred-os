@@ -21,6 +21,8 @@ const hooks = vi.hoisted(() => ({
   loadShippedMock: vi.fn(),
   loadUsageMock: vi.fn(),
   runNativeActionMock: vi.fn(),
+  installAlfredCoreMock: vi.fn(),
+  startLocalRuntimeMock: vi.fn(),
   setQueuePickupMock: vi.fn(),
   rememberBaseUrlMock: vi.fn(),
   decidePlanMock: vi.fn(),
@@ -41,6 +43,12 @@ const loadUsageMock = hooks.loadUsageMock as ReturnType<
 const runNativeActionMock = hooks.runNativeActionMock as ReturnType<
   typeof vi.fn<() => Promise<NativeCommandResult>>
 >;
+const installAlfredCoreMock = hooks.installAlfredCoreMock as ReturnType<
+  typeof vi.fn<() => Promise<NativeCommandResult>>
+>;
+const startLocalRuntimeMock = hooks.startLocalRuntimeMock as ReturnType<
+  typeof vi.fn<(port?: number) => Promise<NativeCommandResult>>
+>;
 const setQueuePickupMock = hooks.setQueuePickupMock;
 const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
 
@@ -55,13 +63,14 @@ vi.mock("../api", () => ({
   loadShipped: (baseUrl: string) => hooks.loadShippedMock(baseUrl),
   loadUsage: (baseUrl: string) => hooks.loadUsageMock(baseUrl),
   runNativeAction: () => hooks.runNativeActionMock(),
+  installAlfredCore: () => hooks.installAlfredCoreMock(),
   setQueuePickup: (...args: unknown[]) => hooks.setQueuePickupMock(...args),
   convertFollowupToDraft: vi.fn(),
   markFollowupHandled: vi.fn(),
   decidePlan: (...args: unknown[]) => hooks.decidePlanMock(...args),
   discardPlan: (...args: unknown[]) => hooks.discardPlanMock(...args),
   filePlanIssue: (...args: unknown[]) => hooks.filePlanIssueMock(...args),
-  startLocalRuntime: vi.fn(),
+  startLocalRuntime: (port?: number) => hooks.startLocalRuntimeMock(port),
   setTrayStatus: vi.fn(async () => undefined),
   supportsNativeActions: () => true,
   errorDetail: (err: unknown) => (err instanceof Error ? err.message : null),
@@ -152,12 +161,24 @@ beforeEach(() => {
   loadShippedMock.mockReset();
   loadUsageMock.mockReset();
   runNativeActionMock.mockReset();
+  installAlfredCoreMock.mockReset();
+  startLocalRuntimeMock.mockReset();
   setQueuePickupMock.mockReset();
   rememberBaseUrlMock.mockReset();
   hooks.discardPlanMock.mockReset();
   hooks.filePlanIssueMock.mockReset();
   loadShippedMock.mockResolvedValue(shippedBoard());
   loadUsageMock.mockResolvedValue(usage());
+  installAlfredCoreMock.mockResolvedValue({
+    ...nativeResult(),
+    command: ["alfred-desktop", "install-core"],
+    message: "Alfred core installed and deployed.",
+  });
+  startLocalRuntimeMock.mockResolvedValue({
+    ...nativeResult(),
+    command: ["alfred", "serve", "--port", "7010", "--no-browser"],
+    message: "started Alfred local runtime on port 7010",
+  });
   window.localStorage.clear();
 });
 
@@ -295,6 +316,53 @@ describe("useAlfred base URL handling", () => {
 });
 
 describe("useAlfred post-action refresh ordering", () => {
+  it("installs Alfred core and starts the local runtime from one desktop action", async () => {
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius")]));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => {
+      await result.current.installCore();
+    });
+
+    expect(installAlfredCoreMock).toHaveBeenCalledTimes(1);
+    expect(startLocalRuntimeMock).toHaveBeenCalledWith(7010);
+    expect(result.current.nativeResult?.message).toBe(
+      "Alfred core installed and the local runtime started.",
+    );
+  });
+
+  it("refreshes the current custom endpoint after desktop install", async () => {
+    const customUrl = "http://127.0.0.1:7123";
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius")]));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => {
+      await result.current.refresh(customUrl);
+    });
+    expect(result.current.baseUrl).toBe(customUrl);
+
+    loadSnapshotMock.mockClear();
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        await result.current.installCore();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(900);
+        await Promise.resolve();
+      });
+
+      expect(startLocalRuntimeMock).toHaveBeenCalledWith(7123);
+      expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("refreshes after a pause and reflects the post-action snapshot", async () => {
     // Mount snapshot: lucius running. After pause, refresh returns paused.
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("lucius", { paused: false })]));

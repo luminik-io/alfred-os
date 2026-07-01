@@ -33,9 +33,10 @@ What it reaches, and why:
 
 ## Alfred Desktop
 
-Alfred Desktop is the optional native app. It is signed and notarized, so
-Gatekeeper lets it open without the "unidentified developer" block. It is a thin
-local dashboard over `alfred serve`; it does not run agents by itself.
+Alfred Desktop is the recommended native app. It is signed and notarized, so
+Gatekeeper lets it open without the "unidentified developer" block. It can
+install or repair Alfred core locally, then operates the fleet over
+`alfred serve` and the same CLI/scheduler the terminal path uses.
 
 Prompts you may see, and why:
 

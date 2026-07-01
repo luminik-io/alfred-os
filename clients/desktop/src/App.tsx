@@ -108,6 +108,7 @@ function App() {
     addTrustedUser,
     removeTrustedUser,
     runLocalAction,
+    installCore,
     startRuntime,
   } = useAlfred();
 
@@ -247,6 +248,7 @@ function App() {
           error={error}
           errorRaw={errorRaw}
           nativeBusy={nativeBusy}
+          onInstallCore={installCore}
           onStartRuntime={startRuntime}
         />
       ) : null}
@@ -363,6 +365,7 @@ function App() {
                 onAddTrustedUser={addTrustedUser}
                 onRemoveTrustedUser={removeTrustedUser}
                 onRunLocalAction={runLocalAction}
+                onInstallCore={installCore}
                 onStartRuntime={startRuntime}
                 onConnectServer={(url) => void refresh(url)}
               />
@@ -379,6 +382,7 @@ function App() {
               customNames={customNames}
               rosterSaveError={rosterSaveError}
               onConnectServer={(url) => void refresh(url)}
+              onInstallCore={installCore}
               onStartRuntime={startRuntime}
               onRunLocalAction={runLocalAction}
               onRosterThemeChange={setRosterTheme}

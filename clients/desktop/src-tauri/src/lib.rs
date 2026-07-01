@@ -12,6 +12,7 @@ use std::os::unix::process::CommandExt;
 use reqwest::{Method, Url};
 use serde::Serialize;
 use tauri::menu::{Menu, MenuItem};
+use tauri::path::BaseDirectory;
 use tauri::tray::{TrayIcon, TrayIconBuilder};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -96,6 +97,13 @@ async fn run_alfred_action(
 }
 
 #[tauri::command]
+async fn install_alfred_core(app: AppHandle) -> Result<NativeCommandResult, String> {
+    tauri::async_runtime::spawn_blocking(move || install_alfred_core_blocking(&app))
+        .await
+        .map_err(|err| format!("Alfred core install failed to complete: {err}"))?
+}
+
+#[tauri::command]
 fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String> {
     let port = port.unwrap_or(7010);
     if !(1024..=65535).contains(&port) {
@@ -110,7 +118,13 @@ fn start_alfred_runtime(port: Option<u16>) -> Result<NativeCommandResult, String
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|err| format!("could not start Alfred local runtime: {err}"))?;
+        .map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                "Alfred core is not installed yet. Install or repair Alfred core from Setup, then start the runtime again.".to_string()
+            } else {
+                format!("could not start Alfred local runtime: {err}")
+            }
+        })?;
 
     let pid = child.id();
     Ok(NativeCommandResult {
@@ -739,6 +753,505 @@ const GITHUB_AUTH_POLL_INTERVAL_MS: u64 = 2_000;
 const GITHUB_AUTH_TIMEOUT_MS: u64 = 120_000;
 const CODE_MEMORY_FETCH_TIMEOUT_DEFAULT_S: u64 = 120;
 const CODE_MEMORY_DOCTOR_TIMEOUT_MARGIN_S: u64 = 30;
+const CORE_INSTALL_TIMEOUT_S: u64 = 1_800;
+const CORE_DEPLOY_TIMEOUT_S: u64 = 300;
+
+struct CoreInstallPlan {
+    core_dir: Option<PathBuf>,
+    install_program: String,
+    install_args: Vec<String>,
+    deploy_program: String,
+    deploy_args: Vec<String>,
+    source_label: String,
+}
+
+fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, String> {
+    let plan = core_install_plan(app)?;
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    let preview = core_install_preview(&plan);
+
+    if let Some(handoff) = desktop_privileged_bootstrap_handoff(&plan, preview.clone()) {
+        return Ok(handoff);
+    }
+
+    let install = run_core_install_step(
+        &plan.install_program,
+        &plan.install_args,
+        plan.core_dir.as_deref(),
+        Duration::from_secs(CORE_INSTALL_TIMEOUT_S),
+    )?;
+    append_step_output(&mut stdout, &mut stderr, "bootstrap", &install);
+    if !install.success {
+        return Ok(core_install_result(
+            preview,
+            stdout,
+            stderr,
+            install.status,
+            false,
+            format!("Alfred core bootstrap failed from {}.", plan.source_label),
+        ));
+    }
+
+    let deploy = run_core_install_step(
+        &plan.deploy_program,
+        &plan.deploy_args,
+        plan.core_dir.as_deref(),
+        Duration::from_secs(CORE_DEPLOY_TIMEOUT_S),
+    )?;
+    append_step_output(&mut stdout, &mut stderr, "deploy", &deploy);
+    if !deploy.success {
+        return Ok(core_install_result(
+            preview,
+            stdout,
+            stderr,
+            deploy.status,
+            false,
+            format!(
+                "Alfred core installed, but deploy failed from {}.",
+                plan.source_label
+            ),
+        ));
+    }
+
+    Ok(core_install_result(
+        preview,
+        stdout,
+        stderr,
+        deploy.status,
+        true,
+        format!(
+            "Alfred core installed and deployed from {}.",
+            plan.source_label
+        ),
+    ))
+}
+
+fn desktop_privileged_bootstrap_handoff(
+    plan: &CoreInstallPlan,
+    mut preview: Vec<String>,
+) -> Option<NativeCommandResult> {
+    let reason = current_desktop_bootstrap_handoff_reason()?;
+    let terminal_command = terminal_core_install_command(plan);
+    preview.push("--terminal-handoff".to_string());
+
+    #[cfg(target_os = "macos")]
+    {
+        match open_macos_terminal_install(&terminal_command) {
+            Ok(()) => {
+                return Some(core_install_result(
+                    preview,
+                    terminal_command,
+                    reason.to_string(),
+                    None,
+                    false,
+                    "Alfred opened Terminal to finish the privileged install. Return to Alfred Desktop after the terminal command completes.".to_string(),
+                ));
+            }
+            Err(err) => {
+                return Some(core_install_result(
+                    preview,
+                    terminal_command,
+                    format!("{reason}\nCould not open Terminal automatically: {err}"),
+                    Some(126),
+                    false,
+                    "Alfred needs a Terminal session to finish the privileged install. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
+                ));
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some(core_install_result(
+            preview,
+            terminal_command,
+            reason.to_string(),
+            Some(126),
+            false,
+            "Alfred needs a Terminal session to finish the privileged install. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
+        ))
+    }
+}
+
+fn current_desktop_bootstrap_handoff_reason() -> Option<&'static str> {
+    desktop_bootstrap_handoff_reason(
+        current_desktop_os(),
+        program_on_cli_path("brew"),
+        running_as_root(),
+        sudo_noninteractive_available(),
+    )
+}
+
+fn desktop_bootstrap_handoff_reason(
+    os: &str,
+    brew_present: bool,
+    running_as_root: bool,
+    sudo_noninteractive: bool,
+) -> Option<&'static str> {
+    match os {
+        "macos" if !brew_present => Some(
+            "Homebrew is not installed yet, and the bootstrap may need a sudo password from a real Terminal.",
+        ),
+        "linux" if !running_as_root && !sudo_noninteractive => Some(
+            "Linux package setup needs sudo, and the desktop app cannot collect a sudo password with stdin closed.",
+        ),
+        _ => None,
+    }
+}
+
+fn current_desktop_os() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "macos"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "linux"
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        "other"
+    }
+}
+
+fn running_as_root() -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::geteuid() == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
+fn sudo_noninteractive_available() -> bool {
+    command_with_cli_path("sudo")
+        .args(["-n", "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
+    let mut parts = Vec::new();
+    if let Some(core_dir) = plan.core_dir.as_deref() {
+        parts.push(format!("cd {}", shell_quote(&core_dir.to_string_lossy())));
+    }
+    parts.push("export ALFRED_NONINTERACTIVE=1 ALFRED_DESKTOP_INSTALL=1".to_string());
+    parts.push(format!(
+        "{} && {}",
+        shell_command(&plan.install_program, &plan.install_args),
+        shell_command(&plan.deploy_program, &plan.deploy_args)
+    ));
+    parts.push(
+        "printf '\\nAlfred Desktop install command finished. Return to Alfred Desktop and click Install or repair again if needed.\\n'"
+            .to_string(),
+    );
+    parts.join(" && ")
+}
+
+fn shell_command(program: &str, args: &[String]) -> String {
+    let mut command = vec![shell_quote(program)];
+    command.extend(args.iter().map(|arg| shell_quote(arg)));
+    command.join(" ")
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':' | '@'))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(target_os = "macos")]
+fn open_macos_terminal_install(command: &str) -> Result<(), String> {
+    let run_script = format!(
+        "tell application \"Terminal\" to do script {}",
+        apple_script_quote(command)
+    );
+    let status = Command::new("/usr/bin/osascript")
+        .args([
+            "-e",
+            "tell application \"Terminal\" to activate",
+            "-e",
+            &run_script,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .status()
+        .map_err(|err| format!("could not start osascript: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("osascript exited with status {status}"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apple_script_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
+    if let Some(core_dir) = bundled_core_dir(app) {
+        return Ok(CoreInstallPlan {
+            install_program: "/bin/bash".to_string(),
+            install_args: vec![
+                core_dir.join("install.sh").to_string_lossy().into_owned(),
+                "--non-interactive".to_string(),
+            ],
+            deploy_program: "/bin/bash".to_string(),
+            deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            source_label: "the bundled desktop runtime".to_string(),
+            core_dir: Some(core_dir),
+        });
+    }
+
+    if let Some(core_dir) = configured_or_dev_core_dir() {
+        return Ok(CoreInstallPlan {
+            install_program: "/bin/bash".to_string(),
+            install_args: vec![
+                core_dir.join("install.sh").to_string_lossy().into_owned(),
+                "--non-interactive".to_string(),
+            ],
+            deploy_program: "/bin/bash".to_string(),
+            deploy_args: vec![core_dir.join("deploy.sh").to_string_lossy().into_owned()],
+            source_label: core_dir.to_string_lossy().into_owned(),
+            core_dir: Some(core_dir),
+        });
+    }
+
+    if program_on_cli_path("alfred-install") && program_on_cli_path("alfred-deploy") {
+        return Ok(CoreInstallPlan {
+            install_program: "alfred-install".to_string(),
+            install_args: vec!["--non-interactive".to_string()],
+            deploy_program: "alfred-deploy".to_string(),
+            deploy_args: Vec::new(),
+            source_label: "the installed Alfred CLI package".to_string(),
+            core_dir: None,
+        });
+    }
+
+    Err(
+        "Alfred Desktop could not find bundled runtime resources or alfred-install on PATH."
+            .to_string(),
+    )
+}
+
+fn bundled_core_dir(app: &AppHandle) -> Option<PathBuf> {
+    let path = app
+        .path()
+        .resolve("alfred-core", BaseDirectory::Resource)
+        .ok()?;
+    if is_core_dir(&path) {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn configured_or_dev_core_dir() -> Option<PathBuf> {
+    if let Some(path) = config_value("ALFRED_DESKTOP_CORE_DIR") {
+        let candidate = PathBuf::from(path);
+        if is_core_dir(&candidate) {
+            return Some(candidate);
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        return None;
+    }
+
+    #[cfg(debug_assertions)]
+    {
+        return dev_source_core_dir();
+    }
+}
+
+#[cfg(debug_assertions)]
+fn dev_source_core_dir() -> Option<PathBuf> {
+    let candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()?
+        .parent()?
+        .parent()?
+        .to_path_buf();
+    if is_core_dir(&candidate) {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+fn is_core_dir(path: &Path) -> bool {
+    path.join("install.sh").is_file()
+        && path.join("deploy.sh").is_file()
+        && path.join("bin").join("alfred").is_file()
+        && path.join("lib").is_dir()
+}
+
+fn program_on_cli_path(program: &str) -> bool {
+    for dir in cli_extra_paths() {
+        if dir.join(program).is_file() {
+            return true;
+        }
+    }
+    std::env::var_os("PATH")
+        .map(|raw| std::env::split_paths(&raw).any(|dir| dir.join(program).is_file()))
+        .unwrap_or(false)
+}
+
+struct CoreInstallStepResult {
+    stdout: String,
+    stderr: String,
+    status: Option<i32>,
+    success: bool,
+}
+
+fn run_core_install_step(
+    program: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+    timeout: Duration,
+) -> Result<CoreInstallStepResult, String> {
+    let mut command = command_with_cli_path(program);
+    command.args(args).stdin(Stdio::null());
+    command.env("ALFRED_NONINTERACTIVE", "1");
+    command.env("ALFRED_DESKTOP_INSTALL", "1");
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+    #[cfg(unix)]
+    {
+        command.process_group(0);
+    }
+
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| {
+            format!(
+                "could not run {}: {err}",
+                command_preview(program, args).join(" ")
+            )
+        })?;
+    let (tx, rx) = mpsc::channel::<(bool, String)>();
+    if let Some(stdout) = child.stdout.take() {
+        spawn_pipe_reader(stdout, true, tx.clone());
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_pipe_reader(stderr, false, tx.clone());
+    }
+    drop(tx);
+
+    let started = Instant::now();
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    loop {
+        drain_pipe_chunks(&rx, &mut stdout, &mut stderr);
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                drain_pipe_chunks_until_quiet(
+                    &rx,
+                    &mut stdout,
+                    &mut stderr,
+                    Duration::from_millis(500),
+                );
+                return Ok(CoreInstallStepResult {
+                    stdout: trim_text(&stdout),
+                    stderr: trim_text(&stderr),
+                    status: status.code(),
+                    success: status.success(),
+                });
+            }
+            Ok(None) if started.elapsed() >= timeout => {
+                terminate_child_tree(child);
+                drain_pipe_chunks_until_quiet(
+                    &rx,
+                    &mut stdout,
+                    &mut stderr,
+                    Duration::from_millis(500),
+                );
+                let timeout_msg = format!("command timed out after {}", duration_label(timeout));
+                if !stderr.is_empty() {
+                    stderr.push('\n');
+                }
+                stderr.push_str(&timeout_msg);
+                return Ok(CoreInstallStepResult {
+                    stdout: trim_text(&stdout),
+                    stderr: trim_text(&stderr),
+                    status: Some(124),
+                    success: false,
+                });
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(200)),
+            Err(err) => {
+                terminate_child_tree(child);
+                return Err(format!("native install status check failed: {err}"));
+            }
+        }
+    }
+}
+
+fn append_step_output(
+    stdout: &mut String,
+    stderr: &mut String,
+    label: &str,
+    step: &CoreInstallStepResult,
+) {
+    if !step.stdout.is_empty() {
+        if !stdout.is_empty() {
+            stdout.push_str("\n\n");
+        }
+        stdout.push_str(&format!("== {label} stdout ==\n{}", step.stdout));
+    }
+    if !step.stderr.is_empty() {
+        if !stderr.is_empty() {
+            stderr.push_str("\n\n");
+        }
+        stderr.push_str(&format!("== {label} stderr ==\n{}", step.stderr));
+    }
+}
+
+fn core_install_preview(plan: &CoreInstallPlan) -> Vec<String> {
+    let mut preview = vec!["alfred-desktop".to_string(), "install-core".to_string()];
+    preview.push("--source".to_string());
+    preview.push(plan.source_label.clone());
+    preview
+}
+
+fn core_install_result(
+    command: Vec<String>,
+    stdout: String,
+    stderr: String,
+    status: Option<i32>,
+    success: bool,
+    message: String,
+) -> NativeCommandResult {
+    NativeCommandResult {
+        command,
+        stdout: trim_text(&stdout),
+        stderr: trim_text(&stderr),
+        status,
+        success,
+        pid: None,
+        message: Some(message),
+        github_auth: None,
+    }
+}
 
 fn resolve_gh_bin() -> String {
     if let Some(configured) = config_value("ALFRED_GH_BIN").or_else(|| config_value("GH_BIN")) {
@@ -952,6 +1465,30 @@ fn drain_pipe_chunks(
             stderr.push_str(&chunk);
         }
     }
+}
+
+fn drain_pipe_chunks_until_quiet(
+    rx: &mpsc::Receiver<(bool, String)>,
+    stdout: &mut String,
+    stderr: &mut String,
+    timeout: Duration,
+) {
+    let started = Instant::now();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(20)) {
+            Ok((is_stdout, chunk)) => {
+                if is_stdout {
+                    stdout.push_str(&chunk);
+                } else {
+                    stderr.push_str(&chunk);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) if started.elapsed() >= timeout => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+    drain_pipe_chunks(rx, stdout, stderr);
 }
 
 fn github_auth_capture_should_stop(pipes_disconnected: bool, stdout: &str, stderr: &str) -> bool {
@@ -1414,6 +1951,7 @@ pub fn run() {
             delete_alfred_json,
             alfred_server_token,
             run_alfred_action,
+            install_alfred_core,
             start_alfred_runtime,
             set_tray_status
         ])
@@ -1493,6 +2031,106 @@ mod tests {
             fs::create_dir_all(parent).expect("test dir should be created");
         }
         File::create(path).expect("test file should be created");
+    }
+
+    fn make_core_dir(root: &Path) {
+        touch(&root.join("install.sh"));
+        touch(&root.join("deploy.sh"));
+        touch(&root.join("bin").join("alfred"));
+        fs::create_dir_all(root.join("lib")).expect("lib dir should be created");
+    }
+
+    #[test]
+    fn core_dir_requires_scripts_cli_and_lib() {
+        let root = temp_root("core-dir");
+        make_core_dir(&root);
+
+        assert!(is_core_dir(&root));
+
+        fs::remove_file(root.join("deploy.sh")).expect("deploy script should be removed");
+        assert!(!is_core_dir(&root));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn core_install_preview_does_not_expose_shell_fragments() {
+        let plan = CoreInstallPlan {
+            core_dir: Some(PathBuf::from("/tmp/alfred core")),
+            install_program: "/bin/bash".to_string(),
+            install_args: vec!["install.sh".to_string()],
+            deploy_program: "/bin/bash".to_string(),
+            deploy_args: vec!["deploy.sh".to_string()],
+            source_label: "bundled runtime".to_string(),
+        };
+
+        assert_eq!(
+            core_install_preview(&plan),
+            vec![
+                "alfred-desktop".to_string(),
+                "install-core".to_string(),
+                "--source".to_string(),
+                "bundled runtime".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn desktop_bootstrap_handoff_detects_privileged_gui_cases() {
+        assert!(
+            desktop_bootstrap_handoff_reason("macos", false, false, false)
+                .expect("macos without brew should hand off")
+                .contains("Homebrew")
+        );
+        assert!(desktop_bootstrap_handoff_reason("macos", true, false, false).is_none());
+        assert!(
+            desktop_bootstrap_handoff_reason("linux", true, false, false)
+                .expect("linux without noninteractive sudo should hand off")
+                .contains("sudo")
+        );
+        assert!(desktop_bootstrap_handoff_reason("linux", true, true, false).is_none());
+        assert!(desktop_bootstrap_handoff_reason("linux", true, false, true).is_none());
+    }
+
+    #[test]
+    fn terminal_core_install_command_quotes_paths_and_runs_deploy() {
+        let plan = CoreInstallPlan {
+            core_dir: Some(PathBuf::from("/tmp/alfred core")),
+            install_program: "/bin/bash".to_string(),
+            install_args: vec![
+                "/tmp/alfred core/install.sh".to_string(),
+                "--non-interactive".to_string(),
+            ],
+            deploy_program: "/bin/bash".to_string(),
+            deploy_args: vec!["/tmp/alfred core/deploy.sh".to_string()],
+            source_label: "bundled runtime".to_string(),
+        };
+
+        let command = terminal_core_install_command(&plan);
+
+        assert!(command.contains("cd '/tmp/alfred core'"));
+        assert!(command.contains("ALFRED_DESKTOP_INSTALL=1"));
+        assert!(command.contains("'/tmp/alfred core/install.sh'"));
+        assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
+    }
+
+    #[test]
+    fn core_install_step_drains_verbose_output_while_running() {
+        let script = r#"for i in {1..5000}; do
+  printf 'stdout-%080d\n' "$i"
+  printf 'stderr-%080d\n' "$i" >&2
+done"#;
+        let result = run_core_install_step(
+            "/bin/bash",
+            &["-c".to_string(), script.to_string()],
+            None,
+            Duration::from_secs(5),
+        )
+        .expect("verbose install step should complete");
+
+        assert!(result.success);
+        assert_eq!(result.status, Some(0));
+        assert!(result.stdout.contains("stdout-"));
+        assert!(result.stderr.contains("stderr-"));
     }
 
     #[test]

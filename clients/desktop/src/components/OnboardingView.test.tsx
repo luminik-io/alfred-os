@@ -160,6 +160,7 @@ function renderOnboarding(props: Partial<React.ComponentProps<typeof OnboardingV
       nativeBusy={null}
       nativeResult={null}
       onConnectServer={vi.fn()}
+      onInstallCore={vi.fn()}
       onStartRuntime={vi.fn()}
       onRunLocalAction={vi.fn(async () => null)}
       onOpenConnection={vi.fn()}
@@ -222,6 +223,17 @@ describe("OnboardingView seven-step takeover", () => {
     expect(screen.getByRole("button", { name: /^first request$/i })).toBeInTheDocument();
   });
 
+  it("starts a full desktop install from the fresh-machine welcome action", async () => {
+    const onInstallCore = vi.fn();
+    renderOnboarding({ connected: false, canRun: true, onInstallCore });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("button", { name: /install alfred/i }));
+
+    expect(onInstallCore).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /continue setup/i })).toBeInTheDocument();
+  });
+
   it("shows detected existing install inventory on the welcome step", async () => {
     vi.spyOn(api, "loadSetupStatus").mockResolvedValue(
       makeStatus({
@@ -282,6 +294,7 @@ describe("OnboardingView seven-step takeover", () => {
         nativeBusy={null}
         nativeResult={null}
         onConnectServer={vi.fn()}
+        onInstallCore={vi.fn()}
         onStartRuntime={vi.fn()}
         onRunLocalAction={vi.fn(async () => null)}
         onOpenConnection={vi.fn()}
@@ -318,6 +331,7 @@ describe("OnboardingView seven-step takeover", () => {
         nativeBusy={null}
         nativeResult={null}
         onConnectServer={vi.fn()}
+        onInstallCore={vi.fn()}
         onStartRuntime={vi.fn()}
         onRunLocalAction={vi.fn(async () => null)}
         onOpenConnection={vi.fn()}
@@ -690,6 +704,7 @@ describe("OnboardingView seven-step takeover", () => {
       nativeBusy: null,
       nativeResult: null,
       onConnectServer: vi.fn(),
+      onInstallCore: vi.fn(),
       onStartRuntime: vi.fn(),
       onRunLocalAction,
       onOpenConnection: vi.fn(),
@@ -743,6 +758,7 @@ describe("OnboardingView seven-step takeover", () => {
       nativeBusy: null,
       nativeResult: null,
       onConnectServer: vi.fn(),
+      onInstallCore: vi.fn(),
       onStartRuntime: vi.fn(),
       onRunLocalAction,
       onOpenConnection: vi.fn(),

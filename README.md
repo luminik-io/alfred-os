@@ -181,9 +181,10 @@ Batman iteration.
 
 ## Quick start
 
-The signed desktop app is the recommended way to install. The Homebrew cask
-pulls in the CLI it talks to and opens straight into a guided setup wizard.
-Prefer the command line? The CLI install is right below it.
+The signed desktop app is the recommended way to install. It bundles the Alfred
+core runtime, installs or repairs the local CLI and agents on first launch, and
+opens straight into a guided setup wizard. Prefer the command line? The
+headless CLI install is right below it.
 
 Budget about 30 minutes on a dev machine that already has GitHub auth, Claude
 Code, a package manager, and Python ready. A fresh laptop, Mac mini, old Mac, or
@@ -192,35 +193,34 @@ take real time.
 
 ### Install Alfred Desktop (recommended)
 
-The desktop app is the front door. The Homebrew cask installs the CLI alongside
-it, then on first launch with no runtime running it opens the guided setup
-wizard, which can start `alfred serve` for you.
+The desktop app is the front door. On first launch it can install Alfred core,
+deploy the local CLI/agents into `~/.alfred`, start `alfred serve`, and guide
+GitHub, engine, repo, roster, Slack, and doctor checks.
 
 ```sh
 brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os
 brew install --cask alfred-os    # signed, notarized macOS app, pulls in the CLI
 ```
 
-- macOS 11+ on Apple silicon: or download the signed, notarized DMG from
+- macOS 11+ on Apple silicon: download the signed, notarized DMG from
   [`alfred.luminik.io/download/`](https://alfred.luminik.io/download/).
 - Linux: download the AppImage or `.deb` from the same page.
-- Direct downloads ship the app only, with no runtime to talk to. Install the
-  full CLI first (see "Install the CLI only" below) so an `alfred` runtime is on
-  PATH for the app and its setup wizard to drive.
+- Direct downloads include the desktop app plus bundled Alfred core resources.
+  Setup's **Install or repair** action lays down the runtime before starting it.
 - Local development: `cd clients/desktop && npm install && npm run tauri dev`.
 
-The app connects to the local runtime over `alfred serve`; it does not run
-agents by itself. Start the local API before opening the app, or let the setup
-wizard start it for you:
+The app connects to the local runtime over `alfred serve`. Start the local API
+manually if you want, or let the setup wizard install/repair core and start it
+for you:
 
 ```sh
 alfred serve --port 7010 --no-browser
 ```
 
-### Install the CLI only (advanced)
+### Install the CLI only (headless)
 
-Prefer a headless box or want to drive everything from the terminal? Install the
-CLI on its own.
+Prefer a headless box or want to drive everything from the terminal without the
+GUI? Install the CLI on its own.
 
 macOS Homebrew path:
 

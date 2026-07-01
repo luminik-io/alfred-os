@@ -510,7 +510,7 @@ if command -v aws >/dev/null 2>&1; then
   fi
 fi
 if command -v claude >/dev/null 2>&1; then
-  ok "claude on PATH (run \`claude\` once interactively to authenticate)"
+  ok "claude on PATH (run \`claude auth login\` once to authenticate)"
 fi
 
 # Homebrew formula installs this script under:
@@ -574,11 +574,11 @@ cat <<EOF
 
   2. Authenticate the CLIs that need it:
        ${C_BLUE}gh auth login${C_OFF}                     # GitHub
-       ${C_BLUE}claude${C_OFF}                            # Claude Code (first run prompts for sub auth)
+       ${C_BLUE}claude auth login${C_OFF}                 # Claude Code auth
        ${C_BLUE}aws configure --profile <agent>-cron${C_OFF}   # only if you want AWS Secrets Manager
 
      Scheduled (launchd / systemd) firings cannot read your host
-     credential store. After 'claude' is set up, mint a long-lived
+     credential store. After 'claude auth login' is set up, mint a long-lived
      OAuth token so your fleet authenticates without the Keychain:
        ${C_BLUE}claude setup-token${C_OFF}                # one-time, approve in browser
      'alfred-init' (step 5) wraps this for you with file write + chmod.

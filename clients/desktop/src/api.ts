@@ -843,6 +843,13 @@ export async function startLocalRuntime(port = 7010): Promise<NativeCommandResul
   return invoke<NativeCommandResult>("start_alfred_runtime", { port });
 }
 
+export async function installAlfredCore(): Promise<NativeCommandResult> {
+  if (!isTauri()) {
+    throw new Error("The desktop app is needed to install Alfred locally.");
+  }
+  return invoke<NativeCommandResult>("install_alfred_core");
+}
+
 export async function setTrayStatus(
   level: "ok" | "warn" | "error" | "unknown",
   summary?: string,
