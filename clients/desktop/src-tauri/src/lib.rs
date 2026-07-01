@@ -967,24 +967,51 @@ fn run_core_install_step(
                 command_preview(program, args).join(" ")
             )
         })?;
+    let (tx, rx) = mpsc::channel::<(bool, String)>();
+    if let Some(stdout) = child.stdout.take() {
+        spawn_pipe_reader(stdout, true, tx.clone());
+    }
+    if let Some(stderr) = child.stderr.take() {
+        spawn_pipe_reader(stderr, false, tx.clone());
+    }
+    drop(tx);
+
     let started = Instant::now();
+    let mut stdout = String::new();
+    let mut stderr = String::new();
     loop {
+        drain_pipe_chunks(&rx, &mut stdout, &mut stderr);
         match child.try_wait() {
             Ok(Some(status)) => {
-                let (stdout, stderr) = read_child_output(&mut child);
+                drain_pipe_chunks_until_quiet(
+                    &rx,
+                    &mut stdout,
+                    &mut stderr,
+                    Duration::from_millis(500),
+                );
                 return Ok(CoreInstallStepResult {
-                    stdout: trim_output(&stdout),
-                    stderr: trim_output(&stderr),
+                    stdout: trim_text(&stdout),
+                    stderr: trim_text(&stderr),
                     status: status.code(),
                     success: status.success(),
                 });
             }
             Ok(None) if started.elapsed() >= timeout => {
                 terminate_child_tree(child);
+                drain_pipe_chunks_until_quiet(
+                    &rx,
+                    &mut stdout,
+                    &mut stderr,
+                    Duration::from_millis(500),
+                );
                 let timeout_msg = format!("command timed out after {}", duration_label(timeout));
+                if !stderr.is_empty() {
+                    stderr.push('\n');
+                }
+                stderr.push_str(&timeout_msg);
                 return Ok(CoreInstallStepResult {
-                    stdout: String::new(),
-                    stderr: timeout_msg,
+                    stdout: trim_text(&stdout),
+                    stderr: trim_text(&stderr),
                     status: Some(124),
                     success: false,
                 });
@@ -1257,6 +1284,30 @@ fn drain_pipe_chunks(
             stderr.push_str(&chunk);
         }
     }
+}
+
+fn drain_pipe_chunks_until_quiet(
+    rx: &mpsc::Receiver<(bool, String)>,
+    stdout: &mut String,
+    stderr: &mut String,
+    timeout: Duration,
+) {
+    let started = Instant::now();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(20)) {
+            Ok((is_stdout, chunk)) => {
+                if is_stdout {
+                    stdout.push_str(&chunk);
+                } else {
+                    stderr.push_str(&chunk);
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) if started.elapsed() >= timeout => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+    }
+    drain_pipe_chunks(rx, stdout, stderr);
 }
 
 fn github_auth_capture_should_stop(pipes_disconnected: bool, stdout: &str, stderr: &str) -> bool {
@@ -1840,6 +1891,26 @@ mod tests {
                 "bundled runtime".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn core_install_step_drains_verbose_output_while_running() {
+        let script = r#"for i in {1..5000}; do
+  printf 'stdout-%080d\n' "$i"
+  printf 'stderr-%080d\n' "$i" >&2
+done"#;
+        let result = run_core_install_step(
+            "/bin/bash",
+            &["-c".to_string(), script.to_string()],
+            None,
+            Duration::from_secs(5),
+        )
+        .expect("verbose install step should complete");
+
+        assert!(result.success);
+        assert_eq!(result.status, Some(0));
+        assert!(result.stdout.contains("stdout-"));
+        assert!(result.stderr.contains("stderr-"));
     }
 
     #[test]
