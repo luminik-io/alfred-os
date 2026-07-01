@@ -169,6 +169,7 @@ def _runtime_config_env() -> dict[str, str]:
     env = dict(os.environ)
     protected = {key for key, value in os.environ.items() if value.strip()}
     protected.update(key for key in _REPO_ENV_KEYS if key in os.environ)
+    protected.update(key for key in RUNTIME_REPO_SCOPE_ENV_KEYS if key in os.environ)
     raw_home = env.get("ALFRED_HOME", "").strip()
     if raw_home:
         runtime_home = _safe_expand_path(raw_home) or Path(raw_home)
