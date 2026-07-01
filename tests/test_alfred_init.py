@@ -1627,6 +1627,79 @@ def test_seed_runtime_roster_writes_runtime_config_without_auth(monkeypatch, tmp
     assert (alfred_home / "prompts" / "batman.md").exists()
 
 
+def test_seed_runtime_roster_preserves_existing_managed_env_on_repair(
+    monkeypatch, tmp_path, init_mod
+):
+    repo_root = tmp_path / "repo"
+    bin_dir = repo_root / "bin"
+    prompts_dir = repo_root / "prompts"
+    bin_dir.mkdir(parents=True)
+    prompts_dir.mkdir()
+    for name in ["lucius.py", "drake.py", "batman.py"]:
+        (bin_dir / name).write_text("# runner\n")
+    for name in ["feature-dev.md", "planner.md", "cross-repo-coordinator.md"]:
+        (prompts_dir / name).write_text(f"{name} template\n")
+
+    alfred_home = tmp_path / "alfred"
+    alfred_home.mkdir()
+    env_file = alfred_home / ".env"
+    env_file.write_text(
+        "\n".join(
+            [
+                "UNMANAGED_VALUE=keep",
+                init_mod.ALFRED_ENV_BANNER,
+                "GH_ORG=acme",
+                "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token",
+                "ALFRED_TELEMETRY_ENABLED=1",
+                "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest",
+                "ALFRED_LUCIUS_REPOS=api",
+                "ALFRED_DRAKE_REPOS=api",
+                "AGENT_CODENAME_FEATURE_DEV=lucius",
+                "",
+            ]
+        )
+    )
+    monkeypatch.setenv("ALFRED_HOME", str(alfred_home))
+    monkeypatch.delenv("ALFRED_NONINTERACTIVE", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+    monkeypatch.setattr(
+        init_mod,
+        "have",
+        lambda name: (_ for _ in ()).throw(AssertionError(f"unexpected have({name})")),
+    )
+    monkeypatch.setattr(
+        init_mod,
+        "run",
+        lambda cmd, **_kwargs: (_ for _ in ()).throw(
+            AssertionError(f"unexpected subprocess: {cmd}")
+        ),
+    )
+
+    rc = init_mod.main(
+        [
+            "--repo-root",
+            str(repo_root),
+            "--seed-runtime-roster",
+            "--agents",
+            "all",
+        ]
+    )
+
+    assert rc == 0
+    env_text = env_file.read_text()
+    assert "UNMANAGED_VALUE=keep\n" in env_text
+    assert "GH_ORG=acme\n" in env_text
+    assert "SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/token\n" in env_text
+    assert "ALFRED_TELEMETRY_ENABLED=1\n" in env_text
+    assert "ALFRED_TELEMETRY_URL=https://telemetry.example/ingest\n" in env_text
+    assert "ALFRED_LUCIUS_REPOS=api\n" in env_text
+    assert "ALFRED_DRAKE_REPOS=api\n" in env_text
+    assert "AGENT_CODENAME_CROSS_REPO_COORDINATOR=batman\n" in env_text
+
+    conf = (alfred_home / "launchd" / "agents.conf").read_text()
+    assert "alfred.proof-telemetry\tproof-telemetry.py" in conf
+
+
 def test_starter_roles_and_agents_arg(init_mod):
     available = [
         "feature_dev",

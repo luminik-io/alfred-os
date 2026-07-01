@@ -1693,9 +1693,21 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
         state.role_to_repos.setdefault(role, [])
     step_8_schedule(state, non_interactive=True)
 
-    # Roster seeding is local-only. Leave proof telemetry unscheduled until a
-    # full interactive or configured onboarding step makes that choice.
-    state.telemetry_url = ""
+    existing_env = read_env_file(state.env_file)
+    existing_telemetry_enabled = existing_env.get("ALFRED_TELEMETRY_ENABLED", "").strip()
+    existing_telemetry_url = existing_env.get("ALFRED_TELEMETRY_URL", "").strip()
+    if existing_telemetry_url and (
+        not existing_telemetry_enabled or parse_consent(existing_telemetry_enabled)
+    ):
+        state.telemetry_enabled = True
+        state.telemetry_url = existing_telemetry_url
+        state.telemetry_token = existing_env.get("ALFRED_TELEMETRY_TOKEN", "").strip()
+    else:
+        state.telemetry_enabled = parse_consent(existing_telemetry_enabled)
+        # Fresh roster seeding is local-only. Leave proof telemetry unscheduled
+        # until a full interactive or configured onboarding step makes that
+        # choice.
+        state.telemetry_url = ""
 
     conf = render_agents_conf(state)
     target = state.alfred_home / "launchd" / "agents.conf"
@@ -1703,7 +1715,8 @@ def seed_runtime_roster(state: WizardState, *, agents_arg: str | None) -> int:
     target.write_text(conf)
     ok(f"wrote {target}")
 
-    env_kvs = env_assignments_for(state)
+    env_kvs = read_managed_env_file(state.env_file)
+    env_kvs.update(env_assignments_for(state))
     upsert_env_file(state.env_file, env_kvs)
     ok(f"updated {state.env_file} with {len(env_kvs)} fleet key(s)")
 
