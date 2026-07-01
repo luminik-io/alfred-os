@@ -233,11 +233,15 @@ class CustomAgentStore:
     def upsert(self, payload: Mapping[str, Any]) -> CustomAgent:
         now = _now()
         next_agent = _coerce_agent(payload, strict=True, timestamp=now)
-        if next_agent.codename in scheduler_config_codenames(self.state_root):
+        agents = self.load(strict=True)
+        existing_codenames = {agent.codename for agent in agents}
+        if (
+            next_agent.codename in scheduler_config_codenames(self.state_root)
+            and next_agent.codename not in existing_codenames
+        ):
             raise CustomAgentError(
                 f"{next_agent.codename!r} already exists in the scheduler config"
             )
-        agents = self.load(strict=True)
         out: list[CustomAgent] = []
         replaced = False
         for agent in agents:

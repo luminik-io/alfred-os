@@ -830,7 +830,16 @@ def register_routes(app: FastAPI) -> None:
     @app.get("/api/custom-agents", response_class=JSONResponse)
     async def api_custom_agents(request: Request) -> JSONResponse:
         store = CustomAgentStore.from_state_root(_state_root(request))
-        return JSONResponse(store.snapshot(include_prompt=False))
+        include_prompt = request.query_params.get("include_prompt", "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+        if include_prompt and (
+            not _same_origin_request(request) or not _authorized_mutation(request)
+        ):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        return JSONResponse(store.snapshot(include_prompt=include_prompt))
 
     @app.post("/api/custom-agents", response_class=JSONResponse)
     async def api_save_custom_agent(request: Request) -> JSONResponse:
@@ -3372,6 +3381,11 @@ def _repo_from_github_url(url: str) -> str:
 
 def _same_origin_post(request: Request) -> bool:
     """Reject browser form posts from another origin while preserving CLI use."""
+    return _same_origin_request(request)
+
+
+def _same_origin_request(request: Request) -> bool:
+    """Reject browser requests from another origin while preserving CLI use."""
     expected_host = request.headers.get("host", "")
     for header in ("origin", "referer"):
         raw_value = request.headers.get(header)

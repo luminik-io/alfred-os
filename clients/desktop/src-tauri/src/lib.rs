@@ -38,7 +38,12 @@ struct GithubAuthLoginDetails {
 
 #[tauri::command]
 async fn fetch_alfred_json(base_url: String, path: String) -> Result<String, String> {
-    request_alfred_json(base_url, path, Method::GET, None).await
+    request_alfred_json(base_url, path, Method::GET, None, false).await
+}
+
+#[tauri::command]
+async fn fetch_alfred_json_with_token(base_url: String, path: String) -> Result<String, String> {
+    request_alfred_json(base_url, path, Method::GET, None, true).await
 }
 
 #[tauri::command]
@@ -47,7 +52,12 @@ async fn post_alfred_json(
     path: String,
     body: Option<String>,
 ) -> Result<String, String> {
-    request_alfred_json(base_url, path, Method::POST, body).await
+    request_alfred_json(base_url, path, Method::POST, body, false).await
+}
+
+#[tauri::command]
+async fn delete_alfred_json(base_url: String, path: String) -> Result<String, String> {
+    request_alfred_json(base_url, path, Method::DELETE, None, false).await
 }
 
 /// Hand the per-launch server token to the webview so it can attach the
@@ -154,6 +164,7 @@ async fn request_alfred_json(
     path: String,
     method: Method,
     body: Option<String>,
+    force_token: bool,
 ) -> Result<String, String> {
     let mut url = validate_base_url(&base_url)?;
     let (path_part, query) = validate_api_path(&path, &method)?;
@@ -167,12 +178,16 @@ async fn request_alfred_json(
         .build()
         .map_err(|err| format!("could not prepare local request: {err}"))?;
 
+    let requires_token = force_token
+        || method == Method::POST
+        || method == Method::DELETE
+        || method == Method::PATCH;
     let mut builder = client.request(method.clone(), url);
-    if method == Method::POST {
-        // State-mutating POSTs must carry the per-launch token the server wrote
-        // under $ALFRED_HOME/state/server-token. Without it the server returns
-        // 403, so a drive-by same-origin localhost page (which cannot read the
-        // 0600 token file) can never arm work or mutate fleet state.
+    if requires_token {
+        // State-mutating requests must carry the per-launch token the server
+        // wrote under $ALFRED_HOME/state/server-token. Without it the server
+        // returns 403, so a drive-by same-origin localhost page (which cannot
+        // read the 0600 token file) can never arm work or mutate fleet state.
         match read_server_token() {
             Some(token) => {
                 builder = builder.header(SERVER_TOKEN_HEADER, token);
@@ -208,7 +223,7 @@ async fn request_alfred_json(
     Ok(body)
 }
 
-/// Header the server requires on every state-mutating POST. It carries the
+/// Header the server requires on every state-mutating request. It carries the
 /// per-launch token written under `$ALFRED_HOME/state/server-token`.
 const SERVER_TOKEN_HEADER: &str = "X-Alfred-Token";
 
@@ -580,6 +595,7 @@ fn validate_api_path<'a>(
         is_allowed_compose_draft(path_part)
             || is_allowed_compose_converse(path_part)
             || is_allowed_conversation_control(path_part)
+            || is_allowed_custom_agents_write(path_part)
             || is_allowed_roster_theme_action(path_part)
             || is_allowed_followup_action(path_part)
             || is_allowed_plan_decision(path_part)
@@ -587,6 +603,8 @@ fn validate_api_path<'a>(
             || is_allowed_slack_trust_action(path_part)
             || is_allowed_queue_action(path_part)
             || is_allowed_setup_action(path_part)
+    } else if method == Method::DELETE {
+        is_allowed_custom_agent_delete(path_part)
     } else {
         false
     };
@@ -598,7 +616,7 @@ fn validate_api_path<'a>(
 }
 
 fn is_allowed_read_path(path: &str) -> bool {
-    if path == "/api/roster-theme" {
+    if path == "/api/roster-theme" || path == "/api/custom-agents" {
         return true;
     }
     let allowed = [
@@ -649,6 +667,17 @@ fn is_allowed_setup_action(path: &str) -> bool {
 
 fn is_allowed_roster_theme_action(path: &str) -> bool {
     path == "/api/roster-theme"
+}
+
+fn is_allowed_custom_agents_write(path: &str) -> bool {
+    path == "/api/custom-agents"
+}
+
+fn is_allowed_custom_agent_delete(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/custom-agents/") else {
+        return false;
+    };
+    !rest.is_empty() && !rest.contains('/')
 }
 
 fn is_allowed_followup_action(path: &str) -> bool {
@@ -1380,7 +1409,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             fetch_alfred_json,
+            fetch_alfred_json_with_token,
             post_alfred_json,
+            delete_alfred_json,
             alfred_server_token,
             run_alfred_action,
             start_alfred_runtime,
@@ -1699,6 +1730,33 @@ mod tests {
         let err = validate_api_path("/api/setup/roster-theme", &Method::POST)
             .expect_err("wrong roster-theme route must stay blocked");
         assert!(err.contains("desktop contract"));
+    }
+
+    #[test]
+    fn custom_agent_api_paths_are_allowlisted() {
+        let (path, query) = validate_api_path("/api/custom-agents?include_prompt=1", &Method::GET)
+            .expect("custom agent list should be accepted for GET");
+        assert_eq!(path, "/api/custom-agents");
+        assert_eq!(query, Some("include_prompt=1"));
+
+        let (path, query) = validate_api_path("/api/custom-agents", &Method::POST)
+            .expect("custom agent save should be accepted for POST");
+        assert_eq!(path, "/api/custom-agents");
+        assert_eq!(query, None);
+
+        let (path, query) =
+            validate_api_path("/api/custom-agents/release-captain", &Method::DELETE)
+                .expect("custom agent delete should be accepted for DELETE");
+        assert_eq!(path, "/api/custom-agents/release-captain");
+        assert_eq!(query, None);
+
+        assert!(!is_allowed_custom_agents_write(
+            "/api/custom-agents/release-captain"
+        ));
+        assert!(!is_allowed_custom_agent_delete("/api/custom-agents"));
+        assert!(!is_allowed_custom_agent_delete(
+            "/api/custom-agents/release-captain/extra"
+        ));
     }
 
     #[test]

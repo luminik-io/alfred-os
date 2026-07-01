@@ -9,6 +9,9 @@ import type {
   ConversationControlResponse,
   ConverseRequest,
   ConverseResponse,
+  CustomAgentsResponse,
+  CustomAgentWrite,
+  DeleteCustomAgentResponse,
   DiscardPlanResponse,
   FilePlanIssueResponse,
   FiringRecord,
@@ -33,6 +36,7 @@ import type {
   SetupStatus,
   ShippedBoard,
   Snapshot,
+  SaveCustomAgentResponse,
   StatusResponse,
   TrustedSlackUsersResponse,
   UsageResponse,
@@ -397,6 +401,33 @@ export async function saveRosterTheme(
   body: RosterThemeWrite,
 ): Promise<RosterThemeResponse> {
   return writeAlfredJson<RosterThemeResponse>(baseUrl, "/api/roster-theme", body);
+}
+
+export async function loadCustomAgents(
+  baseUrl: string,
+  options: { includePrompt?: boolean } = {},
+): Promise<CustomAgentsResponse> {
+  const query = options.includePrompt ? "?include_prompt=1" : "";
+  return readAlfredJson<CustomAgentsResponse>(baseUrl, `/api/custom-agents${query}`, {
+    token: Boolean(options.includePrompt),
+  });
+}
+
+export async function saveCustomAgent(
+  baseUrl: string,
+  body: CustomAgentWrite,
+): Promise<SaveCustomAgentResponse> {
+  return writeAlfredJson<SaveCustomAgentResponse>(baseUrl, "/api/custom-agents", body);
+}
+
+export async function deleteCustomAgent(
+  baseUrl: string,
+  codename: string,
+): Promise<DeleteCustomAgentResponse> {
+  return deleteAlfredJson<DeleteCustomAgentResponse>(
+    baseUrl,
+    `/api/custom-agents/${encodeURIComponent(codename)}`,
+  );
 }
 
 // Discard a local planning draft (issue 314). The server archives the draft
@@ -826,10 +857,15 @@ export async function setTrayStatus(
   }
 }
 
-async function readAlfredJson<T>(baseUrl: string, path: string): Promise<T> {
+async function readAlfredJson<T>(
+  baseUrl: string,
+  path: string,
+  options: { token?: boolean } = {},
+): Promise<T> {
   const resolvedBaseUrl = clientBaseUrl(baseUrl);
+  const command = options.token ? "fetch_alfred_json_with_token" : "fetch_alfred_json";
   const text = isTauri()
-    ? await invokeAlfredJson("fetch_alfred_json", { baseUrl: resolvedBaseUrl, path })
+    ? await invokeAlfredJson(command, { baseUrl: resolvedBaseUrl, path })
     : await browserFetch(resolvedBaseUrl, path, "GET");
   return JSON.parse(text) as T;
 }
@@ -855,11 +891,23 @@ async function writeAlfredJson<T>(
   return JSON.parse(text) as T;
 }
 
+async function deleteAlfredJson<T>(baseUrl: string, path: string): Promise<T> {
+  const resolvedBaseUrl = clientBaseUrl(baseUrl);
+  const text = isTauri()
+    ? await invokeAlfredJson("delete_alfred_json", { baseUrl: resolvedBaseUrl, path })
+    : await browserFetch(resolvedBaseUrl, path, "DELETE");
+  return JSON.parse(text) as T;
+}
+
 // The native fetch command surfaces the same auth/transport failures the browser
 // path does, just as a Tauri invoke rejection. Humanize those too so the desktop
 // build does not leak a raw Rust error string into the connection banner.
 async function invokeAlfredJson(
-  command: "fetch_alfred_json" | "post_alfred_json",
+  command:
+    | "fetch_alfred_json"
+    | "fetch_alfred_json_with_token"
+    | "post_alfred_json"
+    | "delete_alfred_json",
   args: Record<string, unknown>,
 ): Promise<string> {
   try {
@@ -877,7 +925,7 @@ async function invokeAlfredJson(
 async function browserFetch(
   baseUrl: string,
   path: string,
-  method: "GET" | "POST",
+  method: "GET" | "POST" | "DELETE",
   body?: string,
   signal?: AbortSignal,
 ): Promise<string> {

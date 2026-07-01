@@ -12,6 +12,7 @@ import {
 } from "./components/atoms";
 import { CommandPalette, type Command } from "./components/CommandPalette";
 import { ComposeView } from "./components/ComposeView";
+import { CustomAgentsPanel } from "./components/CustomAgentsPanel";
 import { FleetControlView } from "./components/FleetControlView";
 import { AppShell } from "./components/layout/AppShell";
 import { LogsView } from "./components/LogsView";
@@ -426,6 +427,7 @@ function App() {
           />
           {fleetTab === "fleet" ? (
             <div className="space-y-4 motion-fade" key="fleet-roster">
+              <CustomAgentsPanel baseUrl={baseUrl} onChanged={() => void refresh()} />
               <FleetControlView
                 agents={snapshot?.status.agents || []}
                 schedule={snapshot?.schedule || []}

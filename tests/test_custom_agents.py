@@ -115,6 +115,63 @@ def test_custom_agent_store_rejects_scheduler_config_codename_suffix(tmp_path: P
         )
 
 
+def test_custom_agent_store_updates_deployed_manifest_owned_agent(tmp_path: Path) -> None:
+    home = tmp_path / "alfred-home"
+    conf = home / "launchd" / "agents.conf"
+    manifest = home / "state" / "custom-agents" / "custom-agents.json"
+    conf.parent.mkdir(parents=True)
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers.",
+                        "engine": "codex",
+                        "schedule": "interval:1800",
+                        "repos": [],
+                        "enabled": True,
+                        "created_at": "2026-07-01T08:00:00+00:00",
+                        "updated_at": "2026-07-01T08:00:00+00:00",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    conf.write_text(
+        "alfred.release-captain\tcustom-agent.py\tinterval:1800\tno\t"
+        "alfred.release-captain\tRelease coordinator\n",
+        encoding="utf-8",
+    )
+    store = CustomAgentStore.from_state_root(home / "state")
+
+    updated = store.upsert(
+        {
+            "codename": "release-captain",
+            "display_name": "Release Captain",
+            "role_title": "Release conductor",
+            "purpose": "Checks release readiness.",
+            "prompt": "Review release readiness, CI, and review signoff before shipping.",
+            "engine": "hybrid",
+            "schedule": "45m",
+            "repos": ["acme/api"],
+        }
+    )
+
+    assert updated.role_title == "Release conductor"
+    assert updated.engine == "hybrid"
+    assert updated.schedule == "interval:2700"
+    assert updated.created_at == "2026-07-01T08:00:00+00:00"
+    assert updated.updated_at != updated.created_at
+    assert store.load()[0] == updated
+
+
 def test_custom_agent_store_rejects_disabled_scheduler_config_codename_suffix(
     tmp_path: Path,
 ) -> None:

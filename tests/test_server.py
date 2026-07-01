@@ -3678,6 +3678,16 @@ def test_custom_agents_api_create_list_delete(tmp_path: Path) -> None:
     assert listed["agents"][0]["codename"] == "release-captain"
     assert "prompt" not in listed["agents"][0]
 
+    unauthenticated_editable = client.get("/api/custom-agents?include_prompt=1")
+    assert unauthenticated_editable.status_code == 403
+
+    editable = client.get(
+        "/api/custom-agents?include_prompt=1", headers=_auth_headers(state)
+    ).json()
+    assert editable["agents"][0]["prompt"] == (
+        "Review release readiness and summarize blockers for the operator."
+    )
+
     deleted = client.delete("/api/custom-agents/release-captain", headers=_auth_headers(state))
     assert deleted.status_code == 200
     assert deleted.json()["removed"] is True
