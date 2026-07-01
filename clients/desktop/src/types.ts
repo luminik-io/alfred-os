@@ -163,6 +163,60 @@ export type ScheduleResponse = {
   error?: string;
 };
 
+export type CustomAgentEngine = "claude" | "codex" | "hybrid";
+
+export type CustomAgentRecord = {
+  codename: string;
+  display_name: string;
+  role_title: string;
+  purpose: string;
+  prompt?: string;
+  engine: CustomAgentEngine | string;
+  schedule: string;
+  repos: string[];
+  enabled: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type CustomAgentsResponse = {
+  version: number;
+  path: string;
+  agents: CustomAgentRecord[];
+  count: number;
+  enabled_count: number;
+  disabled_count: number;
+  updated_at: string | null;
+};
+
+export type CustomAgentWrite = {
+  codename: string;
+  display_name: string;
+  role_title: string;
+  purpose: string;
+  prompt: string;
+  engine: CustomAgentEngine;
+  schedule: string;
+  repos: string[];
+  enabled: boolean;
+};
+
+export type SaveCustomAgentResponse = {
+  ok: boolean;
+  agent: CustomAgentRecord;
+  deploy_required: boolean;
+  detail: string;
+  error?: string;
+};
+
+export type DeleteCustomAgentResponse = {
+  ok: boolean;
+  removed: boolean;
+  deploy_required: boolean;
+  detail: string;
+  error?: string;
+};
+
 export type ActionsResponse = {
   status: string;
   actions: ReliabilitySignal[];
