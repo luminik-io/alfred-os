@@ -257,6 +257,39 @@ def test_render_supports_custom_agents_without_base_agents_conf(tmp_path):
     assert "Environment=AGENT_CODENAME=release-captain" in service
 
 
+def test_render_fails_when_custom_agent_manifest_is_malformed(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text('{"version": 1, "agents": [', encoding="utf-8")
+    work = tmp_path / "systemd"
+    launchd_dir = tmp_path / "launchd"
+    work.mkdir()
+    launchd_dir.mkdir()
+    shutil.copy(RENDER_SH, work / "render.sh")
+    shutil.copy(SERVICE_TEMPLATE, work / "_template.service")
+    shutil.copy(TIMER_TEMPLATE, work / "_template.timer")
+    (launchd_dir / "agents.conf").write_text(
+        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+
+    res = subprocess.run(
+        ["bash", str(work / "render.sh"), str(out_dir)],
+        capture_output=True,
+        text=True,
+        env={**_render_env(tmp_path), "ALFRED_HOME": str(runtime)},
+    )
+
+    assert res.returncode != 0
+    assert "custom agent manifest invalid" in res.stderr
+    assert "not valid JSON" in res.stderr
+
+
 def test_render_quotes_execstart_when_alfred_home_has_spaces(tmp_path):
     custom_home = tmp_path / "runtime home"
     custom_home.mkdir()

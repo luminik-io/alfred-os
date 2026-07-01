@@ -468,6 +468,66 @@ def test_deploy_linux_stays_framework_only_without_conf_or_custom_agents(tmp_pat
     assert "backup.timer" not in log
 
 
+def test_deploy_linux_fails_when_custom_agent_manifest_is_malformed(tmp_path):
+    src = tmp_path / "repo"
+    home = tmp_path / "home"
+    alfred = tmp_path / "alfred"
+    systemd_user = tmp_path / "systemd-user"
+    fakebin = tmp_path / "fakebin"
+    src.mkdir()
+    home.mkdir()
+    systemd_user.mkdir()
+    fakebin.mkdir()
+    (src / "bin").mkdir()
+    (src / "lib").mkdir()
+    (src / "launchd").mkdir()
+    (src / "systemd").mkdir()
+    shutil.copy(REPO / "deploy.sh", src / "deploy.sh")
+    shutil.copy(REPO / "systemd" / "render.sh", src / "systemd" / "render.sh")
+    shutil.copy(REPO / "systemd" / "_template.service", src / "systemd" / "_template.service")
+    shutil.copy(REPO / "systemd" / "_template.timer", src / "systemd" / "_template.timer")
+    shutil.copy(REPO / "lib" / "custom_agents.py", src / "lib" / "custom_agents.py")
+    (src / "lib" / "dummy.py").write_text("# dummy\n")
+    for pkg in ("agent_runner", "connectors", "fleet_brain", "memory", "server"):
+        (src / "lib" / pkg).mkdir()
+        (src / "lib" / pkg / "__init__.py").write_text("")
+
+    store = alfred / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text('{"version": 1, "agents": [', encoding="utf-8")
+
+    systemctl_log = tmp_path / "systemctl.log"
+    (fakebin / "uname").write_text("#!/usr/bin/env sh\necho Linux\n")
+    (fakebin / "systemctl").write_text(
+        f"#!/usr/bin/env sh\nprintf '%s\\n' \"$*\" >> {str(systemctl_log)!r}\nexit 0\n"
+    )
+    (fakebin / "uname").chmod(0o755)
+    (fakebin / "systemctl").chmod(0o755)
+
+    res = subprocess.run(
+        ["bash", str(src / "deploy.sh")],
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "ALFRED_HOME": str(alfred),
+            "WORKSPACE_ROOT": str(tmp_path / "code"),
+            "ALFRED_SYSTEMD_USER_DIR": str(systemd_user),
+            "PATH": f"{fakebin}{os.pathsep}{os.environ['PATH']}",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert res.returncode == 2
+    assert "custom agent manifest invalid" in res.stderr
+    assert "not valid JSON" in res.stderr
+    assert "framework-only deploy complete" not in res.stdout
+    if systemctl_log.exists():
+        log = systemctl_log.read_text(encoding="utf-8")
+        assert "alfred.release-captain" not in log
+
+
 def test_deploy_linux_reaps_previous_custom_only_when_last_agent_removed(tmp_path):
     src = tmp_path / "repo"
     home = tmp_path / "home"

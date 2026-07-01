@@ -320,18 +320,23 @@ EOF
 }
 
 has_enabled_custom_agents() {
-  PYTHONPATH="$RUNTIME_LIB${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ALFRED_HOME" <<'PY' >/dev/null 2>&1
+  PYTHONPATH="$RUNTIME_LIB${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ALFRED_HOME" <<'PY'
 import sys
 from pathlib import Path
 
 try:
-    from custom_agents import CustomAgentStore
-
-    rows = CustomAgentStore.from_state_root(Path(sys.argv[1]) / "state").conf_rows(
-        enabled_only=True
-    )
+    from custom_agents import CustomAgentError, CustomAgentStore
 except Exception:
-    rows = []
+    raise SystemExit(1)
+
+try:
+    rows = CustomAgentStore.from_state_root(Path(sys.argv[1]) / "state").conf_rows(
+        enabled_only=True,
+        strict=True,
+    )
+except CustomAgentError as exc:
+    print(f"[alfred-os/deploy] custom agent manifest invalid: {exc}", file=sys.stderr)
+    raise SystemExit(2)
 
 raise SystemExit(0 if rows else 1)
 PY
@@ -488,7 +493,17 @@ else
 fi
 
 if [ ! -f "$CONF" ]; then
-  if ! has_enabled_custom_agents && ! has_previous_managed_scheduler_labels; then
+  has_custom_agents=0
+  custom_agent_status=0
+  if has_enabled_custom_agents; then
+    has_custom_agents=1
+  else
+    custom_agent_status=$?
+  fi
+  if [ "$custom_agent_status" -gt 1 ]; then
+    exit "$custom_agent_status"
+  fi
+  if [ "$has_custom_agents" -eq 0 ] && ! has_previous_managed_scheduler_labels; then
     echo "[alfred-os/deploy] no launchd/agents.conf or enabled custom agents found; framework-only deploy complete"
     echo "[alfred-os/deploy] done"
     exit 0

@@ -214,6 +214,36 @@ def test_render_supports_custom_agents_without_base_agents_conf(tmp_path):
     assert plist_data["ProgramArguments"][1] == "custom-agent.py"
 
 
+def test_render_fails_when_custom_agent_manifest_is_malformed(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text('{"version": 1, "agents": [', encoding="utf-8")
+    work = tmp_path / "launchd"
+    work.mkdir()
+    shutil.copy(RENDER_SH, work / "render.sh")
+    shutil.copy(TEMPLATE, work / "_template.plist")
+    (work / "agents.conf").write_text(
+        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+
+    res = subprocess.run(
+        ["bash", str(work / "render.sh"), str(out_dir)],
+        capture_output=True,
+        text=True,
+        env={**os.environ.copy(), "ALFRED_HOME": str(runtime)},
+    )
+
+    assert res.returncode != 0
+    assert "custom agent manifest invalid" in res.stderr
+    assert "not valid JSON" in res.stderr
+
+
 def test_render_ignores_legacy_alfredrc_environment(tmp_path):
     custom_rc = tmp_path / "custom.alfredrc"
     custom_rc.write_text("ALFRED_HOME=/stale\nWORKSPACE_ROOT=/stale\n", encoding="utf-8")

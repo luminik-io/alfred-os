@@ -180,7 +180,7 @@ import sys
 from pathlib import Path
 
 try:
-    from custom_agents import CustomAgentStore
+    from custom_agents import CustomAgentError, CustomAgentStore
 except Exception:
     raise SystemExit(0)
 
@@ -203,7 +203,12 @@ for raw in base_conf.read_text(encoding="utf-8", errors="replace").splitlines():
 
 store = CustomAgentStore.from_state_root(home / "state")
 rows = []
-for row in store.conf_rows(enabled_only=True):
+try:
+    custom_rows = store.conf_rows(enabled_only=True, strict=True)
+except CustomAgentError as exc:
+    print(f"custom agent manifest invalid: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+for row in custom_rows:
     label = row.split("\t", 1)[0].strip()
     codename = label.rsplit(".", 1)[-1]
     if label in base_labels or codename in base_codenames:
@@ -215,6 +220,11 @@ if rows:
     for row in rows:
         print(row)
 PY
+  local status=$?
+  if [[ "$status" -ne 0 ]]; then
+    rm -f "$tmp"
+    return "$status"
+  fi
   printf '%s' "$tmp"
 }
 
@@ -337,7 +347,12 @@ PY
 # log_stem with a role still set turns into "log_stem=<role>, role=<empty>").
 # Pre-expand each record into a non-whitespace field separator (\x1f) so
 # read preserves empties.
-EFFECTIVE_CONF="$(effective_conf)"
+if EFFECTIVE_CONF="$(effective_conf)"; then
+  :
+else
+  status=$?
+  exit "$status"
+fi
 trap 'rm -f "$EFFECTIVE_CONF"' EXIT
 
 awk -F'\t' '

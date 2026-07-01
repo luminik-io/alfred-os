@@ -291,8 +291,12 @@ class CustomAgentStore:
             "updated_at": updated_at,
         }
 
-    def conf_rows(self, *, enabled_only: bool = True) -> list[str]:
-        return [agent.to_conf_row() for agent in self.load() if agent.enabled or not enabled_only]
+    def conf_rows(self, *, enabled_only: bool = True, strict: bool = False) -> list[str]:
+        return [
+            agent.to_conf_row()
+            for agent in self.load(strict=strict)
+            if agent.enabled or not enabled_only
+        ]
 
     def _write(self, agents: list[CustomAgent]) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
