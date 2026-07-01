@@ -231,11 +231,35 @@ describe("OnboardingView seven-step takeover", () => {
     );
     renderOnboarding();
 
+    expect(await screen.findByText(/existing setup/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /review your alfred setup/i })).toBeInTheDocument();
+    expect(screen.queryByText(/^first run$/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/found an alfred setup on this mac/i)).toBeInTheDocument();
     expect(screen.getAllByText("/tmp/alfred-home").length).toBeGreaterThan(0);
     expect(screen.getByText(/3 enabled scheduled runs in agents\.conf/i)).toBeInTheDocument();
     expect(screen.getByText(/optional\. not configured yet/i)).toBeInTheDocument();
     expect(screen.getByText(/ready to use/i)).toBeInTheDocument();
+  });
+
+  it("uses neutral shell copy while setup inventory is loading", async () => {
+    const pending = deferred<SetupStatus>();
+    vi.spyOn(api, "loadSetupStatus").mockReturnValue(pending.promise);
+    renderOnboarding();
+
+    expect(screen.getByText(/checking setup/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /checking this mac/i })).toBeInTheDocument();
+    expect(screen.queryByText(/^first run$/i)).not.toBeInTheDocument();
+
+    pending.resolve(makeStatus());
+    await waitFor(() => expect(screen.getByText(/first run/i)).toBeInTheDocument());
+  });
+
+  it("does not show checking copy when no server is connected", () => {
+    renderOnboarding({ connected: false });
+
+    expect(screen.getByText(/^first run$/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /let's connect alfred/i })).toBeInTheDocument();
+    expect(screen.queryByText(/checking setup/i)).not.toBeInTheDocument();
   });
 
   it("clears displayed welcome inventory while a new server URL is loading", async () => {
