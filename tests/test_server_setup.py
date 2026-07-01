@@ -29,6 +29,8 @@ def restore_repo_env_keys() -> None:
         *setup_mod.RUNTIME_REPO_SCOPE_ENV_KEYS,
     )
     saved = {key: os.environ.get(key) for key in keys}
+    for key in keys:
+        os.environ.pop(key, None)
     yield
     for key, value in saved.items():
         if value is None:
