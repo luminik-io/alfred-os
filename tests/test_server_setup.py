@@ -882,6 +882,41 @@ def test_persist_selected_repos_preserves_existing_runtime_agent_scopes(
     assert os.environ["ALFRED_DRAKE_REPOS"] == "Web"
 
 
+def test_persist_selected_repos_preserves_explicit_empty_runtime_agent_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_AUTOMERGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+    (home / ".env").write_text(
+        "\n".join(
+            [
+                "GH_ORG=acme",
+                "ALFRED_AUTOMERGE_REPOS=",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_AUTOMERGE_REPOS=\n" in env_text
+    assert "ALFRED_AUTOMERGE_REPOS=Web" not in env_text
+    assert "ALFRED_LUCIUS_REPOS=Web" in env_text
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
+    assert "ALFRED_AUTOMERGE_REPOS" not in os.environ
+    assert os.environ["ALFRED_LUCIUS_REPOS"] == "Web"
+
+
 def test_persist_selected_repos_rejects_owner_change_with_existing_runtime_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

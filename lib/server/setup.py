@@ -501,6 +501,9 @@ def _runtime_repo_scope_values_for_save(
     values: dict[str, str] = {}
     for key in RUNTIME_REPO_SCOPE_ENV_KEYS:
         existing = _code_memory_config(runtime_env, key)
+        if _has_config_key(runtime_env, key) and existing == "":
+            values[key] = existing
+            continue
         if existing and (
             not _runtime_scope_matches_board(existing, runtime_env)
             or _local_scope_tokens(existing) == _local_scope_tokens(runtime_value)
