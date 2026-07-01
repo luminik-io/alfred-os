@@ -43,6 +43,7 @@ from agent_runner import (
     codex_sandbox_for_agent,
     commit_trailer,
     doctor_mode,
+    doctor_requested,
     engine_preflight_bins,
     gh_pr_create,
     invoke_agent_engine,
@@ -195,7 +196,7 @@ If you cannot complete:
 def main() -> int:
     with_lock(AGENT)
 
-    if not ROTATION and not doctor_mode():
+    if not ROTATION and not doctor_requested():
         print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_BANE_REPOS)")
         return 0
 

@@ -49,6 +49,7 @@ from agent_runner import (
     codex_invoke,
     codex_sandbox_for_agent,
     doctor_mode,
+    doctor_requested,
     engine_preflight_bins,
     env_int,
     gh_json,
@@ -202,7 +203,7 @@ def build_prompt() -> str:
 def main() -> int:
     with_lock(AGENT)
 
-    if not DRAKE_REPOS and not doctor_mode():
+    if not DRAKE_REPOS and not doctor_requested():
         print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_DRAKE_REPOS)")
         return 0
 

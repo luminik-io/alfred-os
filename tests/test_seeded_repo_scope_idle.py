@@ -46,6 +46,7 @@ def test_seeded_repo_scoped_runners_idle_before_preflight(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
     monkeypatch.delenv(env_key, raising=False)
     if script == "code-map-refresh.py":
         monkeypatch.delenv("ALFRED_CODE_MAP_BACKEND_REPO", raising=False)
@@ -53,6 +54,7 @@ def test_seeded_repo_scoped_runners_idle_before_preflight(
     runner = load_runner(script, tmp_path, monkeypatch)
     monkeypatch.setattr(runner, "with_lock", lambda _agent: None)
     monkeypatch.setattr(runner, "doctor_mode", lambda: False)
+    monkeypatch.setattr(runner, "doctor_requested", lambda: False)
     if hasattr(runner, "is_dry_run"):
         monkeypatch.setattr(runner, "is_dry_run", lambda: False)
 

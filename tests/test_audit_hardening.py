@@ -583,6 +583,7 @@ def test_lucius_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch):
     lucius = load_bin_module("lucius.py", monkeypatch)
     calls: list[tuple[str, object]] = []
 
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.setattr(lucius, "with_lock", lambda agent: calls.append(("lock", agent)))
     monkeypatch.setattr(lucius, "is_dry_run", lambda: False)
     monkeypatch.setattr(
@@ -611,6 +612,7 @@ def test_nightwing_refreshes_pre_push_after_preflight_checkout_sync(monkeypatch)
     nightwing = load_bin_module("nightwing.py", monkeypatch)
     calls: list[tuple[str, object]] = []
 
+    monkeypatch.setenv("ALFRED_DOCTOR", "1")
     monkeypatch.setattr(nightwing, "with_lock", lambda agent: calls.append(("lock", agent)))
     monkeypatch.setattr(
         nightwing,

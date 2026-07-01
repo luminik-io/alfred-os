@@ -27,6 +27,7 @@ from agent_runner import (
     codex_invoke,
     codex_sandbox_for_agent,
     doctor_mode,
+    doctor_requested,
     engine_preflight_bins,
     ensure_labels,
     gh_issue_comment,
@@ -303,7 +304,7 @@ def parse_triage_payload(text: str) -> dict:
 def main() -> int:
     with_lock(AGENT)
 
-    if not TRIAGE_REPOS and not doctor_mode():
+    if not TRIAGE_REPOS and not doctor_requested():
         print(f"[{AGENT.upper()}-IDLE] no repos configured (set ALFRED_ROBIN_REPOS)")
         return 0
 

@@ -13,7 +13,7 @@ High-level groupings:
   ``CODEX_BIN``, ``GH_ORG``, ``now_iso``, ``today_str``.
 * **Config**: ``env_int``, ``optional_env_int``, ``normalize_engine``,
   ``agent_engine``, ``engine_preflight_bins``,
-  ``codex_sandbox_for_agent``, ``doctor_mode``, ``is_dry_run``,
+  ``codex_sandbox_for_agent``, ``doctor_requested``, ``doctor_mode``, ``is_dry_run``,
   ``set_dry_run``, ``dry_run_log``.
 * **Subprocess + invocations**: ``run``, ``gh_json``, ``short``,
   ``claude_invoke``, ``claude_invoke_streaming``, ``codex_invoke``,
@@ -88,6 +88,7 @@ from .config import (
     agent_engine,
     codex_sandbox_for_agent,
     doctor_mode,
+    doctor_requested,
     dry_run_log,
     engine_preflight_bins,
     env_int,

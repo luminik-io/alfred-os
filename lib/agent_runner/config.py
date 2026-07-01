@@ -243,6 +243,11 @@ def codex_sandbox_for_agent(
 # --------------------------------------------------------------------------
 
 
+def doctor_requested() -> bool:
+    """True when the operator requested ``alfred doctor`` mode."""
+    return _env_value_enabled("ALFRED_DOCTOR")
+
+
 def doctor_mode() -> bool:
     """True when running under ``alfred doctor`` (``ALFRED_DOCTOR=1``).
 
@@ -250,7 +255,7 @@ def doctor_mode() -> bool:
     ``[<AGENT>-DOCTOR-OK]`` sentinel instead of doing real work. Lets
     the operator verify a fresh setup without burning Claude turns.
     """
-    return _env_value_enabled("ALFRED_DOCTOR")
+    return doctor_requested()
 
 
 # Dry-run step counter: process-local. Reset on import; bin scripts run in

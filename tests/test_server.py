@@ -2058,6 +2058,7 @@ def test_compose_converse_defaults_single_setup_repo_as_scope(
     home = tmp_path / "home"
     monkeypatch.setenv("ALFRED_HOME", str(home))
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("GH_ORG", raising=False)
     setup_mod.persist_selected_repos(["acme/frontend"])
     capture: dict = {}
     _stub_converse_turn(
