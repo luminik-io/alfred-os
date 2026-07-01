@@ -46,7 +46,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVICE_TEMPLATE="$SCRIPT_DIR/_template.service"
 TIMER_TEMPLATE="$SCRIPT_DIR/_template.timer"
-CONF="$SCRIPT_DIR/../launchd/agents.conf"
+CONF="${ALFRED_AGENTS_CONF:-$SCRIPT_DIR/../launchd/agents.conf}"
 OUT_DIR="${1:-$SCRIPT_DIR/_generated}"
 
 if [[ ! -f "$CONF" ]]; then
@@ -199,14 +199,15 @@ mkdir -p "$OUT_DIR"
 find "$OUT_DIR" -maxdepth 1 -type f \( -name '*.service' -o -name '*.timer' \) -delete
 
 effective_conf() {
-  local tmp
+  local tmp additions status
   tmp="$(mktemp -t alfred-agents-effective-XXXXXX)"
+  additions="$(mktemp -t alfred-agents-custom-XXXXXX)"
   if [[ -f "$CONF" ]]; then
     cat "$CONF" > "$tmp"
   else
     : > "$tmp"
   fi
-  PYTHONPATH="$SCRIPT_DIR/../lib${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ALFRED_HOME" "$tmp" >> "$tmp" <<'PY'
+  PYTHONPATH="$SCRIPT_DIR/../lib${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ALFRED_HOME" "$tmp" > "$additions" <<'PY'
 import sys
 from pathlib import Path
 
@@ -251,11 +252,13 @@ if rows:
     for row in rows:
         print(row)
 PY
-  local status=$?
+  status=$?
   if [[ "$status" -ne 0 ]]; then
-    rm -f "$tmp"
+    rm -f "$additions" "$tmp"
     return "$status"
   fi
+  cat "$additions" >> "$tmp"
+  rm -f "$additions"
   printf '%s' "$tmp"
 }
 

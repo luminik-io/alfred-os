@@ -393,12 +393,12 @@ deploy_linux_systemd() {
   local systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   local runtime_systemd="$ALFRED_HOME/systemd"
   local managed_labels_file="$runtime_systemd/managed-labels.txt"
-  local out_dir="$REPO_DIR/systemd/_generated"
+  local out_dir="$runtime_systemd/_generated"
   local pause_dir="$ALFRED_HOME/state/_paused"
-  mkdir -p "$systemd_user_dir" "$runtime_systemd"
+  mkdir -p "$systemd_user_dir" "$runtime_systemd" "$out_dir"
 
   echo "[alfred-os/deploy] rendering systemd user units from $conf"
-  bash "$REPO_DIR/systemd/render.sh" "$out_dir"
+  ALFRED_AGENTS_CONF="$conf" bash "$REPO_DIR/systemd/render.sh" "$out_dir"
 
   # Build the keep-list (labels deployed this run) so the reaper can spot rows
   # that were removed from agents.conf. The reaper is intentionally scoped to
@@ -521,14 +521,15 @@ if [ ! -f "$CONF" ]; then
 fi
 
 if [ "$(uname -s)" = "Linux" ]; then
-  deploy_linux_systemd "$CONF"
+  deploy_linux_systemd "$RUNTIME_LAUNCHD/agents.conf"
   echo "[alfred-os/deploy] done"
   exit 0
 fi
 
-OUT_DIR="$REPO_DIR/launchd/_generated"
-echo "[alfred-os/deploy] rendering launchd plists from $CONF"
-bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"
+OUT_DIR="$RUNTIME_LAUNCHD/_generated"
+mkdir -p "$OUT_DIR"
+echo "[alfred-os/deploy] rendering launchd plists from $RUNTIME_LAUNCHD/agents.conf"
+ALFRED_AGENTS_CONF="$RUNTIME_LAUNCHD/agents.conf" bash "$REPO_DIR/launchd/render.sh" "$OUT_DIR"
 
 if [ "$(uname -s)" = "Darwin" ]; then
   LAUNCH_AGENTS_DIR="$HOME/Library/LaunchAgents"

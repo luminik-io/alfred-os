@@ -47,7 +47,7 @@ const installAlfredCoreMock = hooks.installAlfredCoreMock as ReturnType<
   typeof vi.fn<() => Promise<NativeCommandResult>>
 >;
 const startLocalRuntimeMock = hooks.startLocalRuntimeMock as ReturnType<
-  typeof vi.fn<() => Promise<NativeCommandResult>>
+  typeof vi.fn<(port?: number) => Promise<NativeCommandResult>>
 >;
 const setQueuePickupMock = hooks.setQueuePickupMock;
 const rememberBaseUrlMock = hooks.rememberBaseUrlMock;
@@ -70,7 +70,7 @@ vi.mock("../api", () => ({
   decidePlan: (...args: unknown[]) => hooks.decidePlanMock(...args),
   discardPlan: (...args: unknown[]) => hooks.discardPlanMock(...args),
   filePlanIssue: (...args: unknown[]) => hooks.filePlanIssueMock(...args),
-  startLocalRuntime: () => hooks.startLocalRuntimeMock(),
+  startLocalRuntime: (port?: number) => hooks.startLocalRuntimeMock(port),
   setTrayStatus: vi.fn(async () => undefined),
   supportsNativeActions: () => true,
   errorDetail: (err: unknown) => (err instanceof Error ? err.message : null),
@@ -327,7 +327,7 @@ describe("useAlfred post-action refresh ordering", () => {
     });
 
     expect(installAlfredCoreMock).toHaveBeenCalledTimes(1);
-    expect(startLocalRuntimeMock).toHaveBeenCalledTimes(1);
+    expect(startLocalRuntimeMock).toHaveBeenCalledWith(7010);
     expect(result.current.nativeResult?.message).toBe(
       "Alfred core installed and the local runtime started.",
     );
@@ -356,6 +356,7 @@ describe("useAlfred post-action refresh ordering", () => {
         await Promise.resolve();
       });
 
+      expect(startLocalRuntimeMock).toHaveBeenCalledWith(7123);
       expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
     } finally {
       vi.useRealTimers();

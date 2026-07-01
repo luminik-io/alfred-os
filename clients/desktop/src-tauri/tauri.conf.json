@@ -50,10 +50,14 @@
       "../../../bin": "alfred-core/bin",
       "../../../deploy.sh": "alfred-core/deploy.sh",
       "../../../install.sh": "alfred-core/install.sh",
-      "../../../launchd": "alfred-core/launchd",
+      "../../../launchd/_template.plist": "alfred-core/launchd/_template.plist",
+      "../../../launchd/agents.conf.example": "alfred-core/launchd/agents.conf.example",
+      "../../../launchd/render.sh": "alfred-core/launchd/render.sh",
       "../../../lib": "alfred-core/lib",
       "../../../prompts": "alfred-core/prompts",
-      "../../../systemd": "alfred-core/systemd"
+      "../../../systemd/_template.service": "alfred-core/systemd/_template.service",
+      "../../../systemd/_template.timer": "alfred-core/systemd/_template.timer",
+      "../../../systemd/render.sh": "alfred-core/systemd/render.sh"
     },
     "copyright": "Copyright (c) DataRavel Inc.",
     "publisher": "DataRavel Inc.",

@@ -84,6 +84,19 @@ function assignmentNoticeMessage(
   return `${repo}#${issueNumber} needs human scoping before an agent can pick it up.`;
 }
 
+function runtimePortFromBaseUrl(raw: string): number {
+  try {
+    const url = new URL(raw);
+    const port = Number(url.port);
+    if (Number.isInteger(port) && port >= 1024 && port <= 65535) {
+      return port;
+    }
+  } catch {
+    // Fall through to the default runtime port.
+  }
+  return 7010;
+}
+
 export function useAlfred() {
   const [baseUrl, setBaseUrl] = useState(initialBaseUrl);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -552,7 +565,7 @@ export function useAlfred() {
     setNativeErrorRaw(null);
     setNativeResult(null);
     try {
-      const result = await startLocalRuntime();
+      const result = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
       setNativeResult(result);
       window.setTimeout(() => void refresh(baseUrl), 900);
     } catch (err) {
@@ -575,7 +588,7 @@ export function useAlfred() {
         return;
       }
       setNativeBusy("runtime:start");
-      const runtime = await startLocalRuntime();
+      const runtime = await startLocalRuntime(runtimePortFromBaseUrl(baseUrl));
       setNativeResult({
         ...runtime,
         message: runtime.success
