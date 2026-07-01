@@ -208,7 +208,7 @@ class CustomAgentStore:
             except CustomAgentError as exc:
                 if strict:
                     raise CustomAgentError(
-                        "custom agent manifest contains an invalid agent"
+                        f"custom agent manifest contains an invalid agent: {exc}"
                     ) from exc
                 continue
             if agent.codename in seen:
@@ -461,6 +461,8 @@ def _coerce_agent(
             raise CustomAgentError(
                 "codename must be lowercase letters, numbers, or hyphens and start with a letter"
             )
+        if normalized in RESERVED_CODENAMES:
+            raise CustomAgentError(f"{normalized!r} is a built-in runtime codename")
         codename = normalized
     display_name = _label(payload.get("display_name") or codename.replace("-", " ").title())
     role_title = _label(payload.get("role_title") or payload.get("role") or "Custom agent")

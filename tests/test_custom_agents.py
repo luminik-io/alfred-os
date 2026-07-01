@@ -160,7 +160,7 @@ def test_custom_agent_store_rejects_dot_segment_repo_slugs(
         )
 
 
-def test_custom_agent_store_load_preserves_existing_reserved_names(tmp_path: Path) -> None:
+def test_custom_agent_store_load_drops_existing_reserved_names(tmp_path: Path) -> None:
     state = tmp_path / "state"
     manifest = state / "custom-agents" / "custom-agents.json"
     manifest.parent.mkdir(parents=True)
@@ -186,9 +186,11 @@ def test_custom_agent_store_load_preserves_existing_reserved_names(tmp_path: Pat
         encoding="utf-8",
     )
 
-    loaded = CustomAgentStore.from_state_root(state).load()
+    store = CustomAgentStore.from_state_root(state)
 
-    assert [agent.codename for agent in loaded] == ["lucius"]
+    assert store.load() == []
+    with pytest.raises(CustomAgentError, match="built-in runtime codename"):
+        store.conf_rows(strict=True)
 
 
 def test_custom_agent_store_upsert_preserves_malformed_manifest(tmp_path: Path) -> None:
