@@ -66,6 +66,7 @@ function renderSetup(baseUrl: string, props: Partial<React.ComponentProps<typeof
       onAddTrustedUser={vi.fn()}
       onRemoveTrustedUser={vi.fn()}
       onRunLocalAction={vi.fn()}
+      onInstallCore={vi.fn()}
       onStartRuntime={vi.fn()}
       onConnectServer={vi.fn()}
       {...props}

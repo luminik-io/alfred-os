@@ -62,7 +62,7 @@ class AlfredOs < Formula
       Next steps:
         1. alfred-install
         2. gh auth login                   # GitHub
-        3. claude                          # Claude Code first-run auth
+        3. claude auth login               # Claude Code auth
         4. alfred-init                     # configure agents, deploy, run doctor
 
       Framework-only smoke test:
@@ -70,7 +70,8 @@ class AlfredOs < Formula
 
       Want the desktop app too? Install the signed native client:
         brew install --cask alfred-os
-      It is optional and talks to this CLI over `alfred serve`.
+      It can also install or repair core from the app. The formula remains the
+      no-GUI/headless path and exposes the CLI wrappers on PATH.
 
       Docs:
         https://alfred.luminik.io

@@ -1,4 +1,4 @@
-import { ArrowRight, KeyRound, Server, Sparkles } from "lucide-react";
+import { ArrowRight, Download, KeyRound, Server, Sparkles } from "lucide-react";
 
 import type { SetupInstallInventory, SetupStatus } from "../../types";
 import { InstallInventoryPanel } from "./InstallInventoryPanel";
@@ -17,14 +17,33 @@ import { Button } from "../ui";
 export function WelcomeStep({
   install,
   queue,
+  connected,
+  canRun,
+  nativeBusy,
+  onInstallCore,
   onGetStarted,
   onDevShortcut,
 }: {
   install?: SetupInstallInventory | null;
   queue?: SetupStatus["queue"] | null;
+  connected: boolean;
+  canRun: boolean;
+  nativeBusy: string | null;
+  onInstallCore: () => void;
   onGetStarted: () => void;
   onDevShortcut: () => void;
 }) {
+  const needsNativeInstall = canRun && !connected;
+  const installBusy = nativeBusy === "core:install" || nativeBusy === "runtime:start";
+  const primaryLabel =
+    nativeBusy === "core:install"
+      ? "Installing"
+      : nativeBusy === "runtime:start"
+        ? "Starting"
+        : needsNativeInstall
+          ? "Install Alfred"
+          : "Get started";
+
   return (
     <div className="alfred-onboarding-welcome grid gap-7 text-center">
       <div className="mx-auto grid max-w-xl gap-4">
@@ -54,10 +73,25 @@ export function WelcomeStep({
       <InstallInventoryPanel inventory={install} queue={queue} />
 
       <div className="mx-auto flex flex-wrap items-center justify-center gap-2">
-        <Button type="button" size="lg" onClick={onGetStarted}>
-          <span>Get started</span>
-          <ArrowRight size={16} aria-hidden="true" />
+        <Button
+          type="button"
+          size="lg"
+          disabled={installBusy}
+          onClick={needsNativeInstall ? onInstallCore : onGetStarted}
+        >
+          {needsNativeInstall ? (
+            <Download size={16} aria-hidden="true" />
+          ) : (
+            <ArrowRight size={16} aria-hidden="true" />
+          )}
+          <span>{primaryLabel}</span>
         </Button>
+        {needsNativeInstall ? (
+          <Button type="button" variant="outline" size="lg" onClick={onGetStarted}>
+            <ArrowRight size={16} aria-hidden="true" />
+            <span>Continue setup</span>
+          </Button>
+        ) : null}
         <Button type="button" variant="ghost" size="lg" onClick={onDevShortcut}>
           <Server size={16} aria-hidden="true" />
           <span>I have a server running</span>

@@ -1,9 +1,9 @@
 # Install tiers
 
 Alfred has three install tiers. The desktop path is recommended for most users
-because it can guide setup, inspect an existing runtime, start the local server,
-and keep repair actions visible. The core tier still runs fully headless for
-servers and automation.
+because it can install or repair core from bundled resources, guide setup,
+inspect an existing runtime, start the local server, and keep repair actions
+visible. The core tier still runs fully headless for servers and automation.
 
 | Tier | What it is | Required? | Needs a desktop? |
 |---|---|---|---|
@@ -49,11 +49,12 @@ dashboard and Alfred Desktop expect it to be available.
 
 ## `client`: the desktop app
 
-Alfred Desktop is a Tauri app under `clients/desktop`. It is a thin local
-control surface and installer, not a second Alfred runtime. It is the default
-human onboarding path for a normal Mac/Linux setup: detect an existing
-installation, start or connect to `alfred serve`, verify GitHub and engine auth,
-select repositories, configure the full fleet, choose a roster theme, and run
+Alfred Desktop is a Tauri app under `clients/desktop`. It is the full local
+installer and control surface, not a second scheduler or hosted runtime. It is
+the default human onboarding path for a normal Mac/Linux setup: install or
+repair Alfred core from bundled resources, detect an existing installation,
+start or connect to `alfred serve`, verify GitHub and engine auth, select
+repositories, configure the full fleet, choose a roster theme, and run
 doctor/dry-run checks without asking the user to hand-edit config files. Slack
 remains the collaboration surface once the fleet is running.
 
@@ -69,7 +70,7 @@ brew install --cask alfred-os               # macOS 11+, signed and notarized
 # https://alfred.luminik.io/download/
 ```
 
-The cask installs alongside the `alfred-os` CLI formula, so `brew install alfred-os && brew install --cask alfred-os` gives you both halves. On first launch with no runtime running, the app opens into the guided setup wizard, which can start `alfred serve` for you, so a fresh user never lands on a dead end.
+The cask installs alongside the `alfred-os` CLI formula, while direct DMG/AppImage/.deb packages include bundled Alfred core resources. On first launch with no runtime running, the app opens into the guided setup wizard, where **Install or repair** bootstraps core, deploys the CLI/agents into `~/.alfred`, starts `alfred serve`, and continues the setup flow.
 
 Build from source (client development):
 
@@ -80,7 +81,7 @@ npm install
 npm run tauri dev
 ```
 
-Inbox opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Agents defaults to a cinematic roster with a list toggle. Setup can start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, inspect code-memory readiness, and dry-run an agent through a narrow allowlist. Agents controls handle pause, resume, and run-once actions through the same native boundary. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
+Inbox opens to the decision queue plus a capacity rail for Claude and Codex subscription headroom (read locally, no billing API; backed by the live `GET /api/usage` endpoint), and Agents defaults to a cinematic roster with a list toggle. Setup can install/repair core, start the local runtime, run `alfred status --json`, run auth checks, list agents, run the memory doctor, inspect code-memory readiness, and dry-run an agent through a narrow allowlist. Agents controls handle pause, resume, and run-once actions through the same native boundary. See [`DESKTOP_CLIENT.md`](DESKTOP_CLIENT.md) for the full client design and the API contract, and [`SERVE.md`](SERVE.md) for the `alfred serve` endpoints.
 
 ## `slack`: the planning surface
 
@@ -112,7 +113,7 @@ Trusted users can create and refine planning drafts. Only `ALFRED_OPERATOR_SLACK
 
 ## Picking your tiers
 
-- **Most local users:** `core` + `client`. Let Alfred Desktop guide setup, start `alfred serve`, and drive repair from the app.
+- **Most local users:** `client` installing `core`. Let Alfred Desktop install or repair core, guide setup, start `alfred serve`, and drive repair from the app.
 - **Headless Linux fleet, no UI:** `core` only. Run the CLI and scheduler; skip `serve`, the client, and Slack, or wire just an incoming webhook for one-way posts.
 - **Team that plans in Slack:** `core` + `slack`. Run the listener, keep the bridge off until you trust the flow, then arm it with an allowlist.
 - **Everything:** all three. The client and Slack surfaces both sit on top of the same `core` and never bypass its gates.

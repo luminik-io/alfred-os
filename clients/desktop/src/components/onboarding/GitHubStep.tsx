@@ -74,7 +74,7 @@ export function GitHubStep({
               <span>
                 {connected
                   ? github?.detail || "Sign in once so Alfred can read and file issues and pull requests."
-                  : "Connect to the local runtime first, then Alfred can read your GitHub sign-in."}
+                  : "Install or connect the local runtime first, then Alfred can read your GitHub sign-in."}
               </span>
             </span>
 

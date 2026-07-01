@@ -24,13 +24,14 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
       <SectionHeader
         eyebrow="PICK YOUR STARTING POINT"
         title="Choose the path that matches your machine."
-        lede="The desktop path is the default for most users because it can inspect an existing setup, start the local server, guide auth, and keep setup repairable. The terminal path is still there for headless hosts and people who want every command in front of them."
+        lede="The desktop path is the default for most users because it can install or repair core, inspect an existing setup, start the local server, guide auth, and keep setup repairable. The terminal path is still there for headless hosts and people who want every command in front of them."
       />
       <div class="paths">
         <a class="m-card m-card--hover paths__card" href="/download/">
           <span class="m-eyebrow">PATH A &middot; RECOMMENDED</span>
           <h3 class="m-h3">Use Alfred Desktop.</h3>
           <ul class="paths__list">
+            <li>Installs or repairs Alfred core from the app</li>
             <li>Detects an existing Alfred runtime and repo checkout</li>
             <li>Guides GitHub, Claude Code, Codex, and local server checks</li>
             <li>Configures the full fleet without hand-editing prompts</li>
@@ -42,7 +43,7 @@ import CodeBlock from "../components/marketing/CodeBlock.astro";
           <span class="m-eyebrow">PATH B &middot; HEADLESS</span>
           <h3 class="m-h3">Run the terminal install.</h3>
           <ul class="paths__list">
-            <li>Best for Linux servers and scripted setup</li>
+            <li>Best for Linux servers, scripted setup, and no-GUI installs</li>
             <li>Installs dependencies and writes the local runtime</li>
             <li>Can be driven by Claude Code or Codex with the assisted guide</li>
             <li>Ends with doctor, dry-run, and scheduler checks</li>

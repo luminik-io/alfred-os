@@ -7,6 +7,7 @@ import {
   decidePlan,
   discardPlan,
   errorDetail,
+  installAlfredCore,
   filePlanIssue,
   initialBaseUrl,
   loadShipped,
@@ -562,6 +563,34 @@ export function useAlfred() {
     }
   }, [refresh]);
 
+  const installCore = useCallback(async () => {
+    setNativeBusy("core:install");
+    setNativeError(null);
+    setNativeErrorRaw(null);
+    setNativeResult(null);
+    try {
+      const result = await installAlfredCore();
+      setNativeResult(result);
+      if (!result.success) {
+        return;
+      }
+      setNativeBusy("runtime:start");
+      const runtime = await startLocalRuntime();
+      setNativeResult({
+        ...runtime,
+        message: runtime.success
+          ? "Alfred core installed and the local runtime started."
+          : runtime.message || "Alfred core installed, but the local runtime did not start.",
+      });
+      window.setTimeout(() => void refresh("http://127.0.0.1:7010"), 900);
+    } catch (err) {
+      setNativeError(err instanceof Error ? err.message : String(err));
+      setNativeErrorRaw(errorDetail(err));
+    } finally {
+      setNativeBusy(null);
+    }
+  }, [refresh]);
+
   const clearNativeResult = useCallback(() => {
     setNativeResult(null);
     setNativeError(null);
@@ -687,6 +716,7 @@ export function useAlfred() {
     addTrustedUser,
     removeTrustedUser,
     runLocalAction,
+    installCore,
     startRuntime,
   };
 }

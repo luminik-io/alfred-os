@@ -1,6 +1,6 @@
 # Alfred Desktop
 
-Native Mac/Linux control center for a local Alfred install.
+Native Mac/Linux full installer and control center for a local Alfred install.
 
 Slack remains Alfred's collaboration surface. This app is for local trust and
 repair: what needs attention, which plans are waiting, which runs failed, which
@@ -12,8 +12,8 @@ supported for automation, debugging, servers, and users who prefer a terminal.
 
 ## Where this fits (layered install)
 
-Alfred installs in layers, and this client is the recommended local control
-plane:
+Alfred installs in layers, and this client is the recommended local installer
+and control plane:
 
 1. **`alfred` CLI + runtime**: the base. Schedules the fleet, runs agents, and
    owns all state under `$ALFRED_HOME` (`~/.alfred` by default). Required.
@@ -21,15 +21,15 @@ plane:
    state. The desktop client defaults to `http://127.0.0.1:7010`.
    Custom runtime URLs are used exactly as configured and can be changed
    from Setup.
-3. **Alfred Desktop (this app)**: the native control plane: a menu-bar
-   tray, five primary destinations (Inbox, Ask, Work, Agents, Setup), a
-   command palette, and a narrow set of safe local actions. It does not run
-   agents itself; it reads `alfred serve` and shells a small allowlist of
-   `alfred` CLI verbs.
+3. **Alfred Desktop (this app)**: the native full-install path and control
+   plane: bundled core resources, menu-bar tray, five primary destinations
+   (Inbox, Ask, Work, Agents, Setup), a command palette, and a narrow set of
+   safe local actions. It installs or repairs core, starts `alfred serve`, then
+   reads the local API and shells a small allowlist of `alfred` CLI verbs.
 
 You can run the fleet headless with just the CLI. For a normal Mac/Linux local
-install, install the CLI/runtime first, then use the desktop app as the friendly
-control plane while keeping the CLI visible for advanced inspection and repair.
+install, start with the desktop app; use the CLI/runtime path when you want a
+headless host, source checkout, or fully scripted setup.
 
 The app navigation is five primary destinations, each a full page with its own
 in-page tabs where it needs depth, never a long scroll and never a slide-over
@@ -63,20 +63,21 @@ most recent captured run, refreshed on the dashboard poll. **Learnings** shows
 reviewable memory candidates with promote / reject and failure-pattern harvest.
 
 **Setup** is the client-owned, onboarding-first surface and the repair path: it
-detects installed engine CLIs, connects GitHub and picks repos, starts the local
-runtime, checks the optional code-memory graph layer, shows the current full
-fleet configuration, shows whether the deployed scheduler manifest exists, runs
-common Alfred checks in-app, adds or removes local trusted Slack collaborators,
-and keeps runtime state visible for CLI follow-up. It also owns Appearance,
-including roster themes, custom agent names, and dark/light mode.
+installs or repairs Alfred core, detects installed engine CLIs, connects GitHub
+and picks repos, starts the local runtime, checks the optional code-memory graph
+layer, shows the current full fleet configuration, shows whether the deployed
+scheduler manifest exists, runs common Alfred checks in-app, adds or removes
+local trusted Slack collaborators, and keeps runtime state visible for CLI
+follow-up. It also owns Appearance, including roster themes, custom agent names,
+and dark/light mode.
 
 A command palette (Cmd+K) navigates anywhere, and the sidebar includes a fast
 dark/light mode toggle.
 
 ## Run locally
 
-The desktop app can start the local API from the Setup gear. If you prefer to
-run the runtime yourself, start it first:
+The desktop app can install/repair core and start the local API from Setup. If
+you prefer to run the runtime yourself, start it first:
 
 ```sh
 alfred serve --port 7010 --no-browser
@@ -191,10 +192,11 @@ same-origin request. Local plan and firing detail stays in native inspector
 panes; explicit Slack and GitHub links open outside the app through Tauri's
 opener plugin.
 
-State-changing controls use a narrow native allowlist. The app can start the
-local runtime, run fleet/auth/agent checks, pause, resume, run once, run safe
-agent dry-runs, run memory health checks, check Redis memory, author planning
-drafts from Ask, call local follow-up planning endpoints, and update the local
-Slack trust file. It does not expose arbitrary shell execution.
+State-changing controls use a narrow native allowlist. The app can install or
+repair Alfred core, start the local runtime, run fleet/auth/agent checks, pause,
+resume, run once, run safe agent dry-runs, run memory health checks, check Redis
+memory, author planning drafts from Ask, call local follow-up planning endpoints,
+and update the local Slack trust file. It does not expose arbitrary shell
+execution.
 Broader lock-clearing and memory-promotion actions should keep the same
 contract: explicit preview, affected path, result, and rollback hint.

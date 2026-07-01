@@ -1,14 +1,14 @@
 # Desktop app guide
 
-Alfred Desktop (`clients/desktop`) is the recommended native Mac/Linux onboarding and control surface for a local Alfred install. The core fleet and CLI still run fully standalone without it, but most local users should start here because Setup can detect existing installs, start or reconnect the runtime, verify auth, pick repos, configure the full fleet, choose roster naming, and run doctor checks in one flow.
+Alfred Desktop (`clients/desktop`) is the recommended native Mac/Linux full-install, onboarding, and control surface for a local Alfred fleet. The core fleet and CLI still run fully standalone without it, but most local users should start here because Setup can install or repair Alfred core from bundled resources, detect existing installs, start or reconnect the runtime, verify auth, pick repos, configure the full fleet, choose roster naming, and run doctor checks in one flow.
 
-Slack stays Alfred's collaboration surface. The desktop app is for local onboarding, trust, and repair: what needs attention, which plans are waiting, why a run failed, which memory candidates are ready, and which local actions are safe to run next. It is a thin local control surface, not a second runtime.
+Slack stays Alfred's collaboration surface. The desktop app is for local installation, onboarding, trust, and repair: what needs attention, which plans are waiting, why a run failed, which memory candidates are ready, and which local actions are safe to run next. It is the friendly installer and control surface for the same local runtime, not a separate scheduler or hosted service.
 
 For the JSON API it reads, see [`SERVE.md`](SERVE.md). This page is both the design rationale and the user-facing tour: why the desktop app is shaped the way it is, what each tab does, and how to build installers.
 
 ## Decision
 
-Build the native Mac/Linux app as the recommended local installer and control surface, not a second Alfred runtime.
+Build the native Mac/Linux app as the recommended full local installer and control surface, not a second Alfred scheduler or hosted runtime.
 
 Slack remains the primary collaboration UI because it already has threads, reactions, search, mobile push, and shared context. The native client makes Alfred easier to set up, trust, and repair: install detection, dependency checks, auth, repo selection, full-fleet setup, roster themes, custom display names, health, logs, approvals, memory review, safe pause/resume, dry-run launch, and recovery.
 
@@ -33,7 +33,7 @@ The app is a Tauri shell around a React UI. It opens on Inbox and keeps primary 
 | **Ask** | Plain-language planning intake backed by the same readiness engine as Slack. | Draft or refine a plan before it is converted into an issue or spec. |
 | **Work** | The Kanban board: Queued / Working now / Shipped, saved plans, Slack follow-ups, and local draft actions. | Queue an issue, hold work, mark work done, convert follow-ups, or inspect saved detail in-app. |
 | **Agents** | The agent roster, activity feed, latest-run inspector, and memory learning queue. | Pause, resume, run once, dry-run a codename, promote or reject memory candidates, and inspect firing traces. |
-| **Setup** | Guided onboarding and repair: existing install inventory, runtime, auth, repos, labels, engine checks, code memory, full-fleet setup, roster naming, Slack collaborators, and demo data. | Start or reconnect the local runtime, run curated checks in-app, configure the full fleet, choose a roster theme or custom display names, and add or remove local trusted Slack collaborators. |
+| **Setup** | Guided install, onboarding, and repair: existing install inventory, runtime, auth, repos, labels, engine checks, code memory, full-fleet setup, roster naming, Slack collaborators, and demo data. | Install or repair Alfred core, start or reconnect the local runtime, run curated checks in-app, configure the full fleet, choose a roster theme or custom display names, and add or remove local trusted Slack collaborators. |
 
 Plans carry their origin so the Slack collaboration trail stays visible while the app keeps a clean local draft inbox.
 
@@ -90,14 +90,14 @@ The app visibly separates promoted lessons from candidates and raw logs.
 
 ### Setup in detail
 
-Setup is a guided doctor and onboarding flow: discover existing Alfred files, install or repair the CLI, start or reconnect the local runtime, GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, labels, full-fleet config, roster theme or custom display names, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Failures tell you what Alfred checked, why it matters, and the smallest next step.
+Setup is a guided doctor and onboarding flow: discover existing Alfred files, install or repair bundled Alfred core, deploy the CLI/agents into `~/.alfred`, start or reconnect the local runtime, GitHub auth, Slack bot/webhook, engine CLIs, launchd or systemd timers, watched repos, labels, full-fleet config, roster theme or custom display names, memory provider, code-memory graph layer, and browser dependencies for agents that need them. Failures tell you what Alfred checked, why it matters, and the smallest next step.
 
 ## How it talks to the fleet
 
 The client reads the fleet's own state over the `alfred serve` JSON API and runs a small set of safe local actions through a native command allowlist. It opens no public port, and `$ALFRED_HOME` remains the single source of truth.
 
 - **Read path.** The UI loads `/api/status`, `/api/actions`, `/api/usage`, `/api/memory/candidates`, `/api/firings`, `/api/plans`, and `/api/slack/trusted-users` from `alfred serve`. In the desktop shell these go through a Tauri command (`fetch_alfred_json`) that only allows Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or `http://[::1]`.
-- **Local actions.** State-changing controls use a narrow native allowlist: start the local runtime, fleet status, list agents, auth status, brain doctor, code-memory doctor, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
+- **Local actions.** State-changing controls use a narrow native allowlist: install or repair Alfred core, start the local runtime, fleet status, list agents, auth status, brain doctor, code-memory doctor, Redis status, Redis sync preview, memory harvest, safe agent dry-runs, pause, resume, run once, local memory review endpoints (`promote`, `reject`), local follow-up planning endpoints (`convert-followup`, `mark-handled`), and local Slack collaborator edits. There is no arbitrary shell execution. Each action surfaces the result and command audit detail.
 - **Outside links.** Slack and GitHub links open outside the app through Tauri's opener plugin. Local Alfred plans and firings stay in the native inspector panes.
 
 When run in a plain browser (development preview), the app stays read-only: native actions are unavailable and only the JSON read path works.
@@ -108,7 +108,7 @@ The Inbox capacity rail shows real Claude and Codex subscription headroom for th
 
 ## Run it locally
 
-Start the runtime from the Setup gear, or run the same port manually:
+Install or repair core from Setup, then let Setup start the runtime. For source development, you can run the same port manually:
 
 ```sh
 alfred serve --port 7010 --no-browser

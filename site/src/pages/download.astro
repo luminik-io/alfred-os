@@ -28,13 +28,13 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
 
 <MarketingLayout
   title="Download Alfred Desktop | macOS, Linux, or install Alfred core"
-  description="Download Alfred Desktop for macOS or Linux, or install the Alfred core runtime from source. Alfred Desktop is the recommended local onboarding and control app for the CLI runtime."
+  description="Download Alfred Desktop for macOS or Linux. The native app bundles Alfred core resources and can install, repair, start, and operate the local engineering fleet."
   path="/download/"
 >
   <Hero
     eyebrow="DOWNLOAD"
     headline="Download Alfred Desktop."
-    sub="Alfred Desktop is the recommended app for operating a local Alfred runtime. It connects to `alfred serve`; install the core CLI/runtime first unless you use the Homebrew cask, which depends on the formula."
+    sub="Alfred Desktop is the recommended full local install. It bundles Alfred core resources, installs or repairs the CLI/agents on first launch, starts `alfred serve`, and then guides the fleet setup."
     headlineSize="lg"
     primaryCta={{
       label: "Download Desktop for macOS",
@@ -53,8 +53,8 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
     <div class="m-container">
       <SectionHeader
         eyebrow="PICK YOUR BUILD"
-        title="Desktop app builds, plus the core runtime."
-        lede="Alfred Desktop gives you a local control surface for plans, agents, setup checks, and logs. The core runtime runs coding agents through the CLI and scheduler."
+        title="Desktop app builds with core runtime bundled."
+        lede="Alfred Desktop gives you the guided installer plus local control surface for plans, agents, setup checks, and logs. The same open-source core runtime runs coding agents through the CLI and scheduler underneath."
       />
 
       <div class="dl-grid">
@@ -66,11 +66,11 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           <h3 class="m-h3">Alfred Desktop for macOS</h3>
           <p class="dl-card__body">
             Open the Apple silicon disk image, drag Alfred to Applications, and
-            launch it beside your local <span class="m-mono">alfred serve</span>.
-            The DMG by itself does not install the CLI/runtime, so install
-            Alfred core first if you want real agents, schedules, and local
-            state. The app bundle inside the DMG is signed, notarized, and
-            stapled.
+            launch it. Setup's <span class="m-mono">Install or repair</span>
+            action bootstraps Alfred core, deploys the local CLI/agents, starts
+            <span class="m-mono">alfred serve</span>, and continues the guided
+            fleet setup. The app bundle inside the DMG is signed, notarized,
+            and stapled.
           </p>
           <div class="dl-card__actions">
             <a
@@ -92,9 +92,9 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           </div>
           <p class="dl-card__note m-mute">
             Prefer Homebrew? <span class="m-mono">brew install --cask alfred-os</span>{" "}
-            installs the same signed app and pulls in the CLI. The DMG is the
-            normal direct-download path, and the app zip is available for
-            automation and verification.
+            installs the same signed app and pulls in the CLI formula. The DMG
+            is the normal direct-download path, and the app zip is available
+            for automation and verification.
           </p>
         </article>
 
@@ -107,8 +107,8 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           <p class="dl-card__body">
             Use the AppImage when you want a portable binary, or the
             <span class="m-mono">.deb</span> package on apt-based systems. Both
-            connect to the local Alfred core runtime over localhost; install the
-            core runtime first.
+            include bundled Alfred core resources and can install or repair the
+            local runtime before connecting over localhost.
           </p>
           <div class="dl-card__actions">
             <a
@@ -130,8 +130,10 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
           </div>
           <p class="dl-card__note m-mute">
             Run <span class="m-mono">chmod +x Alfred.AppImage</span> once before
-            launching the AppImage. Linux packages are unsigned; review the
-            release asset digests on GitHub if your environment requires it.
+            launching the AppImage. Setup uses the same Debian/Ubuntu install
+            lane as <span class="m-mono">install.sh</span>. Linux packages are
+            unsigned; review the release asset digests on GitHub if your
+            environment requires it.
           </p>
         </article>
       </div>
@@ -196,7 +198,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
       <SectionHeader
         eyebrow="WHAT YOU GET"
         title="Desktop-first setup, full fleet underneath."
-        lede="Alfred Desktop is the recommended local control surface. Under it, the open-source runtime schedules the engineering fleet, works in isolated repo copies, opens pull requests, routes review, and reports the result through the app, Slack, and GitHub."
+        lede="Alfred Desktop is the recommended local installer and control surface. Under it, the open-source runtime schedules the engineering fleet, works in isolated repo copies, opens pull requests, routes review, and reports the result through the app, Slack, and GitHub."
       />
       <div class="dl-reqs">
         <article class="m-card">
@@ -214,7 +216,7 @@ const LINUX_DEB = `${RELEASE_DOWNLOADS}/Alfred.deb`;
         <article class="m-card">
           <h3 class="m-h3">Alfred Desktop</h3>
           <ul class="dl-reqs__list">
-            <li>Guides setup, detects existing installs, and reconnects to the local runtime</li>
+            <li>Installs or repairs core, detects existing installs, and reconnects to the local runtime</li>
             <li>Shows plans, agents, logs, setup checks, memory review, and safe actions</li>
             <li>Starts or reconnects to <span class="m-mono">alfred serve</span> on localhost</li>
             <li>Keeps Slack and GitHub as the shared approval and review surfaces</li>

@@ -34,18 +34,20 @@ commands on your PATH: `alfred`, `alfred-init`, `alfred-install`,
 `alfred-deploy`, and `alfred doctor`. Use the source checkout path when you
 want `main`, framework edits, or Linux.
 
-## Recommended: Install the runtime, then Alfred Desktop
+## Recommended: Install Alfred Desktop
 
 Alfred Desktop is the native Mac/Linux starting point for most local installs.
 It watches the fleet, reviews plans, checks memory candidates, runs safe local
 repairs, detects existing configuration, and starts or reconnects to the local
-runtime. It is a control surface over the local Alfred CLI/runtime, so install
-the runtime first. The direct Desktop package does not bundle `alfred`,
-`alfred-init`, or `alfred serve` yet.
+runtime. It is the full local installer and control surface over the same
+Alfred core used by the CLI.
 
-1. Install the Alfred CLI/runtime with the source or Homebrew path above.
-2. Download the signed Mac package or Linux build from [Download](/download/).
-3. Start or reconnect the local API from Setup, or run it directly:
+1. Download the signed Mac package or Linux build from [Download](/download/).
+2. Open Alfred Desktop and choose **Install or repair** in Setup.
+3. Setup bootstraps dependencies, deploys the local CLI/agents into
+   `~/.alfred`, starts `alfred serve`, and continues through GitHub, engine,
+   repo, roster, Slack, and doctor checks.
+4. If you prefer to start the API manually later, run:
 
    ```sh
    alfred serve --port 7010 --no-browser

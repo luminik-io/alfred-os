@@ -2,9 +2,9 @@
 
 # Homebrew cask for Alfred Desktop, the signed native client.
 #
-# This is the GUI half of the dual install path. The CLI ships as the
-# `alfred-os` formula (Formula/alfred-os.rb); this cask installs the signed,
-# notarized macOS desktop app that drives the fleet over `alfred serve`.
+# This is the recommended GUI install path. The cask depends on the
+# `alfred-os` formula and the app also bundles core resources so Setup can
+# install or repair the local runtime from inside Alfred.
 #
 #   brew install alfred-os            # CLI (formula)
 #   brew install --cask alfred-os     # desktop app (this cask)
@@ -30,7 +30,8 @@ cask "alfred-os" do
   desc "Native desktop client for the Alfred local coding-agent fleet"
   homepage "https://alfred.luminik.io/"
 
-  # The desktop app needs the CLI fleet to talk to over `alfred serve`.
+  # The app can install/repair bundled core resources, and the formula gives
+  # Homebrew users the CLI wrappers on PATH immediately.
   depends_on formula: "alfred-os"
   depends_on macos: :big_sur
 
@@ -39,13 +40,18 @@ cask "alfred-os" do
   postflight do
     ohai "Alfred Desktop installed."
     puts <<~EOS
-      Start the local runtime, then open the app:
-        alfred serve --port 7010 --no-browser
+      Open the app and follow Setup:
         open -a Alfred
 
-      Or let the in-app Setup wizard start the runtime for you on first run.
-      The desktop app is a control surface only; it does not run agents by
-      itself. See https://alfred.luminik.io/concepts/desktop-client/.
+      Setup can install or repair Alfred core, deploy the local CLI/agents,
+      start alfred serve, and guide GitHub, engine, repo, roster, Slack, and
+      doctor checks.
+
+      Headless CLI path remains available:
+        alfred-install
+        alfred serve --port 7010 --no-browser
+
+      See https://alfred.luminik.io/concepts/desktop-client/.
     EOS
   end
 

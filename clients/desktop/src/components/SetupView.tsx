@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  Download,
   MemoryStick,
   Play,
   Radio,
@@ -32,6 +33,7 @@ export function SetupView({
   onAddTrustedUser,
   onRemoveTrustedUser,
   onRunLocalAction,
+  onInstallCore,
   onStartRuntime,
   onConnectServer,
 }: {
@@ -45,6 +47,7 @@ export function SetupView({
   onAddTrustedUser: (userId: string) => void;
   onRemoveTrustedUser: (userId: string) => void;
   onRunLocalAction: (request: NativeActionRequest) => void;
+  onInstallCore: () => void;
   onStartRuntime: () => void;
   onConnectServer: (url: string) => void;
 }) {
@@ -153,8 +156,8 @@ export function SetupView({
         {subtab === "connection" ? (
           <div className="setup-section">
             <p className="panel-intro">
-              Point this client at your local <code>alfred serve</code>. The client is the friendly
-              path, Slack stays the collaboration UI, and the CLI is the inspectable runtime
+              Install or repair Alfred on this Mac, then connect to the local server it starts.
+              Slack stays the collaboration UI, and the CLI remains the inspectable headless path
               underneath.
             </p>
             <InstallInventoryPanel
@@ -197,7 +200,22 @@ export function SetupView({
               <button
                 className="icon-button"
                 type="button"
-                disabled={!canRun || nativeBusy === "runtime:start"}
+                disabled={!canRun || nativeBusy === "core:install" || nativeBusy === "runtime:start"}
+                onClick={onInstallCore}
+              >
+                <Download size={16} aria-hidden="true" />
+                <span>
+                  {nativeBusy === "core:install"
+                    ? "Installing"
+                    : nativeBusy === "runtime:start"
+                      ? "Starting"
+                      : "Install or repair"}
+                </span>
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!canRun || nativeBusy === "runtime:start" || nativeBusy === "core:install"}
                 onClick={onStartRuntime}
               >
                 <Play size={16} aria-hidden="true" />

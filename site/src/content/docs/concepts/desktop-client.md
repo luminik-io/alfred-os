@@ -3,17 +3,18 @@ title: Alfred Desktop
 description: The recommended Tauri Mac/Linux app over alfred serve, with native onboarding, installers, and safe local actions.
 ---
 
-Alfred Desktop (`clients/desktop`) is a native Mac/Linux control surface for a
-local install. It is the recommended `client` tier of the
+Alfred Desktop (`clients/desktop`) is a native Mac/Linux full installer and
+control surface for a local install. It is the recommended `client` tier of the
 [layered install](/concepts/layered-install/): the core fleet and CLI still run
 fully standalone without it, but Setup gives local users the cleanest path
-through install detection, auth, repos, full-fleet setup, roster naming, and
-doctor checks.
+through core install/repair, install detection, auth, repos, full-fleet setup,
+roster naming, and doctor checks.
 
 Slack stays Alfred's collaboration surface. The desktop app is for local trust
-and repair: what needs attention, which plans are waiting, why a run failed,
+installation and repair: what needs attention, which plans are waiting, why a run failed,
 which memory candidates are ready, and which local actions are safe to run next.
-It is a thin control surface, not a second runtime.
+It is the installer/control surface for the same local runtime, not a second
+scheduler or hosted service.
 
 Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/luminik-io/alfred-os/blob/main/docs/DESKTOP_CLIENT.md).
 
@@ -23,7 +24,7 @@ Design note and run commands: [`docs/DESKTOP_CLIENT.md`](https://github.com/lumi
 flowchart TB
     subgraph client["Alfred Desktop (clients/desktop, Tauri)"]
         ui["React UI tabs:<br/>Inbox / Ask / Work / Agents / Setup"]
-        native["native command allowlist:<br/>start runtime, status, agents,<br/>auth, memory, redis,<br/>safe dry-run"]
+        native["native command allowlist:<br/>install/repair core, start runtime,<br/>status, agents, auth, memory,<br/>redis, safe dry-run"]
     end
 
     subgraph core["core fleet (headless)"]
@@ -53,7 +54,7 @@ flowchart TB
 | Ask | Plain-language planning intake backed by the same readiness engine as Slack. |
 | Work | Kanban board, saved plans, Slack follow-ups, local draft actions, and issue queue controls. |
 | Agents | Roster, activity feed, latest-run inspector, memory learning queue, and safe per-agent controls. |
-| Setup | Detect or install the local runtime, configure the full fleet, choose roster naming, and run fleet/auth/agent/memory/Slack checks in-app. |
+| Setup | Install or repair the local runtime, configure the full fleet, choose roster naming, and run fleet/auth/agent/memory/Slack checks in-app. |
 
 ## Boundary
 
@@ -66,8 +67,8 @@ The boundary is enforced in the Tauri layer. The fetch command only allows
 Alfred JSON API paths on `http://localhost`, `http://127.0.0.1`, or
 `http://[::1]`. Local plan/run details stay in native inspector panes; explicit
 Slack and GitHub links open outside the app.
-State-changing controls use a narrow native allowlist (start runtime, run
-checks, safe dry-runs, pause, resume, run once, and local follow-up planning)
+State-changing controls use a narrow native allowlist (install/repair core,
+start runtime, run checks, safe dry-runs, pause, resume, run once, and local follow-up planning)
 and surface command audit detail with the result. There is no arbitrary shell
 execution. In a plain browser preview, native actions are unavailable.
 
@@ -80,7 +81,8 @@ npm install
 npm run tauri dev
 ```
 
-The app uses `7010` because macOS can reserve `7000` for Control Center.
+Setup can install or repair core and start this for you. The app uses `7010`
+because macOS can reserve `7000` for Control Center.
 Legacy saved `7000` URLs are treated as stale local configuration and rewritten
 to 7010. Setup lets you enter a custom localhost URL when needed.
 
