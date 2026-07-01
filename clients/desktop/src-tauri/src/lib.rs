@@ -756,6 +756,7 @@ const CODE_MEMORY_DOCTOR_TIMEOUT_MARGIN_S: u64 = 30;
 const CORE_INSTALL_TIMEOUT_S: u64 = 1_800;
 const CORE_SEED_TIMEOUT_S: u64 = 120;
 const CORE_DEPLOY_TIMEOUT_S: u64 = 300;
+const REQUIRED_CLI_INSTALL_TOOLS: [&str; 3] = ["alfred-install", "alfred-init", "alfred-deploy"];
 
 struct CoreInstallPlan {
     core_dir: Option<PathBuf>,
@@ -1080,9 +1081,9 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
         });
     }
 
-    if program_on_cli_path("alfred-install")
-        && program_on_cli_path("alfred-init")
-        && program_on_cli_path("alfred-deploy")
+    if REQUIRED_CLI_INSTALL_TOOLS
+        .iter()
+        .all(|program| program_on_cli_path(program))
     {
         return Ok(CoreInstallPlan {
             install_program: "alfred-install".to_string(),
@@ -1100,9 +1101,15 @@ fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
         });
     }
 
-    Err(
-        "Alfred Desktop could not find bundled runtime resources or alfred-install on PATH."
-            .to_string(),
+    Err(core_install_plan_missing_message())
+}
+
+fn core_install_plan_missing_message() -> String {
+    format!(
+        "Alfred Desktop could not find bundled runtime resources, a valid \
+         ALFRED_DESKTOP_CORE_DIR, or all required Alfred CLI commands on PATH: {}. \
+         Upgrade or reinstall the alfred-os CLI package, then run Install or repair again.",
+        REQUIRED_CLI_INSTALL_TOOLS.join(", ")
     )
 }
 
@@ -2137,6 +2144,16 @@ mod tests {
                 "bundled runtime".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn core_install_plan_missing_message_names_seed_cli() {
+        let message = core_install_plan_missing_message();
+
+        assert!(message.contains("alfred-install"));
+        assert!(message.contains("alfred-init"));
+        assert!(message.contains("alfred-deploy"));
+        assert!(message.contains("Upgrade or reinstall"));
     }
 
     #[test]
