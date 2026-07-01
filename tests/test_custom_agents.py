@@ -63,6 +63,35 @@ def test_custom_agent_store_rejects_builtin_and_bad_schedule(tmp_path: Path) -> 
         store.upsert({"codename": "new-builder", "schedule": "tomorrow", **base})
 
 
+@pytest.mark.parametrize(
+    "codename",
+    [
+        "connector-sync",
+        "fleet-ingest",
+        "fleet-github-poll",
+        "custom-agent",
+        "alfred-slack-thread-sync",
+        "slack-thread-sync",
+    ],
+)
+def test_custom_agent_store_rejects_shipped_runner_codenames(
+    tmp_path: Path,
+    codename: str,
+) -> None:
+    store = CustomAgentStore.from_state_root(tmp_path / "state")
+
+    with pytest.raises(CustomAgentError, match="built-in runtime codename"):
+        store.upsert(
+            {
+                "codename": codename,
+                "display_name": "Builder",
+                "role_title": "Builder",
+                "purpose": "Builds things.",
+                "prompt": "Inspect the repository and summarize the next concrete engineering action.",
+            }
+        )
+
+
 def test_custom_agent_store_rejects_scheduler_config_codename_suffix(tmp_path: Path) -> None:
     home = tmp_path / "alfred-home"
     conf = home / "launchd" / "agents.conf"
@@ -160,6 +189,43 @@ def test_custom_agent_store_load_preserves_existing_reserved_names(tmp_path: Pat
     loaded = CustomAgentStore.from_state_root(state).load()
 
     assert [agent.codename for agent in loaded] == ["lucius"]
+
+
+def test_custom_agent_store_upsert_preserves_malformed_manifest(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    manifest = state / "custom-agents" / "custom-agents.json"
+    manifest.parent.mkdir(parents=True)
+    original = '{"version": 1, "agents": ['
+    manifest.write_text(original, encoding="utf-8")
+    store = CustomAgentStore.from_state_root(state)
+
+    assert store.load() == []
+    with pytest.raises(CustomAgentError, match="not valid JSON"):
+        store.upsert(
+            {
+                "codename": "release-captain",
+                "display_name": "Release Captain",
+                "role_title": "Release coordinator",
+                "purpose": "Checks release readiness.",
+                "prompt": "Review release readiness and summarize blockers before the operator ships.",
+            }
+        )
+
+    assert manifest.read_text(encoding="utf-8") == original
+
+
+def test_custom_agent_store_delete_preserves_malformed_manifest(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    manifest = state / "custom-agents" / "custom-agents.json"
+    manifest.parent.mkdir(parents=True)
+    original = '{"version": 1, "agents": ['
+    manifest.write_text(original, encoding="utf-8")
+    store = CustomAgentStore.from_state_root(state)
+
+    with pytest.raises(CustomAgentError, match="not valid JSON"):
+        store.delete("release-captain")
+
+    assert manifest.read_text(encoding="utf-8") == original
 
 
 def test_custom_agent_schedule_shortcuts_match_scheduler_grammar() -> None:

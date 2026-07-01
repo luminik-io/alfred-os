@@ -75,10 +75,13 @@ RESERVED_CODENAMES = frozenset(
         "bane",
         "batman",
         "code-map-refresh",
+        "connector-sync",
         "curator",
         "damian",
         "drake",
+        "fleet-github-poll",
         "fleet-doctor",
+        "fleet-ingest",
         "fleet-recap",
         "fleet-recap-evening",
         "fleet-recap-morning",
@@ -91,9 +94,12 @@ RESERVED_CODENAMES = frozenset(
         "proof-telemetry",
         "rasalghul",
         "robin",
+        "custom-agent",
         "shipped-summary",
         "shipped-summary-daily",
         "shipped-summary-weekly",
+        "alfred-slack-thread-sync",
+        "slack-thread-sync",
     }
 )
 
@@ -168,28 +174,48 @@ class CustomAgentStore:
     def from_state_root(cls, state_root: Path) -> CustomAgentStore:
         return cls(state_root)
 
-    def load(self) -> list[CustomAgent]:
+    def load(self, *, strict: bool = False) -> list[CustomAgent]:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return []
-        except (OSError, json.JSONDecodeError):
+        except OSError as exc:
+            if strict:
+                raise CustomAgentError("could not read custom agent manifest") from exc
+            return []
+        except json.JSONDecodeError as exc:
+            if strict:
+                raise CustomAgentError("custom agent manifest is not valid JSON") from exc
             return []
         if not isinstance(payload, Mapping):
+            if strict:
+                raise CustomAgentError("custom agent manifest must be a JSON object")
             return []
         raw_agents = payload.get("agents")
         if not isinstance(raw_agents, list):
+            if strict:
+                raise CustomAgentError("custom agent manifest agents must be a list")
             return []
         agents: list[CustomAgent] = []
         seen: set[str] = set()
         for raw in raw_agents:
             if not isinstance(raw, Mapping):
+                if strict:
+                    raise CustomAgentError("custom agent manifest entries must be objects")
                 continue
             try:
                 agent = _coerce_agent(raw, strict=False)
-            except CustomAgentError:
+            except CustomAgentError as exc:
+                if strict:
+                    raise CustomAgentError(
+                        "custom agent manifest contains an invalid agent"
+                    ) from exc
                 continue
             if agent.codename in seen:
+                if strict:
+                    raise CustomAgentError(
+                        f"custom agent manifest contains duplicate codename {agent.codename!r}"
+                    )
                 continue
             seen.add(agent.codename)
             agents.append(agent)
@@ -211,7 +237,7 @@ class CustomAgentStore:
             raise CustomAgentError(
                 f"{next_agent.codename!r} already exists in the scheduler config"
             )
-        agents = self.load()
+        agents = self.load(strict=True)
         out: list[CustomAgent] = []
         replaced = False
         for agent in agents:
@@ -243,7 +269,7 @@ class CustomAgentStore:
         target = normalize_codename(codename)
         if target is None:
             raise CustomAgentError("invalid codename")
-        agents = self.load()
+        agents = self.load(strict=True)
         out = [agent for agent in agents if agent.codename != target]
         removed = len(out) != len(agents)
         if removed:
