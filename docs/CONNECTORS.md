@@ -142,7 +142,7 @@ export SENTRY_AUTH_TOKEN=sntrys_xxxxxxxxxxxxxxxxxxxxxxxx
 Add to `launchd/agents.conf` (macOS) or the systemd equivalent:
 
 ```
-my.fleet.connector-sync	connector-sync.py	interval:900	no		Input connector poll
+alfred.connector-sync	connector-sync.py	interval:900	no		Input connector poll
 ```
 
 15-minute cadence is a reasonable starting default.

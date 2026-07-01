@@ -7,8 +7,8 @@ Alfred Desktop (`clients/desktop`) is a native Mac/Linux full installer and
 control surface for a local install. It is the recommended `client` tier of the
 [layered install](/concepts/layered-install/): the core fleet and CLI still run
 fully standalone without it, but Setup gives local users the cleanest path
-through core install/repair, install detection, auth, repos, full-fleet setup,
-roster naming, and doctor checks.
+through core install/repair, install detection, auth, repos, full-fleet roster
+seed, roster naming, and repair/status checks.
 
 Slack stays Alfred's collaboration surface. The desktop app is for local trust
 installation and repair: what needs attention, which plans are waiting, why a run failed,
@@ -54,7 +54,7 @@ flowchart TB
 | Ask | Plain-language planning intake backed by the same readiness engine as Slack. |
 | Work | Kanban board, saved plans, Slack follow-ups, local draft actions, and issue queue controls. |
 | Agents | Roster, activity feed, latest-run inspector, memory learning queue, and safe per-agent controls. |
-| Setup | Install or repair the local runtime, configure the full fleet, choose roster naming, and run fleet/auth/agent/memory/Slack checks in-app. |
+| Setup | Install or repair the local runtime, seed and deploy the full built-in fleet, choose repo scope and roster naming, and run fleet/auth/agent/memory/Slack checks in-app. |
 
 ## Boundary
 

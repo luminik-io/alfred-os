@@ -10,9 +10,9 @@ post-PR follow-up belong in Slack threads.
 
 The Tauri client lives under `clients/desktop` and wraps the local Alfred
 runtime: Inbox, Ask, Work, Agents, Setup, install detection, dependency checks,
-full-fleet setup, roster themes, custom display names, health signals, plans, firings,
-memory review, safe next actions, native core install/repair, runtime launch,
-and local follow-up handling.
+full-fleet roster seed, roster themes, custom display names, health signals,
+plans, firings, memory review, safe next actions, native core install/repair,
+runtime launch, and local follow-up handling.
 
 The client is for trust and operations:
 
@@ -72,7 +72,7 @@ The core tabs are:
 | Ask | Draft or refine work, open Slack thread context, inspect affected repos and PR chain, convert follow-ups into planning drafts, or mark them handled. |
 | Work | Manage queued work, active work, shipped cards, saved plans, and issue queue controls. |
 | Agents | Inspect roster state, activity, latest runs, memory candidates, safe dry-runs, pause, resume, and run-once actions. |
-| Setup | Install or repair the local runtime, configure the full fleet, choose roster naming, and run fleet/auth/agent/memory/capability/Slack checks in the command console. |
+| Setup | Install or repair the local runtime, seed and deploy the full built-in fleet, choose repo scope and roster naming, and run fleet/auth/agent/memory/capability/Slack checks in the command console. |
 
 Plans should show whether work started in the local form, a Slack DM, an app
 mention, or a registered thread. That keeps Slack as the collaboration trail

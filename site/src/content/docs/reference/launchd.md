@@ -22,7 +22,7 @@ flowchart LR
     conf["launchd/agents.conf<br/><i>one TSV row per agent</i>"]
     tmpl["launchd/_template.plist<br/><i>__TOKEN__ placeholders</i>"]
     render["render.sh<br/><i>token substitution</i>"]
-    plists["~/Library/LaunchAgents/<br/>my.fleet.{codename}.plist"]
+    plists["~/Library/LaunchAgents/<br/>alfred.{codename}.plist"]
     lc["launchctl bootstrap"]
     sched["launchd timer<br/><i>fires bin/{role}.py on schedule</i>"]
 
@@ -51,10 +51,10 @@ Each non-comment, non-blank line is a record with up to six tab-separated fields
 Example:
 
 ```
-my.fleet.lucius	lucius.py	interval:1200	yes			Feature developer
-my.fleet.bane	bane.py	cron:2:00	yes			Test coverage
-my.fleet.gordon	gordon.py	cron:8:00	no			Deploy health
-my.fleet.agent-cleanup	agent-cleanup.py	cron:3:00	no	my.fleet.agent-cleanup	Daily cleanup
+alfred.lucius	lucius.py	interval:1200	yes			Feature developer
+alfred.bane	bane.py	cron:2:00	yes			Test coverage
+alfred.gordon	gordon.py	cron:8:00	no			Deploy health
+alfred.agent-cleanup	agent-cleanup.py	cron:3:00	no	alfred.agent-cleanup	Daily cleanup
 ```
 
 Tabs are required between fields. Trailing empty fields can be omitted.
@@ -97,19 +97,19 @@ Pause persists across `deploy.sh` invocations via marker files at `$ALFRED_HOME/
 
 ```sh
 # Manual pause:
-launchctl bootout "gui/$(id -u)/my.fleet.lucius"
+launchctl bootout "gui/$(id -u)/alfred.lucius"
 mkdir -p $ALFRED_HOME/state/_paused
 date -u +"%Y-%m-%dT%H:%M:%SZ" > $ALFRED_HOME/state/_paused/lucius
 
 # Resume:
 rm $ALFRED_HOME/state/_paused/lucius
 launchctl bootstrap "gui/$(id -u)" \
-  ~/Library/LaunchAgents/my.fleet.lucius.plist
+  ~/Library/LaunchAgents/alfred.lucius.plist
 ```
 
 ## stdout / stderr
 
-Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/my.fleet.lucius.std{out,err}` to watch a firing live.
+Each plist writes to `/tmp/<log_stem>.stdout` and `/tmp/<log_stem>.stderr`. Use `tail -f /tmp/alfred.lucius.std{out,err}` to watch a firing live.
 
 `/tmp/` is wiped on macOS reboot. Durable runtime state lives under
 `$ALFRED_HOME/state/`; Codex artifacts are written under

@@ -111,7 +111,7 @@ This is the one piece `deploy.sh` does **not** do for you. It needs `sudo`, so A
 
 ```sh
 alfred claude secondary
-systemctl --user restart my.fleet.lucius.timer
+systemctl --user restart alfred.lucius.timer
 ```
 
 If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in `$ALFRED_HOME/.env`; it flows into rendered units through `agent-launch`.

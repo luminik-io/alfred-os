@@ -90,8 +90,8 @@ Raw `systemctl` still works if you prefer it:
 
 ```sh
 systemctl --user list-timers
-systemctl --user status my.fleet.lucius.timer
-journalctl --user -u my.fleet.lucius -n 50
+systemctl --user status alfred.lucius.timer
+journalctl --user -u alfred.lucius -n 50
 ```
 
 Note that agents also write to `/tmp/<log_stem>.{stdout,stderr}` (the
@@ -170,7 +170,7 @@ switch:
 
 ```sh
 alfred claude secondary
-systemctl --user restart my.fleet.lucius.timer
+systemctl --user restart alfred.lucius.timer
 ```
 
 If you prefer static routing, set `CLAUDE_CONFIG_DIR` directly in

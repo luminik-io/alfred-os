@@ -117,8 +117,8 @@ The utility agents (`automerge`, `agent-cleanup`, `code-map-refresh`, `agent-mor
 ```mermaid
 flowchart TB
     init["alfred-init or Desktop setup<br/><i>install full fleet</i>"]
-    conf["agents.conf<br/><code>my.fleet.lucius  lucius.py  interval:1200</code>"]
-    unit["my.fleet.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
+    conf["agents.conf<br/><code>alfred.lucius  lucius.py  interval:1200</code>"]
+    unit["alfred.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
     theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>display roster</i>"]
     output["Desktop / Slack: 'Ironhide shipped: ...'<br/>PR title and worktree keep <code>lucius</code>"]

@@ -166,14 +166,15 @@ or Codex implements -> a PR opens with `agent:authored` -> Ra's al Ghul reviews
 -> Nightwing fixes P0/P1 comments -> Bane adds tests -> Automerge lands the small
 safe PRs you allow -> Slack reports what changed.
 
-Multi-repo flow is public OSS code, not an internal-only path. A fresh
-full-fleet setup includes Batman, asks for the explicit `BATMAN_PARENT_REPO`
-planning queue, and keeps Batman idle until that repo is configured: one
-`agent:large-feature` parent issue can become an approved rollout, with scoped
-child `agent:implement` issues filed across repos after the approval gate you
-choose. From there, Lucius implements, Ra's al Ghul reviews, Bane adds focused
-tests, Nightwing handles high-priority review fixes, and your merge policy or a
-human lands each PR. When Batman files every child successfully, it removes the
+Multi-repo flow is public OSS code, not an internal-only path. The default
+full fleet includes Batman as the cross-repo architect. Batman owns
+`agent:large-feature`: one parent issue in `BATMAN_PARENT_REPO` can become an
+approved rollout, with scoped child `agent:implement` issues filed across repos
+after the approval gate you choose. Fresh Desktop installs seed Batman with the
+rest of the fleet, but Batman stays idle until you configure the parent repo.
+From there, Lucius implements, Ra's al Ghul reviews, Bane adds focused tests,
+Nightwing handles high-priority review fixes, and your merge policy or a human
+lands each PR. When Batman files every child successfully, it removes the
 parent's `agent:large-feature` queue label, adds `batman:fanout-complete`, and
 closes the parent so the same bundle cannot fan out twice without counting the
 planning parent as shipped work. Per-child PR completion rollups remain the next
@@ -193,9 +194,12 @@ take real time.
 
 ### Install Alfred Desktop (recommended)
 
-The desktop app is the front door. On first launch it can install Alfred core,
-deploy the local CLI/agents into `~/.alfred`, start `alfred serve`, and guide
-GitHub, engine, repo, roster, Slack, and doctor checks.
+The desktop app is the front door. On first launch its **Install or repair**
+action installs Alfred core, seeds the full built-in fleet, deploys the local
+CLI/agents into `~/.alfred`, and starts `alfred serve`. The guided setup then
+walks through GitHub, engine, repo scope, roster naming, and optional Slack.
+Advanced checks such as doctor, dry-run, memory, and code graph status are
+available in Setup.
 
 ```sh
 brew tap luminik-io/alfred-os https://github.com/luminik-io/alfred-os

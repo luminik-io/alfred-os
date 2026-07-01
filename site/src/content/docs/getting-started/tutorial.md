@@ -43,7 +43,7 @@ chmod +x bin/echo.py
 Append:
 
 ```
-my.fleet.echo	echo.py	interval:1800	no	my.fleet.echo	Issue summariser
+alfred.echo	echo.py	interval:1800	no	alfred.echo	Issue summariser
 ```
 
 ## 5. Deploy + verify
@@ -61,7 +61,7 @@ Don't wait 30 minutes:
 
 ```sh
 alfred run echo --force
-tail -f /tmp/my.fleet.echo.std{out,err}
+tail -f /tmp/alfred.echo.std{out,err}
 ```
 
 Within ~10 seconds:
