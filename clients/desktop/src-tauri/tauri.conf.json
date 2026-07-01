@@ -52,7 +52,8 @@
       "../../../install.sh": "alfred-core/install.sh",
       "../../../launchd": "alfred-core/launchd",
       "../../../lib": "alfred-core/lib",
-      "../../../prompts": "alfred-core/prompts"
+      "../../../prompts": "alfred-core/prompts",
+      "../../../systemd": "alfred-core/systemd"
     },
     "copyright": "Copyright (c) DataRavel Inc.",
     "publisher": "DataRavel Inc.",

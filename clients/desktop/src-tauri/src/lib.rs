@@ -771,6 +771,10 @@ fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, 
     let mut stderr = String::new();
     let preview = core_install_preview(&plan);
 
+    if let Some(handoff) = desktop_privileged_bootstrap_handoff(&plan, preview.clone()) {
+        return Ok(handoff);
+    }
+
     let install = run_core_install_step(
         &plan.install_program,
         &plan.install_args,
@@ -821,6 +825,183 @@ fn install_alfred_core_blocking(app: &AppHandle) -> Result<NativeCommandResult, 
             plan.source_label
         ),
     ))
+}
+
+fn desktop_privileged_bootstrap_handoff(
+    plan: &CoreInstallPlan,
+    mut preview: Vec<String>,
+) -> Option<NativeCommandResult> {
+    let reason = current_desktop_bootstrap_handoff_reason()?;
+    let terminal_command = terminal_core_install_command(plan);
+    preview.push("--terminal-handoff".to_string());
+
+    #[cfg(target_os = "macos")]
+    {
+        match open_macos_terminal_install(&terminal_command) {
+            Ok(()) => {
+                return Some(core_install_result(
+                    preview,
+                    terminal_command,
+                    reason.to_string(),
+                    None,
+                    false,
+                    "Alfred opened Terminal to finish the privileged install. Return to Alfred Desktop after the terminal command completes.".to_string(),
+                ));
+            }
+            Err(err) => {
+                return Some(core_install_result(
+                    preview,
+                    terminal_command,
+                    format!("{reason}\nCould not open Terminal automatically: {err}"),
+                    Some(126),
+                    false,
+                    "Alfred needs a Terminal session to finish the privileged install. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
+                ));
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Some(core_install_result(
+            preview,
+            terminal_command,
+            reason.to_string(),
+            Some(126),
+            false,
+            "Alfred needs a Terminal session to finish the privileged install. Run the command shown in stdout, then return to Alfred Desktop.".to_string(),
+        ))
+    }
+}
+
+fn current_desktop_bootstrap_handoff_reason() -> Option<&'static str> {
+    desktop_bootstrap_handoff_reason(
+        current_desktop_os(),
+        program_on_cli_path("brew"),
+        running_as_root(),
+        sudo_noninteractive_available(),
+    )
+}
+
+fn desktop_bootstrap_handoff_reason(
+    os: &str,
+    brew_present: bool,
+    running_as_root: bool,
+    sudo_noninteractive: bool,
+) -> Option<&'static str> {
+    match os {
+        "macos" if !brew_present => Some(
+            "Homebrew is not installed yet, and the bootstrap may need a sudo password from a real Terminal.",
+        ),
+        "linux" if !running_as_root && !sudo_noninteractive => Some(
+            "Linux package setup needs sudo, and the desktop app cannot collect a sudo password with stdin closed.",
+        ),
+        _ => None,
+    }
+}
+
+fn current_desktop_os() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "macos"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "linux"
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    {
+        "other"
+    }
+}
+
+fn running_as_root() -> bool {
+    #[cfg(unix)]
+    {
+        unsafe { libc::geteuid() == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
+fn sudo_noninteractive_available() -> bool {
+    command_with_cli_path("sudo")
+        .args(["-n", "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn terminal_core_install_command(plan: &CoreInstallPlan) -> String {
+    let mut parts = Vec::new();
+    if let Some(core_dir) = plan.core_dir.as_deref() {
+        parts.push(format!("cd {}", shell_quote(&core_dir.to_string_lossy())));
+    }
+    parts.push("export ALFRED_NONINTERACTIVE=1 ALFRED_DESKTOP_INSTALL=1".to_string());
+    parts.push(format!(
+        "{} && {}",
+        shell_command(&plan.install_program, &plan.install_args),
+        shell_command(&plan.deploy_program, &plan.deploy_args)
+    ));
+    parts.push(
+        "printf '\\nAlfred Desktop install command finished. Return to Alfred Desktop and click Install or repair again if needed.\\n'"
+            .to_string(),
+    );
+    parts.join(" && ")
+}
+
+fn shell_command(program: &str, args: &[String]) -> String {
+    let mut command = vec![shell_quote(program)];
+    command.extend(args.iter().map(|arg| shell_quote(arg)));
+    command.join(" ")
+}
+
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_string();
+    }
+    if value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '/' | '.' | '_' | '-' | ':' | '@'))
+    {
+        return value.to_string();
+    }
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(target_os = "macos")]
+fn open_macos_terminal_install(command: &str) -> Result<(), String> {
+    let run_script = format!(
+        "tell application \"Terminal\" to do script {}",
+        apple_script_quote(command)
+    );
+    let status = Command::new("/usr/bin/osascript")
+        .args([
+            "-e",
+            "tell application \"Terminal\" to activate",
+            "-e",
+            &run_script,
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .status()
+        .map_err(|err| format!("could not start osascript: {err}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("osascript exited with status {status}"))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apple_script_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn core_install_plan(app: &AppHandle) -> Result<CoreInstallPlan, String> {
@@ -1891,6 +2072,45 @@ mod tests {
                 "bundled runtime".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn desktop_bootstrap_handoff_detects_privileged_gui_cases() {
+        assert!(
+            desktop_bootstrap_handoff_reason("macos", false, false, false)
+                .expect("macos without brew should hand off")
+                .contains("Homebrew")
+        );
+        assert!(desktop_bootstrap_handoff_reason("macos", true, false, false).is_none());
+        assert!(
+            desktop_bootstrap_handoff_reason("linux", true, false, false)
+                .expect("linux without noninteractive sudo should hand off")
+                .contains("sudo")
+        );
+        assert!(desktop_bootstrap_handoff_reason("linux", true, true, false).is_none());
+        assert!(desktop_bootstrap_handoff_reason("linux", true, false, true).is_none());
+    }
+
+    #[test]
+    fn terminal_core_install_command_quotes_paths_and_runs_deploy() {
+        let plan = CoreInstallPlan {
+            core_dir: Some(PathBuf::from("/tmp/alfred core")),
+            install_program: "/bin/bash".to_string(),
+            install_args: vec![
+                "/tmp/alfred core/install.sh".to_string(),
+                "--non-interactive".to_string(),
+            ],
+            deploy_program: "/bin/bash".to_string(),
+            deploy_args: vec!["/tmp/alfred core/deploy.sh".to_string()],
+            source_label: "bundled runtime".to_string(),
+        };
+
+        let command = terminal_core_install_command(&plan);
+
+        assert!(command.contains("cd '/tmp/alfred core'"));
+        assert!(command.contains("ALFRED_DESKTOP_INSTALL=1"));
+        assert!(command.contains("'/tmp/alfred core/install.sh'"));
+        assert!(command.contains("'/tmp/alfred core/deploy.sh'"));
     }
 
     #[test]

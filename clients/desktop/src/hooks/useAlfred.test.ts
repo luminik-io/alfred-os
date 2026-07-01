@@ -333,6 +333,35 @@ describe("useAlfred post-action refresh ordering", () => {
     );
   });
 
+  it("refreshes the current custom endpoint after desktop install", async () => {
+    const customUrl = "http://127.0.0.1:7123";
+    loadSnapshotMock.mockResolvedValue(snapshot([agent("lucius")]));
+
+    const { result } = renderHook(() => useAlfred());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    await act(async () => {
+      await result.current.refresh(customUrl);
+    });
+    expect(result.current.baseUrl).toBe(customUrl);
+
+    loadSnapshotMock.mockClear();
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        await result.current.installCore();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(900);
+        await Promise.resolve();
+      });
+
+      expect(loadSnapshotMock).toHaveBeenCalledWith(customUrl);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("refreshes after a pause and reflects the post-action snapshot", async () => {
     // Mount snapshot: lucius running. After pause, refresh returns paused.
     loadSnapshotMock.mockResolvedValueOnce(snapshot([agent("lucius", { paused: false })]));
