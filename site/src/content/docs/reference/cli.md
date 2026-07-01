@@ -365,7 +365,7 @@ or invalid config, and `3` when at least one connector failed.
 Schedule it the same way as any other agent:
 
 ```
-my.fleet.connector-sync	connector-sync.py	interval:900	no		Input connector poll
+alfred.connector-sync	connector-sync.py	interval:900	no		Input connector poll
 ```
 
 ## State-machine helpers

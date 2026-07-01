@@ -197,7 +197,7 @@ per-file watermark so re-running is idempotent.
 The drainer is opt-in. To enable it, add this line to `launchd/agents.conf`:
 
 ```
-my.fleet.fleet-ingest    fleet-ingest.py    interval:900    no    my.fleet.fleet-ingest    Memory outbox drainer
+alfred.fleet-ingest    fleet-ingest.py    interval:900    no    alfred.fleet-ingest    Memory outbox drainer
 ```
 
 Outbox record shapes:

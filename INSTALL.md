@@ -6,7 +6,7 @@ For AWS IAM-per-agent, Slack, and troubleshooting, read [`BOOTSTRAP.md`](BOOTSTR
 
 ## Two ways to install
 
-**Desktop-first path.** Install the signed Alfred app on macOS or Linux, open it, and click **Install or repair** in Setup. The native app bundles Alfred core resources, bootstraps dependencies, seeds the full runtime roster, deploys the local CLI/agents into `~/.alfred`, starts `alfred serve`, detects existing installs, connects GitHub plus Claude or Codex, helps you pick repos and agents, chooses a roster theme or custom display names, and keeps the setup repairable. Repo-scoped agents stay idle until onboarding saves repositories. The Homebrew cask also depends on the CLI formula, but direct DMG/AppImage/.deb installs no longer need a separate CLI install first.
+**Desktop-first path.** Install the signed Alfred app on macOS or Linux, open it, and click **Install or repair** in Setup. The native app bundles Alfred core resources, bootstraps dependencies, seeds the full built-in runtime roster, deploys the local CLI/agents into `~/.alfred`, starts `alfred serve`, detects existing installs, connects GitHub plus Claude or Codex, helps you pick repos, and lets you choose a roster theme or custom display names. Repo-scoped agents stay idle until onboarding saves repositories. Batman is included as the cross-repo architect, but it stays idle until you configure `BATMAN_PARENT_REPO`. The Homebrew cask also depends on the CLI formula, but direct DMG/AppImage/.deb installs no longer need a separate CLI install first.
 
 **Command line.** Use the steps below when you want a headless Linux host, to work from `main`, to script the install, or because you prefer the terminal without the GUI. On macOS you can install from source or with Homebrew; on Linux use the source checkout. Either way the command line installs the `core` runtime; the desktop app remains the recommended local onboarding and control surface.
 
@@ -229,7 +229,7 @@ Linux.
 Read `examples/bin/hello.py`, the smallest possible codename agent. Copy it to `bin/your-codename.py`, edit, add a line to `launchd/agents.conf`:
 
 ```
-my.fleet.your-codename	your-codename.py	interval:3600	no	my.fleet.your-codename	Custom agent
+alfred.your-codename	your-codename.py	interval:3600	no	alfred.your-codename	Custom agent
 ```
 
 `bash deploy.sh` again. `./bin/alfred doctor` again. Should show `1 passed, 0 failed`.

@@ -163,7 +163,7 @@ if __name__ == "__main__":
 Add to `launchd/agents.conf`, the shared scheduler manifest:
 
 ```
-my.fleet.echo	echo.py	interval:1800	no	my.fleet.echo	Issue summariser
+alfred.echo	echo.py	interval:1800	no	alfred.echo	Issue summariser
 ```
 
 (`1800` seconds = 30 minutes. `no` because Echo doesn't compile any Java.)
@@ -191,7 +191,7 @@ Don't wait 30 minutes. Force a firing:
 
 ```sh
 alfred run echo --force
-tail -f /tmp/my.fleet.echo.stdout /tmp/my.fleet.echo.stderr
+tail -f /tmp/alfred.echo.stdout /tmp/alfred.echo.stderr
 ```
 
 Within ~10 seconds you should see:
@@ -264,4 +264,4 @@ For richer agents (write code, open PRs, multi-step prompts, max-turns resume), 
 
 **`alfred run echo --force` says the scheduler unit is missing.** The scheduler unit isn't loaded. `bash deploy.sh` again. The deploy step is idempotent.
 
-**Doctor passes but the agent fails on real firing.** Doctor only verifies preflight. Real firings can fail for runtime reasons (rate limit, gh API timeout, claude error). Check `/tmp/my.fleet.echo.stderr`.
+**Doctor passes but the agent fails on real firing.** Doctor only verifies preflight. Real firings can fail for runtime reasons (rate limit, gh API timeout, claude error). Check `/tmp/alfred.echo.stderr`.

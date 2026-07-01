@@ -52,11 +52,11 @@ dashboard and Alfred Desktop expect it to be available.
 Alfred Desktop is a Tauri app under `clients/desktop`. It is the full local
 installer and control surface, not a second scheduler or hosted runtime. It is
 the default human onboarding path for a normal Mac/Linux setup: install or
-repair Alfred core from bundled resources, detect an existing installation,
-start or connect to `alfred serve`, verify GitHub and engine auth, select
-repositories, configure the full fleet, choose a roster theme, and run
-doctor/dry-run checks without asking the user to hand-edit config files. Slack
-remains the collaboration surface once the fleet is running.
+repair Alfred core from bundled resources, seed and deploy the full built-in
+fleet, start or connect to `alfred serve`, verify GitHub and engine auth, select
+repositories, choose a roster theme, and run curated repair/status checks
+without asking the user to hand-edit config files. Slack remains the
+collaboration surface once the fleet is running.
 
 It talks to core only over the `alfred serve` JSON seam, restricted to `http://localhost`, `http://127.0.0.1`, or `http://[::1]` and a fixed set of Alfred JSON paths plus a narrow native command allowlist. It opens no public port, runs no relay, and keeps `$ALFRED_HOME` as the single source of truth. Headless installs can run Alfred entirely without it.
 
@@ -70,7 +70,7 @@ brew install --cask alfred-os               # macOS 11+, signed and notarized
 # https://alfred.luminik.io/download/
 ```
 
-The cask installs alongside the `alfred-os` CLI formula, while direct DMG/AppImage/.deb packages include bundled Alfred core resources. On first launch with no runtime running, the app opens into the guided setup wizard, where **Install or repair** bootstraps core, seeds the full runtime roster, deploys the CLI/agents into `~/.alfred`, starts `alfred serve`, and continues the setup flow. Repo-scoped agents stay idle until the setup flow saves repositories.
+The cask installs alongside the `alfred-os` CLI formula, while direct DMG/AppImage/.deb packages include bundled Alfred core resources. On first launch with no runtime running, the app opens into the guided setup wizard, where **Install or repair** bootstraps core, seeds the full built-in runtime roster, deploys the CLI/agents into `~/.alfred`, starts `alfred serve`, and continues the setup flow. Repo-scoped agents stay idle until the setup flow saves repositories, and Batman stays idle until `BATMAN_PARENT_REPO` is configured.
 
 Build from source (client development):
 

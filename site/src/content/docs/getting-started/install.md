@@ -44,9 +44,10 @@ Alfred core used by the CLI.
 
 1. Download the signed Mac package or Linux build from [Download](/download/).
 2. Open Alfred Desktop and choose **Install or repair** in Setup.
-3. Setup bootstraps dependencies, deploys the local CLI/agents into
-   `~/.alfred`, starts `alfred serve`, and continues through GitHub, engine,
-   repo, roster, Slack, and doctor checks.
+3. Setup bootstraps dependencies, seeds the full built-in fleet, deploys the
+   local CLI/agents into `~/.alfred`, starts `alfred serve`, and continues
+   through GitHub, engine, repo scope, roster naming, optional Slack, and
+   in-app repair/status checks.
 4. If you prefer to start the API manually later, run:
 
    ```sh

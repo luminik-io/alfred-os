@@ -157,16 +157,21 @@ bash deploy.sh
 Expected output:
 
 ```
-[deploy] copying lib/
-[deploy] copying bin/ (Python + shell)
-[deploy] copying scheduler units
-  - my.fleet.lucius
-  - my.fleet.nightwing
-  - my.fleet.rasalghul
-  - my.fleet.bane
-[deploy] active jobs:
--	0	my.fleet.lucius
--	0	my.fleet.nightwing
+[alfred-os/deploy] copying runtime support files
+[alfred-os/deploy] copying lib/ (recursive: top-level modules + subpackages)
+[alfred-os/deploy] copying bin/ (every regular file)
+[alfred-os/deploy] rendering launchd plists from ~/.alfred/launchd/agents.conf
+  rendered alfred.lucius.plist
+  rendered alfred.drake.plist
+  rendered alfred.bane.plist
+  rendered alfred.rasalghul.plist
+  rendered alfred.nightwing.plist
+  rendered alfred.robin.plist
+  rendered alfred.batman.plist
+[alfred-os/deploy] installing launchd plists to ~/Library/LaunchAgents
+  - alfred.lucius loaded
+  - alfred.drake loaded
+  - alfred.bane loaded
 ...
 ```
 
@@ -221,7 +226,7 @@ The plists ship with `RunAtLoad = false`, so deploying does not immediately fire
    ```
 3. Tail the logs:
    ```sh
-   tail -f /tmp/my.fleet.lucius.stdout /tmp/my.fleet.lucius.stderr
+   tail -f /tmp/alfred.lucius.stdout /tmp/alfred.lucius.stderr
    ```
 4. To inspect what `claude -p` actually saw, look in `/tmp/lucius-debug-<issue>-<ts>/`. The runner persists the prompt and raw JSON result there for every Lucius run.
 
@@ -251,7 +256,7 @@ alfred resume lucius
 
 **Plist not loading.** `launchctl bootstrap` is silent on success and noisy on failure. Run it manually with the full path:
 ```sh
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/my.fleet.lucius.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/alfred.lucius.plist
 ```
 Common errors: file not executable (`chmod +x`), wrong shebang (`#!/usr/bin/env python3` requires Python on PATH), socket address conflict (label already loaded; `bootout` first).
 
@@ -260,7 +265,7 @@ Common errors: file not executable (`chmod +x`), wrong shebang (`#!/usr/bin/env 
 **Prompt change did not take effect.** Re-run deploy and confirm the rendered launchd job points at the deployed binary under `$ALFRED_HOME/bin`:
 ```sh
 bash deploy.sh
-launchctl print gui/$(id -u)/my.fleet.lucius
+launchctl print gui/$(id -u)/alfred.lucius
 ```
 
 **Spend caps tripping too early.** Each agent's cap lives in its own bin (e.g. `lucius.py` line ~122). Adjust the constant and re-deploy.

@@ -42,7 +42,7 @@ Codenames show up in:
 - Slack messages (`✅ Lucius shipped: <url>`)
 - Issue labels (`lucius-attempt-1`, `lucius-pr-open`)
 - Worktree paths (`~/.alfred/worktrees/eng-lucius-backend-303-...`)
-- Logs (`/tmp/my.fleet.lucius.stdout`)
+- Logs (`/tmp/alfred.lucius.stdout`)
 
 If your cast is "agent-1 / agent-2 / agent-3" or "feature-dev / test-coverage / review", scanning the firehose becomes laborious. A coherent fictional cast (Batman, Greek mythology, The Wire) makes "Lucius failed on #303" instantly readable.
 
@@ -91,8 +91,8 @@ The role implementation lives in `bin/<role>.py` (the filename never changes). T
 ```mermaid
 flowchart TB
     init["alfred-init or Desktop setup<br/><i>install full fleet</i>"]
-    conf["agents.conf<br/><code>my.fleet.lucius  lucius.py  interval:1200</code>"]
-    unit["my.fleet.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
+    conf["agents.conf<br/><code>alfred.lucius  lucius.py  interval:1200</code>"]
+    unit["alfred.lucius scheduler unit<br/>Environment:<br/><code>AGENT_CODENAME=lucius</code>"]
     runner["bin/lucius.py<br/><code>AGENT = os.environ.get('AGENT_CODENAME', 'lucius')</code>"]
     theme["$ALFRED_HOME/state/roster-theme/roster-theme.json<br/><i>visible roster</i>"]
     output["Desktop / Slack: 'Ironhide shipped: ...'<br/>PR title and worktree keep <code>lucius</code>"]

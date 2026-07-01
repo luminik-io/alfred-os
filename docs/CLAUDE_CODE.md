@@ -192,7 +192,7 @@ affected timer or service after switching:
 
 ```sh
 alfred claude secondary
-systemctl --user restart my.fleet.lucius.timer
+systemctl --user restart alfred.lucius.timer
 ```
 
 To populate the secondary config, log in once with `CLAUDE_CONFIG_DIR` pointed

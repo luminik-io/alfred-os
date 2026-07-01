@@ -50,10 +50,10 @@ The two recipes you will use most:
 
 Three places to look.
 
-**Per-agent host-scheduler logs.** Every scheduled firing's stdout and stderr land at `/tmp/my.fleet.<codename>.stdout` and `/tmp/my.fleet.<codename>.stderr`. macOS clears `/tmp` on reboot; copy anything you need to keep. To watch a firing live:
+**Per-agent host-scheduler logs.** Every scheduled firing's stdout and stderr land at `/tmp/alfred.<codename>.stdout` and `/tmp/alfred.<codename>.stderr`. macOS clears `/tmp` on reboot; copy anything you need to keep. To watch a firing live:
 
 ```sh
-tail -f /tmp/my.fleet.lucius.stdout /tmp/my.fleet.lucius.stderr
+tail -f /tmp/alfred.lucius.stdout /tmp/alfred.lucius.stderr
 ```
 
 **Per-firing transcripts.** Under `$ALFRED_HOME/state/transcripts/<codename>/<YYYY-MM>/<firing-id>.jsonl` when transcripts are enabled, and `$ALFRED_HOME/state/codex/<codename>/<YYYY-MM>/<firing-id>.{last.md,stdout.txt,stderr.txt}` for Codex firings. The Codex artifacts are the most useful when a `[BLOCKED]` post does not explain itself; `last.md` is the engine's own final message.
@@ -142,7 +142,7 @@ A self-pause writes a marker file here. Common causes: spend cap exceeded, eight
 
 ```sh
 alfred agents
-launchctl list | grep my.fleet      # macOS
+launchctl list | grep alfred      # macOS
 systemctl --user list-timers        # Linux
 ```
 
@@ -151,7 +151,7 @@ If the unit is not loaded, the host scheduler will never fire it. Common after a
 ### 6. launchd plist load failure (macOS)
 
 ```sh
-tail -n 200 /tmp/my.fleet.<codename>.stderr
+tail -n 200 /tmp/alfred.<codename>.stderr
 ```
 
 A plist that fails to load on `launchctl bootstrap` writes the reason to the unit's stderr. Most common cause: a typo in `agents.conf` after a manual edit, or a `PATH` entry that no longer exists. Re-run `bash launchd/render.sh && bash deploy.sh`.
@@ -171,7 +171,7 @@ Block thirty minutes once a week. The fleet does most of its own housekeeping vi
 - `alfred doctor`: confirm preflight still passes for every configured agent.
 - `bash bin/scrub-check.sh`: if you contribute to Alfred itself, run this before pushing.
 - `ls $ALFRED_HOME/state/claims/` if it exists: stale claims should be empty after the daily sweep, but inspect anything older than 24h.
-- Rotate `/tmp/my.fleet.*` logs if `/tmp` is filling up. macOS clears them on reboot, but a host that stays up for weeks accumulates a lot.
+- Rotate `/tmp/alfred.*` logs if `/tmp` is filling up. macOS clears them on reboot, but a host that stays up for weeks accumulates a lot.
 - Prune `$ALFRED_HOME/state/transcripts/` and `$ALFRED_HOME/state/codex/` older than a month if you do not need them for forensics. `agent-cleanup` already handles spend files and worktrees.
 
 ## See also
