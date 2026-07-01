@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 QUEUE_REPOS_ENV = "ALFRED_QUEUE_REPOS"
 SHIPPED_REPOS_ENV = "ALFRED_SHIPPED_REPOS"
 BRIDGE_REPOS_ENV = "ALFRED_BRIDGE_REPOS"
+GH_ORG_ENV = "GH_ORG"
 _REPO_ENV_KEYS = (QUEUE_REPOS_ENV, SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 _BOARD_REPO_ENV_KEYS = (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 CODE_MEMORY_REPOS_ENV = "ALFRED_CODE_MEMORY_REPOS"
@@ -315,6 +316,13 @@ def _repo_local_names(repos: list[str]) -> list[str]:
     return out
 
 
+def _repo_scope_owner(repos: list[str]) -> str | None:
+    owners = {repo.partition("/")[0] for repo in repos}
+    if len(owners) > 1:
+        raise ValueError("repo selection must use a single owner")
+    return next(iter(owners)) if owners else None
+
+
 def _repos_from_env(
     env: dict[str, str],
     keys: tuple[str, ...] = _REPO_ENV_KEYS,
@@ -403,11 +411,14 @@ def persist_selected_repos(
     """
     clean = normalize_repo_slugs(repos)
     clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
+    owner = _repo_scope_owner(clean)
     values = _repo_scope_values_for_save(
         clean,
         queue_repos=clean_queue,
         replace_queue_repos=replace_queue_repos,
     )
+    if owner:
+        values = {GH_ORG_ENV: owner, **values}
     env_path = write_env_values(values)
     for key in values:
         # Mirror into the live process so the new scope is effective now. An

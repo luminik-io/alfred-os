@@ -22,6 +22,7 @@ def restore_repo_env_keys() -> None:
     """Undo live process mirrors written by repo-selection saves."""
 
     keys = (
+        setup_mod.GH_ORG_ENV,
         setup_mod.QUEUE_REPOS_ENV,
         setup_mod.SHIPPED_REPOS_ENV,
         setup_mod.BRIDGE_REPOS_ENV,
@@ -38,6 +39,7 @@ def restore_repo_env_keys() -> None:
 
 def repo_save_keys(*prefix: str) -> list[str]:
     return [
+        setup_mod.GH_ORG_ENV,
         *prefix,
         setup_mod.SHIPPED_REPOS_ENV,
         setup_mod.BRIDGE_REPOS_ENV,
@@ -693,6 +695,7 @@ def test_persist_selected_repos_board_only_save_does_not_create_queue_scope(
     assert not (tmp_path / ".alfredrc").exists()
     assert result["keys"] == repo_save_keys()
     env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "GH_ORG=acme" in env_text
     assert "ALFRED_QUEUE_REPOS=" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
@@ -701,6 +704,7 @@ def test_persist_selected_repos_board_only_save_does_not_create_queue_scope(
     assert "ALFRED_RASALGHUL_REPOS=web" in env_text
     assert "BATMAN_ROLLOUT_ORDER=web" in env_text
     assert "ALFRED_CODE_MEMORY_REPOS=web" in env_text
+    assert os.environ["GH_ORG"] == "acme"
     assert os.environ["ALFRED_LUCIUS_REPOS"] == "web"
     assert os.environ["BATMAN_ROLLOUT_ORDER"] == "web"
 
@@ -817,6 +821,7 @@ def test_persist_selected_repos_seeds_queue_for_new_install(
     assert result["env_path"] == str(env_path)
     assert result["keys"] == repo_save_keys(setup_mod.QUEUE_REPOS_ENV)
     env_text = env_path.read_text(encoding="utf-8")
+    assert "GH_ORG=acme" in env_text
     assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
@@ -834,6 +839,27 @@ def test_persist_selected_repos_seeds_queue_for_new_install(
     assert "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS=web" in env_text
     assert "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS=web" in env_text
     assert "BATMAN_ROLLOUT_ORDER=web" in env_text
+
+
+def test_persist_selected_repos_rejects_mixed_owners_before_writing_runtime_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("GH_ORG", raising=False)
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="single owner"):
+        setup_mod.persist_selected_repos(["Acme/Web", "Other/API"], queue_repos=["Acme/Web"])
+
+    assert not (home / ".env").exists()
+    assert "GH_ORG" not in os.environ
+    assert "ALFRED_LUCIUS_REPOS" not in os.environ
 
 
 def test_persist_selected_repos_preserves_exported_queue_scope_without_replace(
