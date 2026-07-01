@@ -45,10 +45,10 @@ import { Button, Card, CardContent } from "./ui";
 import { cn } from "@/lib/utils";
 
 /**
- * The first-run onboarding takeover (DESIGN_SPEC section 7), built as a clean
- * stepper. A seven-step journey a non-technical user (Maya) completes without a
- * terminal, ending on a populated Home via a real first request or a
- * clearly-labelled demo:
+ * The setup takeover (DESIGN_SPEC section 7), built as a clean stepper. It
+ * handles both true first-run setup and returning installs that need a quick
+ * review. A seven-step journey can be completed without a terminal, ending on a
+ * populated Home via a real first request or a clearly-labelled demo:
  *
  *   0 Welcome        mental model + two doors (Get started / I have a server)
  *   1 Tools          detect Claude / Codex (no API keys)
@@ -635,17 +635,35 @@ export function OnboardingView({
   );
 
   const meta = STEP_META[stepKey];
+  const installInitialized = status !== null && Boolean(status.install?.initialized);
+  const canReadSetupStatus = connected || loading || statusLoading;
+  let shellCopy = {
+    eyebrow: "First run",
+    title: "Let's connect Alfred",
+    lede: "Seven short steps, about two minutes. You will not need a terminal.",
+  };
+  if (status === null && !statusError && canReadSetupStatus) {
+    shellCopy = {
+      eyebrow: "Checking setup",
+      title: "Checking this Mac",
+      lede: "Alfred is reading the local runtime before choosing the right setup path.",
+    };
+  } else if (installInitialized) {
+    shellCopy = {
+      eyebrow: "Existing setup",
+      title: "Review your Alfred setup",
+      lede: "Alfred found a local runtime on this Mac. Recheck tools, repos, team names, and Slack before shipping more work.",
+    };
+  }
 
   return (
     <section className="alfred-onboarding" aria-label="Set up Alfred" onKeyDown={onKeyDown}>
       <div className="alfred-onboarding-shell alfred-glass">
         <header className="alfred-onboarding-shell__head">
           <div className="min-w-0">
-            <p className="alfred-onboarding-shell__eyebrow">First run</p>
-            <h1 className="alfred-onboarding-shell__title">Let's connect Alfred</h1>
-            <p className="alfred-onboarding-shell__lede">
-              Seven short steps, about two minutes. You will not need a terminal.
-            </p>
+            <p className="alfred-onboarding-shell__eyebrow">{shellCopy.eyebrow}</p>
+            <h1 className="alfred-onboarding-shell__title">{shellCopy.title}</h1>
+            <p className="alfred-onboarding-shell__lede">{shellCopy.lede}</p>
           </div>
           <Button
             variant="ghost"

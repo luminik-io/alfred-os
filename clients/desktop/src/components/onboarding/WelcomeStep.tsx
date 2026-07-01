@@ -5,14 +5,14 @@ import { InstallInventoryPanel } from "./InstallInventoryPanel";
 import { Button } from "../ui";
 
 /**
- * Step 0: Welcome. The hero screen of the first-run takeover. It says the value
- * once, then leads with the trust differentiator (no API keys, runs on the
- * subscriptions you already pay for), and offers one primary door for the guided
- * path plus a quiet shortcut for a developer who already has a server running.
+ * Step 0: Welcome. The hero screen of the setup takeover. It says the value
+ * once, shows any detected local install, then leads with the trust
+ * differentiator (no API keys, runs on the subscriptions you already pay for),
+ * and offers one primary door for the guided path plus a quiet shortcut for a
+ * developer who already has a server running.
  *
- * It deliberately does not repeat the shell header ("Let's connect Alfred, six
- * short steps") or carry a StepFrame title above it: the journey framing is said
- * once in the shell, and the value is said once here.
+ * It deliberately does not carry a StepFrame title above it: the journey
+ * framing is said once in the shell, and the value is said once here.
  */
 export function WelcomeStep({
   install,
