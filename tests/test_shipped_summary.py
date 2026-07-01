@@ -44,6 +44,22 @@ def test_configured_repos_prefers_period_specific_env(monkeypatch, tmp_path):
     assert mod.configured_repos() == ["shared"]
 
 
+def test_main_idles_before_preflight_when_no_repos_configured(monkeypatch, tmp_path, capsys):
+    mod = load_module(monkeypatch, tmp_path)
+    monkeypatch.delenv("ALFRED_SHIPPED_SUMMARY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_SUMMARY_DAILY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_DOCTOR", raising=False)
+
+    def fail_preflight(_spec):
+        raise AssertionError("preflight should not run without repo scope")
+
+    monkeypatch.setattr(mod, "preflight", fail_preflight)
+
+    assert mod.main([]) == 0
+    assert "no repos configured" in capsys.readouterr().out
+
+
 def test_collect_filters_prs_issues_and_detects_model_changes(monkeypatch, tmp_path):
     mod = load_module(monkeypatch, tmp_path)
     conf = tmp_path / "agents.conf"

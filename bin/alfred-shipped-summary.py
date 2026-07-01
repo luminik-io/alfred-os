@@ -44,6 +44,7 @@ from agent_runner import (  # noqa: E402
     PreflightFailed,
     PreflightSpec,
     doctor_mode,
+    doctor_requested,
     gh_json,
     preflight,
     slack_post,
@@ -565,6 +566,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    repos = args.repo or configured_repos(args.period)
+    if not repos and not doctor_requested():
+        print(
+            f"[{AGENT.upper()}-IDLE] no repos configured "
+            "(set ALFRED_SHIPPED_SUMMARY_REPOS, ALFRED_SHIPPED_SUMMARY_DAILY_REPOS, "
+            "or ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS)"
+        )
+        return 0
+
     try:
         preflight(PREFLIGHT)
     except PreflightFailed:
@@ -575,7 +585,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     period = resolve_period(args)
-    repos = args.repo or configured_repos(args.period)
     data = collect(period, repos, fetch_files=not args.no_file_scan)
 
     if args.json:
