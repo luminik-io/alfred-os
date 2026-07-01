@@ -394,7 +394,7 @@ def _codenames_from_agents_conf(path: Path) -> set[str]:
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.startswith("#") and "\t" not in stripped:
+        if stripped.startswith("# ") or stripped == "#":
             continue
         if stripped.startswith("#"):
             line = line.replace("#", "", 1)

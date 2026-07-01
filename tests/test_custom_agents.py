@@ -140,6 +140,30 @@ def test_custom_agent_store_rejects_disabled_scheduler_config_codename_suffix(
         )
 
 
+def test_custom_agent_store_ignores_agents_conf_sample_comments(tmp_path: Path) -> None:
+    home = tmp_path / "alfred-home"
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "#   my.fleet.poller\tpoller.py\tinterval:1200\tyes\t\t\tIssue poller\n",
+        encoding="utf-8",
+    )
+    store = CustomAgentStore.from_state_root(home / "state")
+
+    agent = store.upsert(
+        {
+            "codename": "poller",
+            "display_name": "Poller",
+            "role_title": "Issue poller",
+            "purpose": "Poll repositories for new engineering work.",
+            "prompt": "Inspect the configured repositories for new engineering work and summarize actions.",
+            "schedule": "10m",
+        }
+    )
+
+    assert agent.codename == "poller"
+
+
 @pytest.mark.parametrize("repo", ["../outside", "./repo", "acme/..", "acme/."])
 def test_custom_agent_store_rejects_dot_segment_repo_slugs(
     tmp_path: Path,
