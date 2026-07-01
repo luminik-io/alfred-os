@@ -13,6 +13,7 @@ plain string checks against the rendered ``[Unit]`` / ``[Service]`` /
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -128,6 +129,165 @@ def test_render_invokes_agent_launch_and_sets_codename_env(tmp_path):
     assert "/agent-launch lucius.py" in service
     assert "Environment=AGENT_CODENAME=marshall" in service
     assert "Environment=LAUNCHD_LABEL=my.fleet.marshall" in service
+
+
+def test_render_appends_enabled_custom_agents_from_manifest(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers for the operator.",
+                        "engine": "hybrid",
+                        "schedule": "interval:1800",
+                        "repos": ["acme/api"],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    conf = "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
+
+    service = (out_dir / "alfred.release-captain.service").read_text()
+    assert "/agent-launch custom-agent.py" in service
+    assert "Environment=AGENT_CODENAME=release-captain" in service
+    assert 'Environment=ALFRED_RELEASE_CAPTAIN_ROLE="Release coordinator"' in service
+
+
+def test_render_skips_custom_agent_rows_that_collide_with_base_conf(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers for the operator.",
+                        "engine": "hybrid",
+                        "schedule": "interval:1800",
+                        "repos": ["acme/api"],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    conf = "alfred.release-captain\tlucius.py\tinterval:600\tno\t\tFeature dev\n"
+
+    out_dir = _render(tmp_path, conf, env={"ALFRED_HOME": str(runtime)})
+
+    service = (out_dir / "alfred.release-captain.service").read_text()
+    assert "/agent-launch lucius.py" in service
+    assert "custom-agent.py" not in service
+    assert len(list(out_dir.glob("alfred.release-captain.service"))) == 1
+
+
+def test_render_supports_custom_agents_without_base_agents_conf(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness.",
+                        "prompt": "Review release readiness and summarize blockers for the operator.",
+                        "engine": "hybrid",
+                        "schedule": "interval:1800",
+                        "repos": ["acme/api"],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    work = tmp_path / "systemd"
+    launchd_dir = tmp_path / "launchd"
+    work.mkdir()
+    launchd_dir.mkdir()
+    shutil.copy(RENDER_SH, work / "render.sh")
+    shutil.copy(SERVICE_TEMPLATE, work / "_template.service")
+    shutil.copy(TIMER_TEMPLATE, work / "_template.timer")
+    out_dir = tmp_path / "out"
+
+    res = subprocess.run(
+        ["bash", str(work / "render.sh"), str(out_dir)],
+        capture_output=True,
+        text=True,
+        env={**os.environ.copy(), "ALFRED_HOME": str(runtime)},
+    )
+
+    assert res.returncode == 0, res.stderr
+    service = (out_dir / "alfred.release-captain.service").read_text()
+    assert f"ExecStart={runtime}/bin/agent-launch custom-agent.py" in service
+    assert "Environment=AGENT_CODENAME=release-captain" in service
+
+
+def test_render_fails_when_custom_agent_manifest_is_malformed(tmp_path):
+    runtime = tmp_path / "runtime"
+    lib_dir = tmp_path / "lib"
+    lib_dir.mkdir()
+    shutil.copy(REPO_ROOT / "lib" / "custom_agents.py", lib_dir / "custom_agents.py")
+    store = runtime / "state" / "custom-agents"
+    store.mkdir(parents=True)
+    (store / "custom-agents.json").write_text('{"version": 1, "agents": [', encoding="utf-8")
+    work = tmp_path / "systemd"
+    launchd_dir = tmp_path / "launchd"
+    work.mkdir()
+    launchd_dir.mkdir()
+    shutil.copy(RENDER_SH, work / "render.sh")
+    shutil.copy(SERVICE_TEMPLATE, work / "_template.service")
+    shutil.copy(TIMER_TEMPLATE, work / "_template.timer")
+    (launchd_dir / "agents.conf").write_text(
+        "my.fleet.lucius\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+
+    res = subprocess.run(
+        ["bash", str(work / "render.sh"), str(out_dir)],
+        capture_output=True,
+        text=True,
+        env={**_render_env(tmp_path), "ALFRED_HOME": str(runtime)},
+    )
+
+    assert res.returncode != 0
+    assert "custom agent manifest invalid" in res.stderr
+    assert "not valid JSON" in res.stderr
 
 
 def test_render_quotes_execstart_when_alfred_home_has_spaces(tmp_path):

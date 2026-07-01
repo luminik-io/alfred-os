@@ -38,6 +38,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+logger = logging.getLogger(__name__)
+
 # The watched-repo allowlist the rest of the fleet reads. The Set up surface
 # writes BOTH the queue allowlist (controls what an operator can arm/hold/close)
 # and the shipped allowlist (controls which repos the board scans), so the one
@@ -1235,6 +1237,7 @@ def install_inventory(
     slack_configured = any(_has_config_value(resolved_env, key) for key in _SLACK_CONFIG_KEYS)
     memory_overridden = any(_has_config_value(resolved_env, key) for key in _MEMORY_CONFIG_KEYS)
     roster_theme = _install_roster_theme(home)
+    custom_agents = _install_custom_agents(home)
     repo_local_map = _install_repo_local_map(resolved_env)
     memory_detail = (
         "Custom Redis Agent Memory settings found."
@@ -1305,6 +1308,14 @@ def install_inventory(
             _roster_theme_store_path(home) if roster_theme["path"] else None,
         ),
         _inventory_item(
+            "custom-agents",
+            "Custom agents",
+            True,
+            _custom_agents_detail(custom_agents),
+            Path(custom_agents["path"]) if custom_agents["path"] else None,
+            optional=True,
+        ),
+        _inventory_item(
             "slack",
             "Slack approvals",
             slack_configured,
@@ -1357,6 +1368,7 @@ def install_inventory(
         "slack_configured": slack_configured,
         "memory_configured": memory_overridden,
         "roster_theme": roster_theme,
+        "custom_agents": custom_agents,
         "repo_local_map": repo_local_map,
         "initialized": initialized,
         "items": items,
@@ -1426,6 +1438,47 @@ def _roster_theme_detail(theme: dict[str, Any]) -> str:
             )
         return "Custom roster active; unnamed agents keep the default names."
     return f"{label} roster active."
+
+
+def _install_custom_agents(home: Path) -> dict[str, Any]:
+    try:
+        from custom_agents import CustomAgentStore
+    except Exception:
+        logger.debug("custom_agents unavailable; defaulting setup inventory to empty")
+        return {
+            "path": str(home / "state" / "custom-agents" / "custom-agents.json"),
+            "count": 0,
+            "enabled_count": 0,
+            "disabled_count": 0,
+            "agents": [],
+        }
+    snapshot = CustomAgentStore.from_state_root(home / "state").snapshot(include_prompt=False)
+    return {
+        "path": snapshot["path"],
+        "count": snapshot["count"],
+        "enabled_count": snapshot["enabled_count"],
+        "disabled_count": snapshot["disabled_count"],
+        "agents": [
+            {
+                "codename": agent["codename"],
+                "display_name": agent["display_name"],
+                "role_title": agent["role_title"],
+                "enabled": agent["enabled"],
+                "engine": agent["engine"],
+                "schedule": agent["schedule"],
+            }
+            for agent in snapshot["agents"]
+        ],
+    }
+
+
+def _custom_agents_detail(payload: dict[str, Any]) -> str:
+    count = int(payload.get("count") or 0)
+    enabled = int(payload.get("enabled_count") or 0)
+    if count == 0:
+        return "Optional. No operator-defined runtime agents yet."
+    suffix = "" if count == 1 else "s"
+    return f"{count} custom runtime agent{suffix}; {enabled} enabled."
 
 
 def _install_repo_local_map(env: dict[str, str]) -> dict[str, Any]:

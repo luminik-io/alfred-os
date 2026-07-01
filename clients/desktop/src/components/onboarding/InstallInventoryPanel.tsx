@@ -15,6 +15,7 @@ const PRIMARY_ITEMS = [
   "repos",
   "repo-map",
   "roster-theme",
+  "custom-agents",
   "slack",
   "memory",
   "token",
@@ -94,6 +95,9 @@ export function InstallInventoryPanel({
                 {item.key === "repo-map" && inventory.repo_local_map?.entries.length ? (
                   <RepoMapPreview inventory={inventory} />
                 ) : null}
+                {item.key === "custom-agents" && inventory.custom_agents?.agents.length ? (
+                  <CustomAgentsPreview inventory={inventory} />
+                ) : null}
               </span>
             </li>
           ))}
@@ -122,6 +126,38 @@ function RepoMapPreview({ inventory }: { inventory: SetupInstallInventory }) {
       {hidden > 0 ? (
         <span className="text-[11px] text-muted-foreground">
           +{hidden} more {hidden === 1 ? "mapping" : "mappings"}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function CustomAgentsPreview({ inventory }: { inventory: SetupInstallInventory }) {
+  const agents = inventory.custom_agents?.agents ?? [];
+  const visible = agents.slice(0, REPO_MAP_PREVIEW_LIMIT);
+  const hidden = agents.length - visible.length;
+
+  return (
+    <span className="mt-2 grid gap-1" aria-label="Configured custom runtime agents">
+      {visible.map((agent) => (
+        <span
+          key={agent.codename}
+          className="grid gap-0.5 rounded border border-border/50 bg-background/55 px-2 py-1"
+        >
+          <span className="flex flex-wrap items-center gap-1.5">
+            <code className="break-all text-[11px] text-foreground">{agent.display_name}</code>
+            <Badge variant={agent.enabled ? "secondary" : "outline"} className="font-normal">
+              {agent.enabled ? "enabled" : "disabled"}
+            </Badge>
+          </span>
+          <code className="break-all text-[11px] text-muted-foreground">
+            {agent.codename} / {agent.role_title} / {agent.engine} / {agent.schedule}
+          </code>
+        </span>
+      ))}
+      {hidden > 0 ? (
+        <span className="text-[11px] text-muted-foreground">
+          +{hidden} more {hidden === 1 ? "agent" : "agents"}
         </span>
       ) : null}
     </span>

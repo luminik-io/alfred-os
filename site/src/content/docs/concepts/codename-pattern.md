@@ -60,9 +60,9 @@ Without the codename, "the test agent" tends to creep: "well, while it's there, 
 
 The default install ships the Batman roster, and Alfred Desktop can re-skin the
 visible roster with preset themes or custom display names without changing the
-underlying role codenames, scheduler labels, or GitHub state machine. If you are
-authoring a new fleet configuration or naming custom agents, pick anything
-coherent:
+underlying role codenames, scheduler labels, or GitHub state machine. If you add
+operator-defined runtime agents with `alfred agent add`, pick names from the
+same coherent theme:
 
 - **Greek pantheon**: Athena (planner), Hephaestus (feature dev), Iris (notifier), Asclepius (deploy health).
 - **The Wire**: Bunk (review), McNulty (triage), Omar (security audit), Lester (bug investigation).
@@ -81,6 +81,7 @@ Each codename has:
 
 - **A bin script**: `bin/<role>.py`. Imports from `agent_runner`. ~150-300 lines.
 - **A scheduler entry**: one line in `launchd/agents.conf` (label, script, schedule, Java flag, log stem, role).
+- **Or a custom-agent manifest row**: `alfred agent add` writes `$ALFRED_HOME/state/custom-agents/custom-agents.json`, and deploy renders it through `bin/custom-agent.py`.
 - **(Optional) A prompt file**: `prompts/<role>.md` in this repo or `$ALFRED_HOME/prompts/<codename>.md` in your fleet. Long-form context the runner inlines into `claude -p`.
 - **(Optional) An IAM identity**: if it touches AWS. See [AWS setup](/guides/aws/).
 - **A row in your repo guidance file** (`AGENTS.md` or `CLAUDE.md`) documenting role + trigger + scope.
@@ -106,9 +107,11 @@ flowchart TB
 
 The bin script filename stays `lucius.py` because it is the role
 implementation. Custom display names change what humans see, not the scheduler
-contract. When you add a new agent script and schedule row later, Alfred Desktop
-can include that live agent in the custom roster editor and give it a visible
-name too.
+contract. When you add an operator-defined runtime agent, Alfred shows it in
+status, schedule, setup inventory, and the custom roster editor as soon as the
+manifest exists; `bash deploy.sh` turns enabled custom agents into host
+scheduler jobs. The generic custom runner is read-only by default; use a
+dedicated runner for deterministic PR-writing roles.
 
 [Tutorial](/getting-started/tutorial/) for an end-to-end build of one codename. The [agent fleet](/concepts/fleet/) page maps the default roster and how the roles hand work to each other.
 

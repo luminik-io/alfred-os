@@ -154,6 +154,9 @@ alfred batman setup [--check-only]
 alfred setup-batman [--check-only]
 alfred engine status [codename]
 alfred engine set <codename> <claude|codex|hybrid>
+alfred agent list [--json]
+alfred agent add <codename> --display-name ... --role-title ... --prompt ...
+alfred agent remove <codename>
 alfred metrics [--since 7d] [--codename <name>] [--by-day] [--json]
 alfred logs <codename> [--last N] [--firing-id ID] [--show-tool-calls] [--json]
 alfred shipped --period weekly
@@ -161,8 +164,12 @@ alfred slack-listener run
 alfred slack-listener once payload.json --trusted-user U0123ABCDEF --no-post
 ```
 
-`alfred agents` reads `launchd/agents.conf` and shows schedule, load column,
-runner-gate enablement, and role text. `enable` / `disable` update
+`alfred agents` reads the effective roster: `launchd/agents.conf` plus enabled
+custom-agent manifest rows. It shows schedule, load column, runner-gate
+enablement, and role text. `alfred agent add` writes operator-defined runtime
+agents to `$ALFRED_HOME/state/custom-agents/custom-agents.json`; run
+`bash deploy.sh` or `alfred-deploy` after add/remove so the host scheduler gets
+the new units. `enable` / `disable` update
 `$ALFRED_HOME/state/fleet/enabled.txt`, which is useful for opt-in runners
 such as Batman. `engine` persists per-agent Claude/Codex mode under
 `$ALFRED_HOME/state/engines/<codename>`. `codex` checks the Codex CLI. `auth`

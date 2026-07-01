@@ -50,9 +50,7 @@ CONF="$SCRIPT_DIR/../launchd/agents.conf"
 OUT_DIR="${1:-$SCRIPT_DIR/_generated}"
 
 if [[ ! -f "$CONF" ]]; then
-  echo "render.sh: agents.conf not found at $CONF" >&2
-  echo "render.sh: copy launchd/agents.conf.example to launchd/agents.conf and edit it before running deploy.sh." >&2
-  exit 1
+  echo "render.sh: agents.conf not found at $CONF; using an empty base roster" >&2
 fi
 
 strip_inline_comment() {
@@ -199,6 +197,67 @@ fi
 
 mkdir -p "$OUT_DIR"
 find "$OUT_DIR" -maxdepth 1 -type f \( -name '*.service' -o -name '*.timer' \) -delete
+
+effective_conf() {
+  local tmp
+  tmp="$(mktemp -t alfred-agents-effective-XXXXXX)"
+  if [[ -f "$CONF" ]]; then
+    cat "$CONF" > "$tmp"
+  else
+    : > "$tmp"
+  fi
+  PYTHONPATH="$SCRIPT_DIR/../lib${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ALFRED_HOME" "$tmp" >> "$tmp" <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    from custom_agents import CustomAgentError, CustomAgentStore
+except Exception:
+    raise SystemExit(0)
+
+home = Path(sys.argv[1]).expanduser()
+base_conf = Path(sys.argv[2])
+base_labels = set()
+base_codenames = set()
+for raw in base_conf.read_text(encoding="utf-8", errors="replace").splitlines():
+    stripped = raw.lstrip()
+    if not stripped or stripped.startswith("# ") or stripped == "#":
+        continue
+    if stripped.startswith("#"):
+        if "\t" not in stripped:
+            continue
+        stripped = stripped.lstrip("#").lstrip()
+    label = stripped.split("\t", 1)[0].strip()
+    if label:
+        base_labels.add(label)
+        base_codenames.add(label.rsplit(".", 1)[-1])
+
+store = CustomAgentStore.from_state_root(home / "state")
+rows = []
+try:
+    custom_rows = store.conf_rows(enabled_only=True, strict=True)
+except CustomAgentError as exc:
+    print(f"custom agent manifest invalid: {exc}", file=sys.stderr)
+    raise SystemExit(2)
+for row in custom_rows:
+    label = row.split("\t", 1)[0].strip()
+    codename = label.rsplit(".", 1)[-1]
+    if label in base_labels or codename in base_codenames:
+        continue
+    rows.append(row)
+if rows:
+    print("")
+    print("# custom agents, generated from $ALFRED_HOME/state/custom-agents/custom-agents.json")
+    for row in rows:
+        print(row)
+PY
+  local status=$?
+  if [[ "$status" -ne 0 ]]; then
+    rm -f "$tmp"
+    return "$status"
+  fi
+  printf '%s' "$tmp"
+}
 
 render_one() {
   local label="$1" script="$2" schedule="$3" needs_java="$4" log_stem="$5" role="${6:-}"
@@ -349,11 +408,19 @@ PY
 # into one separator, which corrupts empty middle columns. Pre-expand each
 # record into a non-whitespace field separator (\x1f) so read preserves
 # empties.
+if EFFECTIVE_CONF="$(effective_conf)"; then
+  :
+else
+  status=$?
+  exit "$status"
+fi
+trap 'rm -f "$EFFECTIVE_CONF"' EXIT
+
 awk -F'\t' '
   /^[[:space:]]*$/ { next }
   /^[[:space:]]*#/ { next }
   { printf "%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n", $1, $2, $3, $4, $5, $6 }
-' "$CONF" | while IFS=$'\x1f' read -r label script schedule needs_java log_stem role; do
+' "$EFFECTIVE_CONF" | while IFS=$'\x1f' read -r label script schedule needs_java log_stem role; do
   [[ -z "$label" ]] && continue
   render_one "$label" "$script" "$schedule" "${needs_java:-no}" "${log_stem:-}" "${role:-}"
   echo "  rendered $label.service + .timer"

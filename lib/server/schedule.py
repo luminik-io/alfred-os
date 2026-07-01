@@ -30,6 +30,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from custom_agents import CustomAgentStore, default_state_root
+
 from .agent_profiles import profile_order, profile_payload
 
 logger = logging.getLogger(__name__)
@@ -132,6 +134,7 @@ def upcoming_runs(
     *,
     now: datetime | None = None,
     limit: int = 50,
+    state_root: Path | None = None,
 ) -> list[ScheduledRun]:
     """Parse ``agents.conf`` into the fleet's scheduled runs.
 
@@ -141,13 +144,18 @@ def upcoming_runs(
     rows have no timestamp and sort after them, ordered by codename.
     """
     path = conf_path if conf_path is not None else agents_conf_path()
-    if path is None:
+    resolved_state = state_root or _state_root_for_conf(path)
+    text = ""
+    if path is not None:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.debug("could not read agents.conf %s: %s", path, exc)
+            text = ""
+    custom_rows = _custom_agent_rows(resolved_state, base_text=text)
+    if not text and not custom_rows:
         return []
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.debug("could not read agents.conf %s: %s", path, exc)
-        return []
+    text = "\n".join([part for part in (text.rstrip("\n"), *custom_rows) if part])
 
     reference = now or datetime.now()
     runs: list[ScheduledRun] = []
@@ -155,7 +163,7 @@ def upcoming_runs(
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        run = _parse_row(raw_line, reference=reference)
+        run = _parse_row(raw_line, reference=reference, state_root=resolved_state)
         if run is not None:
             runs.append(run)
 
@@ -165,23 +173,32 @@ def upcoming_runs(
         key=lambda r: (
             r.next_fire_at is None,
             r.next_fire_at or "",
-            profile_order(r.codename),
+            profile_order(r.codename, state_root=resolved_state),
             r.codename,
         )
     )
     return runs[: max(1, limit)]
 
 
-def scheduled_codenames(conf_path: Path | None = None) -> list[str]:
+def scheduled_codenames(
+    conf_path: Path | None = None,
+    *,
+    state_root: Path | None = None,
+) -> list[str]:
     """Return all unique agent codenames present in ``agents.conf``."""
     path = conf_path if conf_path is not None else agents_conf_path()
-    if path is None:
+    resolved_state = state_root or _state_root_for_conf(path)
+    text = ""
+    if path is not None:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.debug("could not read agents.conf %s: %s", path, exc)
+            text = ""
+    custom_rows = _custom_agent_rows(resolved_state, base_text=text)
+    if not text and not custom_rows:
         return []
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.debug("could not read agents.conf %s: %s", path, exc)
-        return []
+    text = "\n".join([part for part in (text.rstrip("\n"), *custom_rows) if part])
 
     codenames: set[str] = set()
     for raw_line in text.splitlines():
@@ -194,10 +211,18 @@ def scheduled_codenames(conf_path: Path | None = None) -> list[str]:
         label = fields[0].strip()
         if label:
             codenames.add(_codename_from_label(label))
-    return sorted(codenames, key=lambda codename: (profile_order(codename), codename))
+    return sorted(
+        codenames,
+        key=lambda codename: (profile_order(codename, state_root=resolved_state), codename),
+    )
 
 
-def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
+def _parse_row(
+    raw_line: str,
+    *,
+    reference: datetime,
+    state_root: Path | None = None,
+) -> ScheduledRun | None:
     fields = raw_line.split("\t")
     if len(fields) < 3:
         return None
@@ -207,7 +232,7 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
     schedule = fields[2].strip()
     role = fields[-1].strip() if len(fields) >= 6 else ""
     codename = _codename_from_label(label)
-    profile = profile_payload(codename)
+    profile = profile_payload(codename, state_root=state_root)
 
     if schedule.startswith("interval:"):
         seconds = _coerce_int(schedule[len("interval:") :])
@@ -267,6 +292,57 @@ def _parse_row(raw_line: str, *, reference: datetime) -> ScheduledRun | None:
 
 def _codename_from_label(label: str) -> str:
     return label.rsplit(".", 1)[-1].strip().lower() if "." in label else label.strip().lower()
+
+
+def _state_root_for_conf(path: Path | None) -> Path:
+    if path is None:
+        return default_state_root()
+    resolved = path.expanduser()
+    if resolved.parent.name == "launchd" and resolved.parent.parent.name == "agents":
+        if resolved.parent.parent.parent.name == "infra":
+            return resolved.parent.parent.parent.parent / "state"
+        return resolved.parent.parent.parent / "state"
+    if resolved.parent.name == "launchd":
+        return resolved.parent.parent / "state"
+    return default_state_root()
+
+
+def _base_scheduler_identities(text: str) -> tuple[set[str], set[str]]:
+    labels: set[str] = set()
+    codenames: set[str] = set()
+    for raw in text.splitlines():
+        stripped = raw.lstrip()
+        if not stripped or stripped.startswith("# ") or stripped == "#":
+            continue
+        if stripped.startswith("#"):
+            if "\t" not in stripped:
+                continue
+            stripped = stripped.lstrip("#").lstrip()
+        label = stripped.split("\t", 1)[0].strip()
+        if not label:
+            continue
+        labels.add(label)
+        codenames.add(_codename_from_label(label))
+    return labels, codenames
+
+
+def _custom_agent_rows(state_root: Path, *, base_text: str = "") -> list[str]:
+    try:
+        rows = CustomAgentStore.from_state_root(state_root).conf_rows(enabled_only=True)
+    except Exception as exc:  # pragma: no cover - defensive read-only path
+        logger.debug("could not read custom agents from %s: %s", state_root, exc)
+        return []
+    if not base_text:
+        return rows
+    base_labels, base_codenames = _base_scheduler_identities(base_text)
+    out: list[str] = []
+    for row in rows:
+        label = row.split("\t", 1)[0].strip()
+        codename = _codename_from_label(label)
+        if label in base_labels or codename in base_codenames:
+            continue
+        out.append(row)
+    return out
 
 
 def _interval_cadence(seconds: int) -> str:

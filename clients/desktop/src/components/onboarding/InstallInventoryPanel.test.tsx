@@ -127,6 +127,22 @@ describe("InstallInventoryPanel", () => {
               { repo: "acme/site", path: "../marketing/site" },
             ],
           },
+          custom_agents: {
+            path: "/tmp/alfred-home/state/custom-agents/custom-agents.json",
+            count: 1,
+            enabled_count: 1,
+            disabled_count: 0,
+            agents: [
+              {
+                codename: "release-captain",
+                display_name: "Release Captain",
+                role_title: "Release coordinator",
+                enabled: true,
+                engine: "codex",
+                schedule: "interval:1800",
+              },
+            ],
+          },
           items: [
             ...base.items,
             {
@@ -144,6 +160,14 @@ describe("InstallInventoryPanel", () => {
               detail: "Custom roster active with 2 names and 1 role label.",
               path: "/tmp/alfred-home/state/roster-theme/roster-theme.json",
             },
+            {
+              key: "custom-agents",
+              label: "Custom agents",
+              ok: true,
+              detail: "1 custom runtime agent; 1 enabled.",
+              path: "/tmp/alfred-home/state/custom-agents/custom-agents.json",
+              optional: true,
+            },
           ],
         }}
       />,
@@ -154,5 +178,8 @@ describe("InstallInventoryPanel", () => {
     expect(screen.getByText("../marketing/site")).toBeInTheDocument();
     expect(screen.getByText(/roster theme/i)).toBeInTheDocument();
     expect(screen.getByText(/custom roster active with 2 names and 1 role label/i)).toBeInTheDocument();
+    expect(screen.getByText(/custom agents/i)).toBeInTheDocument();
+    expect(screen.getByText("Release Captain")).toBeInTheDocument();
+    expect(screen.getByText(/release-captain \/ Release coordinator \/ codex \/ interval:1800/i)).toBeInTheDocument();
   });
 });

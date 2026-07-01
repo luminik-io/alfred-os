@@ -215,16 +215,20 @@ configured_agents() {
     conf="$REPO_DIR/launchd/agents.conf"
   fi
   if [ -n "$conf" ]; then
-    awk -F'\t' '
-      /^[[:space:]]*$/ { next }
-      /^[[:space:]]*#/ { next }
-      $2 ~ /\.py$/ { print $1 "\t" $2 }
-    ' "$conf" | sort -u
+    {
+      awk -F'\t' '
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*#/ { next }
+        $2 ~ /\.py$/ { print $1 "\t" $2 }
+      ' "$conf"
+      custom_agent_rows
+    } | sort -u
     return 0
   fi
 
   if [ -d "$HOME/Library/LaunchAgents" ]; then
-    python3 - "$HOME/Library/LaunchAgents" <<'PY'
+    {
+      python3 - "$HOME/Library/LaunchAgents" <<'PY'
 from pathlib import Path
 import plistlib
 import sys
@@ -248,6 +252,8 @@ for plist in sorted(Path(sys.argv[1]).glob("*.plist")):
     if candidate and str(candidate).endswith(".py"):
         print(f"{label}\t{Path(str(candidate)).name}")
 PY
+      custom_agent_rows
+    } | sort -u
     return 0
   fi
 
@@ -257,7 +263,8 @@ PY
   # agents when agents.conf is unreachable.
   systemd_user_dir="${ALFRED_SYSTEMD_USER_DIR:-$HOME/.config/systemd/user}"
   if [ -d "$systemd_user_dir" ]; then
-    python3 - "$systemd_user_dir" <<'PY'
+    {
+      python3 - "$systemd_user_dir" <<'PY'
 from pathlib import Path
 import shlex
 import sys
@@ -288,7 +295,35 @@ for unit in sorted(Path(sys.argv[1]).glob("*.service")):
     if candidate and str(candidate).endswith(".py"):
         print(f"{label}\t{Path(str(candidate)).name}")
 PY
+      custom_agent_rows
+    } | sort -u
+    return 0
   fi
+
+  custom_agent_rows | sort -u
+}
+
+custom_agent_rows() {
+  PYTHONPATH="$ALFRED_HOME/lib:$REPO_DIR/lib${PYTHONPATH:+:$PYTHONPATH}" python3 - "$ALFRED_HOME" <<'PY'
+import sys
+from pathlib import Path
+
+try:
+    from custom_agents import CustomAgentStore
+except Exception:
+    raise SystemExit(0)
+
+home = Path(sys.argv[1]).expanduser()
+try:
+    rows = CustomAgentStore.from_state_root(home / "state").conf_rows(enabled_only=True)
+except Exception:
+    rows = []
+
+for row in rows:
+    parts = row.split("\t")
+    if len(parts) >= 2 and parts[1].endswith(".py"):
+        print(f"{parts[0]}\t{parts[1]}")
+PY
 }
 
 echo "doctor: checking configured agents"

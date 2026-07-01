@@ -547,6 +547,21 @@ export type SetupRepoLocalMapInventory = {
   entries: Array<{ repo: string; path: string }>;
 };
 
+export type SetupCustomAgentInventory = {
+  path: string | null;
+  count: number;
+  enabled_count: number;
+  disabled_count: number;
+  agents: Array<{
+    codename: string;
+    display_name: string;
+    role_title: string;
+    enabled: boolean;
+    engine: string;
+    schedule: string;
+  }>;
+};
+
 export type SetupInstallInventory = {
   alfred_home: string;
   env_path: string;
@@ -559,6 +574,7 @@ export type SetupInstallInventory = {
   slack_configured: boolean;
   memory_configured: boolean;
   roster_theme?: SetupRosterThemeInventory;
+  custom_agents?: SetupCustomAgentInventory;
   repo_local_map?: SetupRepoLocalMapInventory;
   initialized: boolean;
   items: SetupInstallItem[];

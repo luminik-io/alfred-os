@@ -2867,6 +2867,22 @@ def test_server_agents_conf_path_uses_default_home_when_no_checkout(
     assert schedule_mod.agents_conf_path() == home_conf
 
 
+def test_state_root_for_conf_handles_runtime_layouts(tmp_path: Path) -> None:
+    import server.schedule as schedule_mod
+
+    home = tmp_path / "alfred-home"
+
+    assert schedule_mod._state_root_for_conf(home / "launchd" / "agents.conf") == home / "state"
+    assert (
+        schedule_mod._state_root_for_conf(home / "infra" / "agents" / "launchd" / "agents.conf")
+        == home / "state"
+    )
+    assert (
+        schedule_mod._state_root_for_conf(home / "agents" / "launchd" / "agents.conf")
+        == home / "state"
+    )
+
+
 def test_scheduled_codenames_is_not_limited_by_schedule_endpoint_cap(tmp_path: Path) -> None:
     import server.schedule as schedule_mod
 
@@ -2939,6 +2955,83 @@ def test_api_schedule_empty_when_conf_missing(
 
     body = client.get("/api/schedule").json()
     assert body["runs"] == []
+
+
+def test_custom_agents_appear_in_status_and_schedule(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_agents import CustomAgentStore
+
+    state = tmp_path / "state"
+    monkeypatch.setenv("ALFRED_REPO", str(tmp_path / "missing-repo"))
+    CustomAgentStore.from_state_root(state).upsert(
+        {
+            "codename": "release-captain",
+            "display_name": "Release Captain",
+            "role_title": "Release coordinator",
+            "purpose": "Checks release readiness before handoff.",
+            "prompt": "Review release readiness and summarize blockers for the operator.",
+            "engine": "hybrid",
+            "schedule": "30m",
+            "repos": ["acme/api"],
+        }
+    )
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    agents = client.get("/api/status").json()["agents"]
+    assert agents[0]["codename"] == "release-captain"
+    assert agents[0]["display_name"] == "Release Captain"
+    assert agents[0]["role_title"] == "Release coordinator"
+    assert agents[0]["last_summary"] == "no firings yet"
+
+    runs = client.get("/api/schedule").json()["runs"]
+    assert [run["codename"] for run in runs] == ["release-captain"]
+    assert runs[0]["cadence"] == "every 30m"
+    assert runs[0]["display_name"] == "Release Captain"
+
+
+def test_custom_agent_schedule_rows_skip_base_conf_codename_collisions(
+    tmp_path: Path,
+) -> None:
+    import server.schedule as schedule_mod
+
+    home = tmp_path / "alfred-home"
+    state = home / "state"
+    conf = home / "launchd" / "agents.conf"
+    conf.parent.mkdir(parents=True)
+    conf.write_text(
+        "my.fleet.release-captain\tlucius.py\tinterval:600\tno\t\tFeature dev\n",
+        encoding="utf-8",
+    )
+    manifest = state / "custom-agents" / "custom-agents.json"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agents": [
+                    {
+                        "codename": "release-captain",
+                        "display_name": "Release Captain",
+                        "role_title": "Release coordinator",
+                        "purpose": "Checks release readiness before handoff.",
+                        "prompt": "Review release readiness and summarize blockers for the operator.",
+                        "engine": "hybrid",
+                        "schedule": "interval:1800",
+                        "repos": ["acme/api"],
+                        "enabled": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runs = schedule_mod.upcoming_runs(conf_path=conf, state_root=state)
+
+    assert [run.codename for run in runs] == ["release-captain"]
+    assert runs[0].cadence == "every 10m"
+    assert schedule_mod.scheduled_codenames(conf_path=conf, state_root=state) == ["release-captain"]
 
 
 def test_draft_from_payload_filters_invalid_repo_slugs() -> None:
@@ -3554,3 +3647,66 @@ def test_roster_theme_rejects_non_object_body(tmp_path: Path) -> None:
         content="[1, 2, 3]",
     )
     assert resp.status_code == 400
+
+
+def test_custom_agents_api_create_list_delete(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    create = client.post(
+        "/api/custom-agents",
+        headers=_auth_headers(state),
+        json={
+            "codename": "release-captain",
+            "display_name": "Release Captain",
+            "role_title": "Release coordinator",
+            "purpose": "Checks release readiness before handoff.",
+            "prompt": "Review release readiness and summarize blockers for the operator.",
+            "engine": "codex",
+            "schedule": "daily@09:15",
+            "repos": ["acme/api"],
+        },
+    )
+    assert create.status_code == 200
+    body = create.json()
+    assert body["ok"] is True
+    assert body["deploy_required"] is True
+    assert body["agent"]["schedule"] == "cron:9:15"
+
+    listed = client.get("/api/custom-agents").json()
+    assert listed["count"] == 1
+    assert listed["agents"][0]["codename"] == "release-captain"
+    assert "prompt" not in listed["agents"][0]
+
+    deleted = client.delete("/api/custom-agents/release-captain", headers=_auth_headers(state))
+    assert deleted.status_code == 200
+    assert deleted.json()["removed"] is True
+    assert client.get("/api/custom-agents").json()["count"] == 0
+
+
+def test_custom_agents_api_requires_token_and_valid_payload(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    client = TestClient(create_app(FilesystemReader(state_root=state)))
+
+    missing_token = client.post(
+        "/api/custom-agents",
+        json={
+            "codename": "release-captain",
+            "display_name": "Release Captain",
+            "role_title": "Release coordinator",
+            "prompt": "Review release readiness and summarize blockers for the operator.",
+        },
+    )
+    assert missing_token.status_code == 403
+
+    bad_payload = client.post(
+        "/api/custom-agents",
+        headers=_auth_headers(state),
+        json={
+            "codename": "lucius",
+            "display_name": "Lucius",
+            "role_title": "Builder",
+            "prompt": "Review release readiness and summarize blockers for the operator.",
+        },
+    )
+    assert bad_payload.status_code == 400

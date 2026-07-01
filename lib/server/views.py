@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from custom_agents import CustomAgentError, CustomAgentStore
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import (
     HTMLResponse,
@@ -393,7 +394,8 @@ def register_routes(app: FastAPI) -> None:
         from server.schedule import upcoming_runs
 
         try:
-            runs = upcoming_runs()
+            state_root = getattr(request.app.state.reader, "state_root", None)
+            runs = upcoming_runs(state_root=state_root if isinstance(state_root, Path) else None)
         except Exception:  # never break the client on a parse failure
             logger.exception("api_schedule: failed to read upcoming runs")
             return JSONResponse({"runs": [], "error": _GENERIC_ERROR})
@@ -824,6 +826,55 @@ def register_routes(app: FastAPI) -> None:
             logger.warning("api_set_roster_theme: rejected invalid payload", exc_info=True)
             return JSONResponse({"error": "invalid roster theme payload"}, status_code=400)
         return JSONResponse(state.to_dict())
+
+    @app.get("/api/custom-agents", response_class=JSONResponse)
+    async def api_custom_agents(request: Request) -> JSONResponse:
+        store = CustomAgentStore.from_state_root(_state_root(request))
+        return JSONResponse(store.snapshot(include_prompt=False))
+
+    @app.post("/api/custom-agents", response_class=JSONResponse)
+    async def api_save_custom_agent(request: Request) -> JSONResponse:
+        if not _same_origin_post(request) or not _authorized_mutation(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        body, error_response = await _read_json_body(request)
+        if error_response is not None:
+            return error_response
+        store = CustomAgentStore.from_state_root(_state_root(request))
+        try:
+            agent = store.upsert(body)
+        except CustomAgentError:
+            logger.warning("api_save_custom_agent: rejected invalid payload", exc_info=True)
+            return JSONResponse({"error": "invalid custom agent payload"}, status_code=400)
+        return JSONResponse(
+            {
+                "ok": True,
+                "agent": agent.to_dict(),
+                "deploy_required": True,
+                "detail": "Run `bash deploy.sh` from the source checkout to render or reload this agent's scheduler job.",
+            }
+        )
+
+    @app.delete("/api/custom-agents/{codename}", response_class=JSONResponse)
+    async def api_delete_custom_agent(request: Request, codename: str) -> JSONResponse:
+        if not _same_origin_post(request) or not _authorized_mutation(request):
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+        store = CustomAgentStore.from_state_root(_state_root(request))
+        try:
+            removed = store.delete(codename)
+        except CustomAgentError:
+            return JSONResponse({"error": "invalid custom agent codename"}, status_code=400)
+        return JSONResponse(
+            {
+                "ok": True,
+                "removed": removed,
+                "deploy_required": removed,
+                "detail": (
+                    "Run `bash deploy.sh` from the source checkout to remove the scheduler job."
+                    if removed
+                    else "No custom agent matched that codename."
+                ),
+            }
+        )
 
     @app.post("/api/conversation/control", response_class=JSONResponse)
     async def api_conversation_control(request: Request) -> JSONResponse:

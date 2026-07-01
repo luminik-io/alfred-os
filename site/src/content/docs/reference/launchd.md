@@ -11,7 +11,11 @@ The framework's scheduling layer. Three files, fully documented.
 
 ## The scheduling pipeline
 
-`agents.conf` is the single source of truth for which agents run and when. `deploy.sh` runs `render.sh` over it, producing one plist per row, then bootstraps each one into `launchd`.
+`agents.conf` is the shipped fleet source, and the effective runtime roster is
+`agents.conf` plus enabled rows from
+`$ALFRED_HOME/state/custom-agents/custom-agents.json`. `deploy.sh` runs the
+renderer over that effective roster, producing one plist per row, then
+bootstraps each one into `launchd`.
 
 ```mermaid
 flowchart LR
@@ -81,10 +85,11 @@ agent script from `$ALFRED_HOME/bin`.
 
 ## Adding an agent
 
-1. Drop `bin/<your-codename>.py` into your fleet repo.
-2. Append a row to `launchd/agents.conf`.
+1. For prompted custom roles, run `alfred agent add ...`.
+2. For bespoke deterministic scripts, drop `bin/<your-codename>.py` into your
+   fleet repo and append a row to `launchd/agents.conf`.
 3. Run `bash deploy.sh`: renders + bootstraps.
-4. Verify with `./bin/alfred doctor`.
+4. Verify with `alfred status` and `./bin/alfred doctor`.
 
 ## Pause / resume
 

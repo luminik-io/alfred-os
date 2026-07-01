@@ -53,6 +53,36 @@ huntress    ⏸     -       never  0      0   0     0       0      $0.00   ⏸�
 The numbers above are illustrative. Your own output shows your configured
 agents, real per-day spend, and the live sentinel states for your machine.
 
+## `alfred agent`
+
+Create and inspect operator-defined runtime agents. These are real scheduled
+agents, not just display names. Alfred stores them in
+`$ALFRED_HOME/state/custom-agents/custom-agents.json`; `bash deploy.sh` compiles
+enabled rows into the same launchd/systemd scheduler units as the built-in
+fleet.
+
+```sh
+alfred agent list
+alfred agent list --json
+
+alfred agent add release-captain \
+  --display-name "Release Captain" \
+  --role-title "Release coordinator" \
+  --prompt "Review release readiness and summarize blockers for the operator." \
+  --engine hybrid \
+  --schedule 30m \
+  --repo acme/api
+
+alfred agent remove release-captain
+bash deploy.sh
+```
+
+The generic custom runner, `bin/custom-agent.py`, invokes the configured prompt
+through Claude, Codex, or hybrid routing and records normal Alfred telemetry:
+locks, preflight, events, spend, runtime memory, and Slack summaries. It is
+read-only by default. Use a dedicated `bin/<role>.py` when the role needs
+deterministic code or PR creation beyond a prompted scheduled teammate.
+
 ## `alfred slack-listener`
 
 Run the optional Slack-native planning listener. It listens over Socket Mode for
