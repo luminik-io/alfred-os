@@ -477,10 +477,16 @@ def _runtime_repo_scope_values_for_save(
     runtime_value: str,
 ) -> dict[str, str]:
     values: dict[str, str] = {}
+    setup_owned_values = _setup_owned_runtime_repo_values(runtime_env)
     for key in RUNTIME_REPO_SCOPE_ENV_KEYS:
         existing = _code_memory_config(runtime_env, key)
-        values[key] = existing or runtime_value
+        values[key] = existing if existing and existing not in setup_owned_values else runtime_value
     return values
+
+
+def _setup_owned_runtime_repo_values(runtime_env: dict[str, str]) -> set[str]:
+    board_local_value = _format_repo_value(_repo_local_names(setup_board_repos(runtime_env)))
+    return {board_local_value} if board_local_value else set()
 
 
 def _validate_repo_scope_owner(owner: str | None, runtime_env: dict[str, str]) -> None:

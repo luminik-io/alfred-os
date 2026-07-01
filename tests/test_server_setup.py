@@ -1042,6 +1042,35 @@ def test_persist_selected_repos_preserves_previous_ui_save_queue_scope(
     assert os.environ["ALFRED_BRIDGE_REPOS"] == "acme/api"
 
 
+def test_persist_selected_repos_refreshes_previous_ui_runtime_agent_scopes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "runtime"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("ALFRED_HOME", str(home))
+    monkeypatch.delenv("ALFRED_QUEUE_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_SHIPPED_REPOS", raising=False)
+    monkeypatch.delenv("ALFRED_BRIDGE_REPOS", raising=False)
+    home.mkdir(parents=True)
+
+    setup_mod.persist_selected_repos(["Acme/Web"], queue_repos=["Acme/Web"])
+    setup_mod.persist_selected_repos(["Acme/API"], queue_repos=["Acme/API"])
+
+    env_text = (home / ".env").read_text(encoding="utf-8")
+    assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
+    assert "ALFRED_SHIPPED_REPOS=acme/api" in env_text
+    assert "ALFRED_BRIDGE_REPOS=acme/api" in env_text
+    assert "ALFRED_LUCIUS_REPOS=api" in env_text
+    assert "ALFRED_DRAKE_REPOS=api" in env_text
+    assert "BATMAN_ROLLOUT_ORDER=api" in env_text
+    assert "ALFRED_CODE_MEMORY_REPOS=api" in env_text
+    assert "ALFRED_LUCIUS_REPOS=web" not in env_text
+    assert os.environ["ALFRED_LUCIUS_REPOS"] == "api"
+    assert os.environ["BATMAN_ROLLOUT_ORDER"] == "api"
+    assert os.environ["ALFRED_CODE_MEMORY_REPOS"] == "api"
+
+
 def test_persist_selected_repos_preserves_process_queue_only_scope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
