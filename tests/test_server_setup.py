@@ -25,6 +25,7 @@ def restore_repo_env_keys() -> None:
         setup_mod.QUEUE_REPOS_ENV,
         setup_mod.SHIPPED_REPOS_ENV,
         setup_mod.BRIDGE_REPOS_ENV,
+        *setup_mod.RUNTIME_REPO_SCOPE_ENV_KEYS,
     )
     saved = {key: os.environ.get(key) for key in keys}
     yield
@@ -33,6 +34,15 @@ def restore_repo_env_keys() -> None:
             os.environ.pop(key, None)
         else:
             os.environ[key] = value
+
+
+def repo_save_keys(*prefix: str) -> list[str]:
+    return [
+        *prefix,
+        setup_mod.SHIPPED_REPOS_ENV,
+        setup_mod.BRIDGE_REPOS_ENV,
+        *setup_mod.RUNTIME_REPO_SCOPE_ENV_KEYS,
+    ]
 
 
 def test_install_inventory_reports_existing_config_without_secret_values(
@@ -681,14 +691,18 @@ def test_persist_selected_repos_board_only_save_does_not_create_queue_scope(
     result = setup_mod.persist_selected_repos(["Acme/Web"])
 
     assert not (tmp_path / ".alfredrc").exists()
-    assert result["keys"] == [
-        "ALFRED_SHIPPED_REPOS",
-        "ALFRED_BRIDGE_REPOS",
-    ]
+    assert result["keys"] == repo_save_keys()
     env_text = (home / ".env").read_text(encoding="utf-8")
     assert "ALFRED_QUEUE_REPOS=" not in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+    assert "ALFRED_LUCIUS_REPOS=web" in env_text
+    assert "ALFRED_DRAKE_REPOS=web" in env_text
+    assert "ALFRED_RASALGHUL_REPOS=web" in env_text
+    assert "BATMAN_ROLLOUT_ORDER=web" in env_text
+    assert "ALFRED_CODE_MEMORY_REPOS=web" in env_text
+    assert os.environ["ALFRED_LUCIUS_REPOS"] == "web"
+    assert os.environ["BATMAN_ROLLOUT_ORDER"] == "web"
 
 
 def test_persist_selected_repos_does_not_sync_to_rc_that_omits_custom_home(
@@ -801,15 +815,25 @@ def test_persist_selected_repos_seeds_queue_for_new_install(
 
     env_path = home / ".env"
     assert result["env_path"] == str(env_path)
-    assert result["keys"] == [
-        "ALFRED_QUEUE_REPOS",
-        "ALFRED_SHIPPED_REPOS",
-        "ALFRED_BRIDGE_REPOS",
-    ]
+    assert result["keys"] == repo_save_keys(setup_mod.QUEUE_REPOS_ENV)
     env_text = env_path.read_text(encoding="utf-8")
     assert "ALFRED_QUEUE_REPOS=acme/web" in env_text
     assert "ALFRED_SHIPPED_REPOS=acme/web" in env_text
     assert "ALFRED_BRIDGE_REPOS=acme/web" in env_text
+    assert "ALFRED_LUCIUS_REPOS=web" in env_text
+    assert "ALFRED_DRAKE_REPOS=web" in env_text
+    assert "ALFRED_BANE_REPOS=web" in env_text
+    assert "ALFRED_RASALGHUL_REPOS=web" in env_text
+    assert "ALFRED_NIGHTWING_REPOS=web" in env_text
+    assert "ALFRED_ROBIN_REPOS=web" in env_text
+    assert "ALFRED_AUTOMERGE_REPOS=web" in env_text
+    assert "ALFRED_CLAIM_SWEEP_REPOS=web" in env_text
+    assert "ALFRED_CODE_MAP_REPOS=web" in env_text
+    assert "ALFRED_CODE_MEMORY_REPOS=web" in env_text
+    assert "ALFRED_MORNING_BRIEF_REPOS=web" in env_text
+    assert "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS=web" in env_text
+    assert "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS=web" in env_text
+    assert "BATMAN_ROLLOUT_ORDER=web" in env_text
 
 
 def test_persist_selected_repos_preserves_exported_queue_scope_without_replace(

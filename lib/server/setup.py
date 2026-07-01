@@ -10,8 +10,9 @@ zero to a working fleet without a terminal:
   ``gh repo list`` plus the repos already selected, so the client can render a
   checklist with the current selection ticked.
 * :func:`persist_selected_repos`  - write the chosen repo allowlist to
-  ``$ALFRED_HOME/.env`` (the same keys ``shipped_board`` / ``issue_queue``
-  read), so the choice survives a restart and scopes everything Alfred touches.
+  ``$ALFRED_HOME/.env`` for boards, queue mutations, scheduled agents, and
+  code-memory indexing, so the choice survives a restart and scopes everything
+  Alfred touches.
 * :func:`STARTER_PLAYBOOKS`  - 2-3 canned overnight jobs the client can compose
   into a concrete first request.
 * the demo store (:func:`seed_demo`, :func:`clear_demo`, :func:`load_demo_cards`)
@@ -40,16 +41,32 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# The watched-repo allowlist the rest of the fleet reads. The Set up surface
-# writes BOTH the queue allowlist (controls what an operator can arm/hold/close)
-# and the shipped allowlist (controls which repos the board scans), so the one
-# golden-path repo pick wires up the whole experience, including the native
-# Plan-work -> GitHub issue handoff and the Slack issue bridge.
+# The watched-repo allowlists the rest of the fleet reads. Board and queue
+# surfaces use GitHub ``owner/repo`` slugs. Scheduled agents and code memory
+# use local repo names under GH_ORG / WORKSPACE_ROOT, matching alfred-init's
+# generated env contract.
 QUEUE_REPOS_ENV = "ALFRED_QUEUE_REPOS"
 SHIPPED_REPOS_ENV = "ALFRED_SHIPPED_REPOS"
 BRIDGE_REPOS_ENV = "ALFRED_BRIDGE_REPOS"
 _REPO_ENV_KEYS = (QUEUE_REPOS_ENV, SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
 _BOARD_REPO_ENV_KEYS = (SHIPPED_REPOS_ENV, BRIDGE_REPOS_ENV)
+CODE_MEMORY_REPOS_ENV = "ALFRED_CODE_MEMORY_REPOS"
+RUNTIME_REPO_SCOPE_ENV_KEYS = (
+    "BATMAN_ROLLOUT_ORDER",
+    "ALFRED_LUCIUS_REPOS",
+    "ALFRED_DRAKE_REPOS",
+    "ALFRED_BANE_REPOS",
+    "ALFRED_RASALGHUL_REPOS",
+    "ALFRED_NIGHTWING_REPOS",
+    "ALFRED_ROBIN_REPOS",
+    "ALFRED_CLAIM_SWEEP_REPOS",
+    "ALFRED_AUTOMERGE_REPOS",
+    "ALFRED_CODE_MAP_REPOS",
+    CODE_MEMORY_REPOS_ENV,
+    "ALFRED_MORNING_BRIEF_REPOS",
+    "ALFRED_SHIPPED_SUMMARY_DAILY_REPOS",
+    "ALFRED_SHIPPED_SUMMARY_WEEKLY_REPOS",
+)
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _ENV_KEY_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -289,6 +306,15 @@ def _format_repo_value(repos: list[str]) -> str:
     return ",".join(repos)
 
 
+def _repo_local_names(repos: list[str]) -> list[str]:
+    out: list[str] = []
+    for repo in repos:
+        name = repo.rsplit("/", 1)[-1]
+        if name and name not in out:
+            out.append(name)
+    return out
+
+
 def _repos_from_env(
     env: dict[str, str],
     keys: tuple[str, ...] = _REPO_ENV_KEYS,
@@ -367,12 +393,13 @@ def persist_selected_repos(
 ) -> dict[str, Any]:
     """Persist the chosen repo allowlist and mirror it into the live process.
 
-    Writes the board allowlist keys to ``.env`` and updates ``os.environ`` so
-    the change takes effect for this running server without a restart
-    (``config_value`` prefers the process env, and a fresh board call then sees
-    the new scope immediately). Queue mutation scope is only written when the
-    caller supplies ``queue_repos`` explicitly and there is no existing queue
-    scope. Existing queue scopes are only replaced by ``replace_queue_repos``.
+    Writes board and scheduled-agent allowlist keys to ``.env`` and updates
+    ``os.environ`` so the change takes effect for this running server without a
+    restart (``config_value`` prefers the process env, and a fresh board call
+    then sees the new scope immediately). Queue mutation scope is only written
+    when the caller supplies ``queue_repos`` explicitly and there is no existing
+    queue scope. Existing queue scopes are only replaced by
+    ``replace_queue_repos``.
     """
     clean = normalize_repo_slugs(repos)
     clean_queue = normalize_repo_slugs(queue_repos) if queue_repos is not None else None
@@ -405,17 +432,20 @@ def _repo_scope_values_for_save(
 ) -> dict[str, str]:
     """Repo keys to persist for a setup repo save.
 
-    The onboarding repo picker owns the board-visible scope. Queue scope is a
-    mutation boundary, so guided saves can seed it on fresh installs but must
-    preserve any existing queue scope. Replacing an existing queue allowlist
-    requires ``replace_queue_repos`` so board visibility cannot widen mutation
+    The onboarding repo picker owns board-visible scope and the local-name
+    scopes used by scheduled agents. Queue scope is a mutation boundary, so
+    guided saves can seed it on fresh installs but must preserve any existing
+    queue scope. Replacing an existing queue allowlist requires
+    ``replace_queue_repos`` so board visibility cannot widen mutation
     permissions as a side effect.
     """
 
     value = _format_repo_value(repos)
+    runtime_value = _format_repo_value(_repo_local_names(repos))
     values = {
         SHIPPED_REPOS_ENV: value,
         BRIDGE_REPOS_ENV: value,
+        **dict.fromkeys(RUNTIME_REPO_SCOPE_ENV_KEYS, runtime_value),
     }
     runtime_env = _runtime_config_env()
     queue_scope_present, existing_queue = _effective_queue_scope_for_save(runtime_env)
